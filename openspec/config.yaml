@@ -1,0 +1,41 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing
+operations:
+  apply:
+    guidance:
+      - Load skills `tdd-workflow` and `safe-refactor` before task 1; judge every diff through `solid` / `clean-code` / `ponytail` (full)
+      - One discrete behavior per test, red then green; keep the suite green throughout, never whole files up front
+      - Run a `ponytail-review` pass over the diff before declaring tasks done; fix or explicitly defer each finding
+  archive:
+    guidance:
+      - Confirm the `ponytail-review` pass ran and the completion message lists each loaded skill with one line on how it shaped the work

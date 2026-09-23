@@ -1,0 +1,34 @@
+body { margin:0; background:#14161a; color:#e8e8e8; font-family:system-ui, sans-serif; }
+#wrap { max-width:980px; margin:0 auto; padding:10px; position:relative; }
+#hud { background:#1e2228; padding:8px 12px; border-radius:8px; margin-bottom:8px; }
+.bar-row { display:flex; align-items:center; gap:8px; margin:4px 0; font-size:14px; }
+.bar-row label { width:50px; }
+.bar { flex:1; height:14px; background:#0c0e11; border-radius:7px; overflow:hidden; position:relative; }
+.fill { height:100%; width:100%; transition:width .2s; }
+.fill.hp { background:#4caf50; }
+.fill.karma { background:#2196f3; width:50%; margin-left:50%; }
+.karma-bar { background:linear-gradient(to right,#f44336 0%,#0c0e11 50%,#0c0e11 50%,#2e7d32 100%); }
+#controls { font-size:12px; opacity:.7; margin-top:4px; }
+#game { background:#20262e; border-radius:8px; width:100%; display:block; }
+#log { margin-top:8px; font-size:13px; min-height:90px; background:#1e2228; border-radius:8px; padding:8px 12px; }
+#log div { border-left:3px solid #555; padding-left:6px; margin:3px 0; }
+#log .good { border-color:#4caf50; }
+#log .bad { border-color:#f44336; }
+#log .info { border-color:#2196f3; }
+#judgment, #shop, #start { position:absolute; left:50%; transform:translateX(-50%); background:#242a33; border:2px solid #888; border-radius:12px; padding:20px 28px; text-align:center; min-width:380px; }
+#judgment { top:120px; }
+#start { top:120px; }
+#shop { top:150px; min-width:420px; }
+#judgment.hidden, #shop.hidden, #start.hidden { display:none; }
+#judgment button { margin-top:12px; padding:10px 22px; font-size:16px; cursor:pointer; }
+#start button { font-size:13px; padding:6px 12px; margin:6px 4px 0; cursor:pointer; }
+#chooseForm button, #t2pick button { font-size:13px; padding:6px 12px; margin:6px 4px 0; }
+#chooseForm button:disabled, #t2pick button:disabled { opacity:.4; cursor:default; }
+#prompt { font-size:13px; color:#9ccc65; min-height:18px; margin-top:4px; }
+#jReason { margin:10px 0; font-size:14px; }
+#jNext { font-size:18px; font-weight:bold; }
+#shopItems { text-align:left; font-size:14px; }
+#shopItems .item { padding:4px 6px; border-bottom:1px solid #3a414b; }
+#shopItems .owned { opacity:.55; }
+#shopItems .poor { opacity:.55; }
+#shop .hint { font-size:12px; opacity:.7; margin-top:8px; }

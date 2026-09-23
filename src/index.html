@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Karma MVP - Prototipo 2D</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="wrap">
+  <div id="hud">
+    <div class="bar-row">
+      <span id="speciesLabel">Raton T1</span>
+      <span id="paLabel">PA: 0</span>
+      <span id="timeLabel">0:00</span>
+    </div>
+    <div class="bar-row">
+      <label>Vida</label>
+      <div class="bar"><div id="hpFill" class="fill hp"></div></div>
+      <span id="hpText">100</span>
+    </div>
+    <div class="bar-row">
+      <label>Karma</label>
+      <div class="bar karma-bar"><div id="karmaFill" class="fill karma"></div></div>
+      <span id="karmaText">0</span>
+    </div>
+    <div id="controls">WASD/Flechas moverse · E comer/cazar · Q gritar · H esconderse · V sentido · C llevar/enterrar · B tienda (1-4 comprar) · R reencarnar (en juicio)</div>
+    <div id="prompt"></div>
+  </div>
+  <canvas id="game" width="960" height="600"></canvas>
+  <div id="log"></div>
+  <div id="start">
+    <h2>Elige tu primera vida</h2>
+    <div id="startBtns">
+      <button id="btnStartOruga">Oruga (T0)</button>
+      <button id="btnStartSapo">Sapo (T1)</button>
+      <button id="btnStartRaton">Ratón (T1)</button>
+      <button id="btnStartArdilla">Ardilla (T1)</button>
+      <button id="btnStartTopo">Topo (T1)</button>
+      <button id="btnStartHalcon">Halcón (T2)</button>
+      <button id="btnStartZorro">Zorro (T2)</button>
+      <button id="btnStartLobo">Lobo (T2)</button>
+    </div>
+    <div class="hint">Primera vida libre, depredador o no · el karma decide las siguientes</div>
+  </div>
+  <div id="shop" class="hidden">
+    <h3>Adaptación (el mundo sigue vivo)</h3>
+    <div id="shopItems"></div>
+    <div class="hint">B / Esc cerrar · 1-4 comprar · una compra por stat, se pierde al morir</div>
+  </div>
+  <div id="judgment" class="hidden">
+    <h2>Juicio de Reencarnación</h2>
+    <div id="jStats"></div>
+    <div id="jReason"></div>
+    <div id="jNext"></div>
+    <div id="chooseForm">
+      <button id="btnChooseRaton">Ratón (15 PA)</button>
+      <button id="btnChooseArdilla">Ardilla (15 PA)</button>
+      <button id="btnChooseTopo">Topo (15 PA)</button>
+      <button id="btnChooseSapo">Sapo (15 PA)</button>
+    </div>
+    <div id="t2pick">
+      <button id="btnT2Halcon">Halcón (gratis)</button>
+      <button id="btnT2Zorro">Zorro (gratis)</button>
+    </div>
+    <button id="btnReencarnar">Reencarnar (R)</button>
+  </div>
+</div>
+<script src="script/data.js"></script>
+<script src="script/utils.js"></script>
+<script src="script/state.js"></script>
+<script src="script/predators.js"></script>
+<script src="script/eat.js"></script>
+<script src="script/shop.js"></script>
+<script src="script/hud.js"></script>
+<script src="script/game.js"></script>
+<script src="script/draw.js"></script>
+</body>
+</html>
