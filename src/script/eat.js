@@ -22,14 +22,18 @@ function eatAsZorro() {
   }
   const c = nearest(state.carrions, TUNING.eatRange);
   if (c) {
-    if (state.hp >= TUNING.wastefulHpFrac * effMaxHp() && !c.ceded) {
-      c.ceded = true; // la cesión es única por carroña: no se puede farmear
-      addKarma(TUNING.cedeKarma, `Cedes la presa a otros (+${TUNING.cedeKarma} karma, la dejas)`, 'good');
-      return true; // la carroña queda
-    }
+    if (state.hp >= TUNING.wastefulHpFrac * effMaxHp() && !c.ceded) return cedeCarrion(c);
     return eatCarrion(c);
   }
   return dietHintIfNear();
+}
+
+// Ceder carroña: la dejas para otros (+15, única por carroña). Una sola implementación
+// para la rama de E del zorro y su verbo 3 (karma-verbs).
+function cedeCarrion(c) {
+  c.ceded = true;
+  addKarma(TUNING.cedeKarma, `Cedes la presa a otros (+${TUNING.cedeKarma} karma, la dejas)`, 'good');
+  return true;
 }
 
 function eatAsHalcon() {
@@ -52,6 +56,7 @@ function strikePredator(p, forAgent) {
   addKarma(k, lobo ? `¡Ahuyentas un Lobo! Hazaña (+${k} karma)` : 'Caza necesaria: ahuyentas depredador (+5 karma)', k>5?'good':'info');
   addPa(TUNING.strikePa);
   state.hp = Math.min(effMaxHp(), state.hp+TUNING.strikeHp);
+  return true; // el verbo 1 del halcón lee el resultado (karma-verbs)
 }
 
 function landForCarrion() {
@@ -135,6 +140,7 @@ function pounceKill(m, forAgent) {
     record(`Zarpazo necesario (+${TUNING.pounceHp} vida, +${TUNING.pouncePa} PA)`);
     log(`Cazas por necesidad (+${TUNING.pounceHp} vida)`, 'info');
   }
+  return true; // el verbo 1 del zorro lee el resultado (karma-verbs)
 }
 
 function diveKill(m, forAgent) {
@@ -155,6 +161,7 @@ function diveKill(m, forAgent) {
     record(`Picado necesario (+${TUNING.pounceHp} vida)`);
     log(`Cazas en picado (+vida, en tierra)`, 'info');
   }
+  return true; // el verbo 1 del halcón lee el resultado (karma-verbs)
 }
 
 function digBurrow() {
@@ -173,6 +180,7 @@ function eatPatch(p, forAgent) {
   if (p.kind === 'berries' && p.mimic && !p.mimicEaten) return eatMimic(p, forAgent);
   if (p.kind === 'mushrooms' && p.toxicLeft > 0) return eatToxicShroom(p, forAgent);
   p.amount--;
+  if (p.kind !== 'leaves') dropSeed(p.kind, p.x, p.y); // fruta comida siembra el bosque (flora-lifecycle)
   if (p.amount <= 0 && p.kind !== 'leaves') return eatLastFruit(p, forAgent);
   return eatSustainable(p, FOODDEF[p.kind], forAgent);
 }
@@ -209,7 +217,11 @@ function eatLastFruit(p, forAgent) {
 function eatSustainable(p, pay, forAgent) {
   if (p.amount <= 0) { p.alive = false; p.regrowT = 0; } // rebrota desde cero: 60s reales
   healEater(forAgent, pay.hp);
-  if (forAgent) return true; // la IA solo gana vida: sin PA, karma ni registro
+  if (forAgent) { // IA: vida siempre; karma de buena acción por especie (spec ai-karma)
+    if (forAgent.speciesKey === 'oruga' && p.kind === 'leaves' && p.amount > 0)
+      addKarma(TUNING.prudentKarma, `Mordisqueo prudente (+${TUNING.prudentKarma} karma)`, 'good', forAgent);
+    return true; // sin PA ni registro: la IA solo cobra buenas acciones
+  }
   addPa(pay.pa);
   // Oruga prudente: +2 si dejó hojas en la mata
   if (state.speciesKey === 'oruga' && p.kind === 'leaves' && p.amount > 0) {
@@ -225,13 +237,16 @@ function eatInsect(i, forAgent) {
   state.insects.splice(state.insects.indexOf(i), 1);
   const pay = FOODDEF.insects;
   healEater(forAgent, pay.hp);
-  if (!forAgent) {
-    addPa(pay.pa);
-    if (state.speciesKey === 'sapo') {
-      addKarma(TUNING.pestKarma, `Control de plagas (+${TUNING.pestKarma} karma)`, 'good');
-    }
-    record(`Insecto (+${pay.hp} vida)`);
+  if (forAgent) { // IA: karma de control de plagas si es sapo (spec ai-karma)
+    if (forAgent.speciesKey === 'sapo')
+      addKarma(TUNING.pestKarma, `Control de plagas (+${TUNING.pestKarma} karma)`, 'good', forAgent);
+    return true;
   }
+  addPa(pay.pa);
+  if (state.speciesKey === 'sapo') {
+    addKarma(TUNING.pestKarma, `Control de plagas (+${TUNING.pestKarma} karma)`, 'good');
+  }
+  record(`Insecto (+${pay.hp} vida)`);
   return true;
 }
 
@@ -285,6 +300,7 @@ function carryAction() {
   if (state.carriedNut) {
     state.carriedNut = false;
     state.saplings++;
+    dropSeed('oak-tree', state.px, state.py); // la nuez enterrada brota aquí (flora-lifecycle)
     addKarma(TUNING.plantKarma, `Plantas un bosque futuro (+${TUNING.plantKarma} karma, retoño banked)`, 'good');
     record('Nuez enterrada (retoño +1)');
     return true;

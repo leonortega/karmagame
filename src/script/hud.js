@@ -36,5 +36,12 @@ function updateHud() {
   else if (fit) pr.textContent = `H esconderse (${fit.type})`;
   else if (near.length) pr.textContent = `No cabes aquí (tamaño ${effSize()})`;
   else pr.textContent = '';
+  // Barra de verbos 1-5 (karma-verbs): cd y coste a la vista
+  const defs = VERB_DEFS[state.speciesKey] || [];
+  document.getElementById('verbBar').innerHTML = defs.map((v, i) => {
+    const cd = state.verbCds[i] > 0 ? ` (${Math.ceil(state.verbCds[i])}s)` : '';
+    const poor = state.pa < v.costPa ? ' poor' : '';
+    return `<span class="verb${cd ? ' cd' : ''}${poor}">[${v.slot}] ${v.name}${cd}</span>`;
+  }).join(' ');
   if (state.shopOpen) renderShop();
 }

@@ -7,19 +7,23 @@ Deltas to the karma-core capability for AI animals now participating in the karm
 ## MODIFIED Requirements
 
 ### Requirement: NPC agents share the hunger-eat-die loop
-**Reason**: Expanded — NPC agents now also earn and spend karma/PA, perform good deeds, trigger shouts, and auto-purchase adaptations. The hunger-eat-die loop remains, but is enriched with karma mechanics.
-**Migration**: The existing scenario "NPC grazer eats and survives" and "NPC starves without food" remain valid. New scenarios for karma earning are added below.
+The system SHALL run hunger drain, diet-gated eating with identical payoffs, and death for AI agents: every agent loses Vida continuously at the same drain rate, eats only its DIET table entries with the same Vida gains, and dies at 0 Vida leaving a fresh carrion for carnivore diets. AI kills obey the same contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
 
-- **WHEN** an AI agent finds food
-- **THEN** the patch loses one fruit and the agent gains the same Vida as a player would, **and species-specific karma is granted for good deeds** (prudent nibble, pest control, etc.)
-- **WHEN** an AI agent uses a species-specific good deed (dig, plant, cede, groom, aerate)
-- **THEN** the agent's karma increases by the documented amount and `record()` logs the event to `agent.lifeLog`
-- **WHEN** an AI agent triggers a shout
-- **THEN** the agent gains +30 karma and +50 PA, `lureTimer` is set, and company mates are saved
+#### Scenario: NPC grazer eats and survives
+- **WHEN** an AI raton reaches a berry patch with fruit remaining
+- **THEN** the patch loses one fruit and the agent gains the same Vida as a player would, with no karma or PA granted for the meal itself
+
+#### Scenario: NPC starves without food
+- **WHEN** an AI agent finds no food for an extended time
+- **THEN** its Vida drains at the standard rate and it dies at 0, spawning carrion
+
+#### Scenario: NPC carnivore hunts fauna
+- **WHEN** an AI carnivore perceives a smaller or equal-size agent (any brain)
+- **THEN** it pursues and strikes on contact, killing the victim and spawning carrion; it never targets itself
 
 #### Scenario: NPC grazer earns karma for prudent eating
 - **WHEN** an AI Oruga agent eats a sustainable leaf (not the last)
-- **THEN** the agent's karma increases by 2 and `record()` logs the event
+- **THEN** the agent's karma increases by 2 and `record()` logs the event to `agent.lifeLog`
 
 #### Scenario: NPC predator earns karma for ceding kill
 - **WHEN** an AI Zorro agent uses eat on carrion at ≥80% HP

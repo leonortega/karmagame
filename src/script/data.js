@@ -65,6 +65,7 @@ const TUNING = {
   campTime: 3, hideRange: 40,
   carrionFreshHp: 20, carrionStaleHp: 8, carrionRottenHp: -25,
   carrionFreshT: 30, carrionRottenT: 60, carrionCap: 5, carrionFreshPa: 5,
+  aiBuyEvery: 10, aiKarmaGood: 30, aiKarmaBad: -30, aiPredPerceptMod: 0.2, aiShoutLureTime: 5,
   mimicHp: -20, satedTime: 25,
   wastefulHpFrac: 0.8, wastefulKarma: -10, strikeCd: 4,
   mateRespawn: 45, mateMax: 4,
@@ -78,6 +79,18 @@ const TUNING = {
   cedeKarma: 15, divePa: 10,
   senseTremorCd: 25, senseTrackCd: 30, revealTime: 3, trackTime: 5,
   curlCd: 20, saplingCap: 3,
+  // bosque vivo (forest-flora-lifecycle)
+  fruitRegrow: 45, seedSproutChance: 0.35, seedlingMaturity: 75,
+  seedlingMax: 10, seedScatter: 60, oakTreeCap: 6,
+  // terreno sólido (readable-forest-solid-terrain)
+  rockCount: 8, solidRefuge: 16, solidPlant: 12, solidRock: 14, losSamples: 10,
+  // supervivencia IA (foraging-survival-ai)
+  forageRangeMult: 0.5, hungerPriority: 0.4, aiHideMax: 5, aiCoverRange: 250, lowHpPercept: 1.4,
+  aiFearRange: 200,
+  // marchas (species-locomotion-verbs)
+  hopImpulse: 0.5, hopRest: 0.6, wormStretch: 1.3, wormBurst: 0.35, tunnelSpeed: 0.8,
+  // verbos (karma-verbs)
+  groomSocialKarma: 2, // acicala social instantánea (el acicalado de 3s de karma-core queda intacto)
 };
 
 // Tienda mid-life: adaptaciones per-life, una compra por stat, sin apilado
@@ -93,5 +106,81 @@ const REFUGES = [
   { type:'burrow-M',    maxSize:2, count:3 },
   { type:'hollow-tree', maxSize:2, climbOnly:true, count:2 },
   { type:'thorn-bush',  maxSize:2, count:2 },
+  { type:'old-oak',     maxSize:3, count:2 }, // copa anti-terrestres, sin fruta (flora-lifecycle)
 ];
+
+// Barra de verbos 1-5 por especie (karma-verbs): cada animal tiene su propio rol ecológico.
+// slot = tecla · cd en s · costHp/costPa = coste real · el karma lo paga el efecto según contexto.
+const VERB_DEFS = {
+  sapo: [
+    { slot:1, id:'croak',    name:'Croa alerta',   desc:'avisa a los cercanos (+30)', cd:10, costHp:0,  costPa:0 },
+    { slot:2, id:'pest',     name:'Come plagas',   desc:'un insecto de más (+3)',     cd:8,  costHp:0,  costPa:0 },
+    { slot:3, id:'burrowin', name:'Entiérrate',    desc:'refugio express en tierra blanda', cd:12, costHp:0, costPa:0 },
+    { slot:4, id:'toxin',    name:'Rocío tóxico',  desc:'rechaza al depredador (−10 vida)', cd:15, costHp:10, costPa:0 },
+    { slot:5, id:'chorus',   name:'Coro de croac', desc:'coro con congéneres: más sapos, más karma', cd:30, costHp:0, costPa:0 },
+  ],
+  oruga: [
+    { slot:1, id:'prudent',  name:'Mordisco prudente', desc:'hoja sostenible (+2)',       cd:6,  costHp:0,  costPa:0 },
+    { slot:2, id:'silk',     name:'Seda-cuerda',       desc:'hilo de escape (−8 vida)',   cd:20, costHp:8,  costPa:0 },
+    { slot:3, id:'nectar',   name:'Néctar para hormigas', desc:'aliadas que distraen (−5 vida, −10 PA)', cd:25, costHp:5, costPa:10 },
+    { slot:4, id:'leafroll', name:'Enrolla hoja',      desc:'cobijo propio (+karma)',     cd:30, costHp:0,  costPa:0 },
+    { slot:5, id:'bristle',  name:'Eriza espinas',     desc:'el próximo zarpazo se revierte (−6 vida)', cd:25, costHp:6, costPa:0 },
+  ],
+  raton: [
+    { slot:1, id:'alarm',    name:'¡Alerta!',      desc:'grito de alarma (+30)',      cd:10, costHp:0,  costPa:0 },
+    { slot:2, id:'seedcache',name:'Cacha semilla', desc:'entierra una semilla (+karma)', cd:15, costHp:0, costPa:0 },
+    { slot:3, id:'groom',    name:'Acicala',       desc:'acicalado social (+2)',      cd:30, costHp:0,  costPa:0 },
+    { slot:4, id:'scout',    name:'Ojea madrigueras', desc:'revela peligro cercano (−10 PA)', cd:25, costHp:0, costPa:10 },
+    { slot:5, id:'share',    name:'Comparte bocado',   desc:'alimenta a un hambriento (+karma)', cd:20, costHp:0, costPa:0 },
+  ],
+  ardilla: [
+    { slot:1, id:'tailflick',name:'Cola al aire',  desc:'alarma sin cebo (+10)',      cd:8,  costHp:0,  costPa:0 },
+    { slot:2, id:'plantoak', name:'Planta roble',  desc:'bosque futuro (+10)',        cd:5,  costHp:0,  costPa:0 },
+    { slot:3, id:'falsecache',name:'Cacha falsa', desc:'engaña a ladrones (+karma)', cd:25, costHp:0,  costPa:0 },
+    { slot:4, id:'bark',     name:'Cosecha corteza',   desc:'PA del roble (+karma)', cd:20, costHp:0,  costPa:0 },
+    { slot:5, id:'groom',    name:'Acicala',       desc:'acicalado social (+2)',      cd:30, costHp:0,  costPa:0 },
+  ],
+  topo: [
+    { slot:1, id:'aerate',   name:'Airea la tierra',   desc:'+3 karma, madriguera', cd:20, costHp:0, costPa:0 },
+    { slot:2, id:'tunneline',name:'Reforza túnel',     desc:'madriguera firme (+karma)', cd:25, costHp:0, costPa:0 },
+    { slot:3, id:'worm',     name:'Rescata lombriz',   desc:'comida y PA',           cd:15, costHp:0, costPa:0 },
+    { slot:4, id:'larder',   name:'Despensa',      desc:'guarda lombriz para compartir', cd:25, costHp:0, costPa:0 },
+    { slot:5, id:'nestdig',  name:'Excava nido',   desc:'otro refugio (−10 vida)',    cd:30, costHp:10, costPa:0 },
+  ],
+  halcon: [
+    { slot:1, id:'dive',     name:'Picado',        desc:'embestida defensiva (+karma)', cd:4, costHp:0, costPa:0 },
+    { slot:2, id:'thermal',  name:'Térmica',       desc:'ojo de águila (−15 PA)',     cd:30, costHp:0,  costPa:15 },
+    { slot:3, id:'courtesy', name:'Carroña compartida', desc:'deja la presa a carroñeros (+karma)', cd:40, costHp:0, costPa:0 },
+    { slot:4, id:'scare',    name:'Ahuyenta',      desc:'espanta sin matar (+karma)', cd:20, costHp:0,  costPa:0 },
+    { slot:5, id:'bone',     name:'Suelta hueso',  desc:'alimenta del suelo (+karma)', cd:30, costHp:0, costPa:0 },
+  ],
+  zorro: [
+    { slot:1, id:'pounce',   name:'Salto de caza', desc:'embiste a la presa cercana', cd:6,  costHp:0,  costPa:0 },
+    { slot:2, id:'cachecarrion',name:'Entierra carroña', desc:'para después (+PA)',  cd:30, costHp:0,  costPa:0 },
+    { slot:3, id:'cede',     name:'Cede la presa', desc:'a otros (+15)',              cd:12, costHp:0,  costPa:0 },
+    { slot:4, id:'dendig',   name:'Excava guarida',    desc:'refugio nuevo (−12 vida)', cd:40, costHp:12, costPa:0 },
+    { slot:5, id:'strike',   name:'Ahuyenta',      desc:'hazaña (+5)',                cd:4,  costHp:0,  costPa:0 },
+  ],
+  lobo: [
+    { slot:1, id:'howl',     name:'Aúlla',         desc:'la manada se anima (+karma)', cd:35, costHp:0, costPa:0 },
+    { slot:2, id:'regurg',   name:'Regurgita',     desc:'alimenta (−8 vida, +karma)', cd:30, costHp:8,  costPa:0 },
+    { slot:3, id:'strike',   name:'Ahuyenta',      desc:'hazaña (+20)',               cd:4,  costHp:0,  costPa:0 },
+    { slot:4, id:'escort',   name:'Escolta',       desc:'protege a un congénere (+karma)', cd:25, costHp:0, costPa:0 },
+    { slot:5, id:'cull',     name:'Caza al débil', desc:'selección natural (+karma)', cd:12, costHp:0,  costPa:0 },
+  ],
+};
+
+// Marchas por especie (species-locomotion-verbs): la forma de moverse es dato, no código.
+// hop = impulso+pausa (el sapo salta, no camina) · inchworm = estira-congela-impulsa (oruga)
+// continuous = deslizamiento continuo (lo que ya hacía el juego)
+const LOCO = {
+  sapo:    { mode:'hop', cadence:1.1 },
+  oruga:   { mode:'inchworm', cadence:1.65 },
+  raton:   { mode:'continuous' },
+  ardilla: { mode:'continuous' },
+  topo:    { mode:'continuous' },
+  halcon:  { mode:'continuous' },
+  zorro:   { mode:'continuous' },
+  lobo:    { mode:'continuous' },
+};
 

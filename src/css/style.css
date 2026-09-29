@@ -25,6 +25,10 @@ body { margin:0; background:#14161a; color:#e8e8e8; font-family:system-ui, sans-
 #chooseForm button, #t2pick button { font-size:13px; padding:6px 12px; margin:6px 4px 0; }
 #chooseForm button:disabled, #t2pick button:disabled { opacity:.4; cursor:default; }
 #prompt { font-size:13px; color:#9ccc65; min-height:18px; margin-top:4px; }
+#verbBar { font-size:13px; margin-top:4px; min-height:18px; }
+#verbBar .verb { color:#90caf9; margin-right:8px; }
+#verbBar .verb.cd { color:#666; }
+#verbBar .verb.poor { color:#f44336; }
 #jReason { margin:10px 0; font-size:14px; }
 #jNext { font-size:18px; font-weight:bold; }
 #shopItems { text-align:left; font-size:14px; }

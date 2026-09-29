@@ -10,6 +10,7 @@ function mkPredator(type, x, y, playerTier) {
     x, y, wx:x, wy:y,
     speed: t.speed + (playerTier===0 && type==='zorro' ? 25 : 0), // oruga: más presión
     mode:'wander', campT:0, huntT:0, restT:0, satedT:0, fleeLatch:false, huntingPlayer:false,
+    karma:0, pa:0, owned:{}, lifeLog:[], // ledger de agente (ai-behavior-karma)
   };
 }
 // Forrajeo óptimo: dif talla ≥2 se ignora salvo snap por contacto
@@ -25,12 +26,24 @@ function edibleFor(hunterType, victimKey, dist) {
 function playerEdibleFor(p, dist) {
   return edibleFor(p.type, state.speciesKey, dist);
 }
-function camouflaged() {
+function camouflaged(agent) {
+  if (agent) return agent.speciesKey === 'sapo' && (agent.stillT || 0) >= 2; // IA (ai-behavior-karma)
   return state.speciesKey === 'sapo' && state.stillT >= 2;
 }
-function curled() {
+// Copa del viejo roble: el halcón pica desde el cielo y no la sufre; cualquier otro refugio
+// (o viejo roble para terrestres) ciega al depredador como siempre (flora-lifecycle 4)
+function canopyBlind(pred) {
+  if (!state.hidden) return false;
+  if ((state.hideRef || {}).type === 'old-oak' && pred.type === 'halcon') return false;
+  return true;
+}
+function curled(agent) {
+  if (agent) return agent.speciesKey === 'oruga' && (agent.stillT || 0) >= 0.01 && (agent.curlCd || 0) <= 0;
   return state.speciesKey === 'oruga' && state.stillT >= 0.01 && state.curlCd <= 0 && !state.moved;
 }
+// Efecto ecosistema del karma (6.2): los depredadores perciben según la víctima
+// → aplicado en ai.js vía karmaSightMult/nearestVictimKarmaAware (strikeAgents lo consume)
+
 function updatePredators(dt) {
   const dead = [];
   for (const p of allHunters()) stepPredator(p, dt, dead);
@@ -66,7 +79,8 @@ function stalkVictims(p) {
 }
 function strikeAgents(p, t, dt) {
   if (p.restT > 0) return;
-  const v = nearestFrom(p.x, p.y, stalkVictims(p), t.perception);
+  const v = nearestVictimKarmaAware(p.x, p.y, stalkVictims(p).filter(o =>
+    !losBlocked(p.x, p.y, o.x, o.y, p.type === 'halcon')), t.perception);
   if (!v) return;
   const d = Math.hypot(v.x-p.x, v.y-p.y) || 1;
   const killRange = p.type === 'halcon' ? 60 : 20;
@@ -98,7 +112,7 @@ function fleeCheck(p, t, dt) {
 }
 
 function campStep(p, dt) {
-  // 2) Jugador oculto: acampar el refugio y luego vagar
+  // 2) Jugador oculto: acampar el refugio y luego vagar (la copa del viejo roble no detiene al halcón)
   if (p.mode === 'camp') {
     p.campT -= dt;
     if (p.campT <= 0) { p.mode = 'wander'; }
@@ -109,6 +123,7 @@ function campStep(p, dt) {
     return true;
   }
   if (state.hidden && p.huntingPlayer) {
+    if (!canopyBlind(p)) return false; // el halcón sobre la copa: no pierde al oculto, sigue cazando
     p.mode = 'camp'; p.campT = TUNING.campTime; p.huntingPlayer = false;
     return true;
   }
@@ -124,7 +139,7 @@ function pickTarget(p, t, dp, lureOn, camoHidden) {
   }
   p.huntingPlayer = false;
   if (p.type === 'zorro' && p.satedT<=0) {
-    const m = nearest(stalkVictims(p), t.perception);
+    const m = nearest(stalkVictims(p).filter(o => !losBlocked(p.x, p.y, o.x, o.y, false)), t.perception);
     if (m && p.restT<=0) return { tx: m.x, ty: m.y, hunting: 'mate' };
   }
   if (p.type === 'lobo') {

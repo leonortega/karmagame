@@ -20,14 +20,14 @@ describe('newRun', () => {
     assert.equal(s.bushes.length, 7);
     assert.equal(s.shrubs.length, 3);
     assert.equal(s.insects.length, 6);
-    assert.equal(s.refuges.length, 10);
+    assert.equal(s.refuges.length, 12); // 10 clásicos + 2 viejos robles (flora-lifecycle)
     assert.equal(hunterAgents().length, 2);
     WORLD.w = 3200; WORLD.h = 2400;
     s = reset('raton');
     assert.equal(s.bushes.length, 28);
     assert.equal(s.shrubs.length, 12);
     assert.equal(s.insects.length, 24);
-    assert.equal(s.refuges.length, 40);
+    assert.equal(s.refuges.length, 48); // escalado x4: 12 por área base × 4
     assert.equal(hunterAgents().length, 8);
   });
   it('los retoños plantados dan arbustos extra con tope', () => {
@@ -73,10 +73,11 @@ describe('eff*', () => {
     s.owned.stomach = true;
     assert.equal(effMaxHp(), s.sp.maxHp + 25);
   });
-  it('halcon en tierra va a mitad', () => {
+  it('halcon en tierra va a mitad (por la marcha, no effSpeed)', () => {
     const s = reset('halcon');
     s.grounded = true;
-    assert.equal(effSpeed(), s.sp.speed * 0.5);
+    assert.equal(locoMult('halcon', true, 0), 0.5); // el chapoteo vive en la marcha (species-locomotion-verbs)
+    assert.equal(effSpeed(), s.sp.speed); // effSpeed ya no duplica el ×0.5
   });
   it('raton cabe en S', () => {
     reset('raton');
@@ -149,6 +150,83 @@ describe('tryShout', () => {
     const s = reset('zorro');
     tryShout();
     assert.equal(s.karma, 0);
+  });
+});
+
+describe('ledger de agente IA (ai-behavior-karma 1.1)', () => {
+  it('mkAgent inicia karma/pa/owned/lifeLog en cero', () => {
+    const a = mkAgent({ role: 'fauna', speciesKey: 'raton', x: 0, y: 0 });
+    assert.equal(a.karma, 0);
+    assert.equal(a.pa, 0);
+    assert.deepEqual(a.owned, {});
+    assert.deepEqual(a.lifeLog, []);
+  });
+  it('mkPredator inicia karma/pa en cero', () => {
+    const p = mkPredator('zorro', 0, 0, 1);
+    assert.equal(p.karma, 0);
+    assert.equal(p.pa, 0);
+    assert.deepEqual(p.owned, {});
+    assert.deepEqual(p.lifeLog, []);
+  });
+});
+
+describe('addKarma/addPa/record con agente (ai-behavior-karma 1.2-1.4)', () => {
+  it('sin agente escriben al jugador como siempre', () => {
+    const s = reset();
+    addKarma(10, 'prueba');
+    addPa(5);
+    record('apunte');
+    assert.equal(s.karma, 10);
+    assert.equal(s.pa, 5);
+    assert.ok(s.lifeLog.includes('apunte'));
+  });
+  it('con agente escriben al agente y no tocan al jugador', () => {
+    const s = reset();
+    const a = mkAgent({ role: 'fauna', speciesKey: 'raton', x: 0, y: 0 });
+    addKarma(10, 'prueba IA', 'info', a);
+    addPa(7, a);
+    record('apunte IA', a);
+    assert.equal(a.karma, 10);
+    assert.equal(a.pa, 7);
+    assert.ok(a.lifeLog.includes('apunte IA'));
+    assert.equal(s.karma, 0);
+    assert.equal(s.pa, 0);
+    assert.ok(!s.lifeLog.includes('apunte IA'));
+  });
+  it('addKarma con agente acota a [-100,100] y registra con log', () => {
+    reset();
+    const a = mkAgent({ role: 'fauna', speciesKey: 'raton', x: 0, y: 0 });
+    addKarma(500, 'buenazo', 'good', a);
+    assert.equal(a.karma, 100);
+    assert.ok(a.lifeLog.includes('buenazo'));
+  });
+});
+
+describe('aiTryShout (ai-behavior-karma 1.5)', () => {
+  it('ratón IA grita: karma/PA al agente, mates salvados, cd propio', () => {
+    const s = reset('raton');
+    const a = mkAgent({ role: 'fauna', speciesKey: 'raton', x: 0, y: 0, brain: 'AI' });
+    aiTryShout(a);
+    assert.equal(a.karma, TUNING.shoutKarma);
+    assert.equal(a.pa, TUNING.shoutPa);
+    assert.ok(a.shoutCd > 0);
+    assert.ok(companyAgents().every((m) => m.saved));
+    assert.equal(s.karma, 0); // el jugador no cobra
+  });
+  it('zorro IA no puede gritar: sin efecto', () => {
+    const s = reset('raton');
+    const a = mkAgent({ role: 'fauna', speciesKey: 'zorro', x: 0, y: 0, brain: 'AI' });
+    aiTryShout(a);
+    assert.equal(a.karma, 0);
+    assert.equal(a.pa, 0);
+  });
+  it('respeta el cooldown del agente', () => {
+    reset('raton');
+    const a = mkAgent({ role: 'fauna', speciesKey: 'raton', x: 0, y: 0, brain: 'AI' });
+    aiTryShout(a);
+    const karma0 = a.karma;
+    aiTryShout(a); // cd activo: no-op
+    assert.equal(a.karma, karma0);
   });
 });
 

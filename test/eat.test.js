@@ -120,15 +120,18 @@ describe('NPC eat loop', () => {
     assert.equal(r.hp, 80 + TUNING.mimicHp);
     assert.equal(s.karma, 0);
   });
-  it('agente IA come insecto y carroña con pagos de vida', () => {
+  it('agente IA come insecto y carroña: el sapo IA cobra plagas, carroña sin karma', () => {
     const s = reset('sapo');
-    const a = { speciesKey: 'sapo', x: 0, y: 0, hp: 30 };
+    const a = mkAgent({ role: 'fauna', speciesKey: 'sapo', x: 0, y: 0, hp: 30 });
     s.insects = [{ x: 0, y: 0 }];
     assert.ok(eatInsect(s.insects[0], a));
-    assert.ok(a.hp > 30 && s.karma === 0);
-    const z = { speciesKey: 'zorro', x: 0, y: 0, hp: 50 };
+    assert.ok(a.hp > 30);
+    assert.equal(a.karma, TUNING.pestKarma); // spec ai-karma: el sapo IA cobra control de plagas
+    assert.equal(s.karma, 0);
+    const z = mkAgent({ role: 'fauna', speciesKey: 'zorro', x: 0, y: 0, hp: 50 });
     assert.ok(eatCarrion({ x: 0, y: 0, age: 0 }, z));
     assert.ok(z.hp > 50);
+    assert.equal(z.karma, 0); // comer carroña no da karma a nadie
   });
 });
 

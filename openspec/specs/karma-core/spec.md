@@ -3,9 +3,7 @@
 ## Purpose
 
 Define the core creature attributes (Vida, Karma, PA) and their tuning so every life, decision, and reward behaves consistently and is testable without any engine.
-
 ## Requirements
-
 ### Requirement: Vida drains with hunger and triggers judgment at zero
 The system SHALL decrease Vida continuously over time and SHALL trigger the Judgment sequence when Vida reaches 0.
 
@@ -242,11 +240,11 @@ The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the
 - **THEN** no AI agent targets the Lobo as prey; zorro agents flee from it
 
 ### Requirement: NPC agents share the hunger-eat-die loop
-The system SHALL run hunger drain, diet-gated eating with identical payoffs, and death for AI agents: every agent loses Vida continuously at the same drain rate, eats only its DIET table entries with the same Vida gains (no karma, no PA), and dies at 0 Vida leaving a fresh carrion for carnivore diets. AI kills obey the same contact and kill verbs (pounce/dive/strike values) as player kills.
+The system SHALL run hunger drain, diet-gated eating with identical payoffs, and death for AI agents: every agent loses Vida continuously at the same drain rate, eats only its DIET table entries with the same Vida gains, and dies at 0 Vida leaving a fresh carrion for carnivore diets. AI kills obey the same contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
 
 #### Scenario: NPC grazer eats and survives
 - **WHEN** an AI raton reaches a berry patch with fruit remaining
-- **THEN** the patch loses one fruit and the agent gains the same Vida as a player would, with no karma or PA granted
+- **THEN** the patch loses one fruit and the agent gains the same Vida as a player would, with no karma or PA granted for the meal itself
 
 #### Scenario: NPC starves without food
 - **WHEN** an AI agent finds no food for an extended time
@@ -255,3 +253,38 @@ The system SHALL run hunger drain, diet-gated eating with identical payoffs, and
 #### Scenario: NPC carnivore hunts fauna
 - **WHEN** an AI carnivore perceives a smaller or equal-size agent (any brain)
 - **THEN** it pursues and strikes on contact, killing the victim and spawning carrion; it never targets itself
+
+#### Scenario: NPC grazer earns karma for prudent eating
+- **WHEN** an AI Oruga agent eats a sustainable leaf (not the last)
+- **THEN** the agent's karma increases by 2 and `record()` logs the event to `agent.lifeLog`
+
+#### Scenario: NPC predator earns karma for ceding kill
+- **WHEN** an AI Zorro agent uses eat on carrion at ≥80% HP
+- **THEN** the carrion stays uneaten, the agent's karma increases by 15
+
+#### Scenario: NPC agent shouts to alert ecosystem
+- **WHEN** an AI Ratón agent triggers `aiTryShout` with cooldown ready
+- **THEN** the agent's karma increases by 30, PA by 50, predators target the agent, and company mates flee
+
+#### Scenario: NPC agent dies leaving carrion
+- **WHEN** an AI agent finds no food for an extended time
+- **THEN** its HP drains at the standard rate, it dies at 0, and a fresh carrion spawns — **the agent's karma/PA are lost** (no reincarnation for AI)
+
+### Requirement: AI agents can purchase adaptations
+AI agents spend PA to buy items from `SHOP` using the same `buyItem` logic as the player. The same `owned` constraint applies: one purchase per stat, no stacking, no debt. Adaptations are per-life.
+
+#### Scenario: AI agent buys adaptation with sufficient PA
+- **WHEN** an AI agent has PA ≥ an item's cost and does not own it
+- **THEN** PA is deducted, `owned[item.id]` becomes true, and the effect applies immediately
+
+#### Scenario: AI agent cannot buy without PA
+- **WHEN** an AI agent has PA < item cost
+- **THEN** no PA is deducted, no effect applies
+
+### Requirement: AI karma is lost on death
+When an AI agent dies, its `karma`, `pa`, `owned`, and `lifeLog` are discarded. The agent becomes a carrion. AI agents do not reincarnate or transfer karma.
+
+#### Scenario: AI agent karma lost on death
+- **WHEN** an AI agent dies (HP ≤ 0)
+- **THEN** the agent's karma, pa, owned, and lifeLog are discarded; a carrion spawns at its position
+

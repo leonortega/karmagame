@@ -3,15 +3,17 @@
 ## Purpose
 
 Provide the explorable 2D ecosystem (map, food, threats, controls, feedback) where karma decisions happen through visible movement, eating, and alerting.
-
 ## Requirements
-
 ### Requirement: Bounded world with camera follow
-The system SHALL confine play to a bounded 2D world larger than the 1600×1200 baseline (WORLD 3200×2400) with obstacles-free movement and SHALL keep the camera centered on the possessed agent within world bounds. Food, refuge, and agent counts SHALL scale with world area as densities rather than fixed constants, keeping per-agent food availability and travel-to-food time within baseline proportions.
+The system SHALL confine play to a bounded 2D world larger than the 1600×1200 baseline (WORLD 3200×2400) and SHALL keep the camera centered on the possessed agent within world bounds. Food, refuge, and agent counts SHALL scale with world area as densities rather than fixed constants. Movement SHALL additionally resolve against static solids (per `solid-terrain`): refuges, rocks, and living plants push agents out with slide.
 
 #### Scenario: Movement stays in bounds
 - **WHEN** the player moves toward any world edge for an extended time
 - **THEN** the creature stops at the boundary and never leaves the world
+
+#### Scenario: Movement respects solids
+- **WHEN** the player or any AI walks into a tree, rock, or living plant
+- **THEN** position resolves to the solid's edge and slides around it
 
 #### Scenario: Larger world stays traversable
 - **WHEN** the possessed agent crosses the enlarged world at its species speed
@@ -25,22 +27,33 @@ The system SHALL support WASD/arrows for movement, E for eat/strike/Pounce/tongu
 - **THEN** the corresponding move, species action, shout, shop toggle, hide toggle, sense, carry, purchase, or reincarnate action occurs
 
 ### Requirement: Bushes hold finite fruit and die permanently
-The system SHALL spawn 7 living bushes with 3 fruits each per life, SHALL mark a bush permanently dead (grey, no fruit) once its last fruit is eaten, and SHALL mark 1 fruit in every 3rd bush as a mimic poison fruit with a subtly darker tint. Eating a mimic SHALL drain 20 Vida with no karma change.
+**Reason**: Replaced — permanent plant death contradicts a living forest. Plants now regrow fruit and repopulate via seedlings (see `flora-lifecycle`); the last-fruit karma penalty and mimic poison rule are unchanged.
+**Migration**: Bushes still spawn 7×3 with 1-in-3 mimics; exhaustion is now a slow recovery, not death. The scenario "Bush exhaustion is permanent for the life" is replaced by the regrow scenarios in `flora-lifecycle`.
 
-#### Scenario: Bush exhaustion is permanent for the life
-- **WHEN** all fruits of a bush are consumed
-- **THEN** the bush remains dead with zero fruit until the next reincarnation generates a fresh world
+The system SHALL spawn 7 living bushes with 3 fruits each per life, SHALL mark a bush dead-and-recovering (grey, no fruit) once its last fruit is eaten until its regrow clock revives it, and SHALL mark 1 fruit in every 3rd bush as a mimic poison fruit with a subtly darker tint. Eating a mimic SHALL drain 20 Vida with no karma change.
 
 #### Scenario: Mimic poisons
 - **WHEN** the player eats a mimic fruit
 - **THEN** Vida drops by 20, no karma changes, and the event is logged as poisoning
 
+#### Scenario: Bush exhaustion is permanent for the life
+- **WHEN** all fruits of a bush are consumed
+- **THEN** the bush is no longer immediately edible (grey, zero fruit) — its recovery is governed by the regrow clock in `flora-lifecycle`, replacing the old permanent-death rule
+
+#### Scenario: Exhaustion is a slow recovery
+- **WHEN** all fruits of a bush are consumed
+- **THEN** the bush renders dead for one `fruitRegrow` cycle, then revives with 1 fruit (per `flora-lifecycle`)
+
 ### Requirement: Predators wander and chase with contact damage
-The system SHALL populate the map with carnivore agents (zorro, lobo) plus a sapo-NPC pressure role covered by sapo agents, where carnivore AI hunts agents of any brain (PLAYER or AI) as well as the possessed agent by the trophic table (zorro: tiers 0-1 agents and mates; lobo: tier 2 agents, grounded halcons, and zorro agents), and sapo agents hop toward oruga agents in perception and snap at contact range. No predator SHALL hunt prey 2+ sizes smaller beyond contact-range snap (optimal foraging); all SHALL lose hidden agents and camp the refuge ~3s before wandering off, and carnivore kills of any agent SHALL spawn fresh carrion.
+The system SHALL populate the map with carnivore agents (zorro, lobo) plus a sapo-NPC pressure role covered by sapo agents, where carnivore AI hunts agents of any brain (PLAYER or AI) as well as the possessed agent by the trophic table (zorro: tiers 0-1 agents and mates; lobo: tier 2 agents, grounded halcons, and zorro agents), and sapo agents hop toward oruga agents in perception and snap at contact range. No predator SHALL hunt prey 2+ sizes smaller beyond contact-range snap (optimal foraging); all SHALL lose hidden agents and camp the refuge ~3s before wandering off, and carnivore kills of any agent SHALL spawn fresh carrion. Ground-predator perception SHALL additionally respect trunk cover (per `solid-terrain`); the Halcón is exempt.
 
 #### Scenario: Chase and bite
-- **WHEN** a Ratón agent (any brain) enters a Zorro's perception range
+- **WHEN** a Ratón agent (any brain) enters a Zorro's perception range with clear line of sight
 - **THEN** the Zorro pursues, and on contact Vida drops by 28 and further hits are ignored for 1s
+
+#### Scenario: Trunk cover breaks the chase
+- **WHEN** a pursued Ratón crosses behind a hollow-tree trunk
+- **THEN** the Zorro loses the trail while the segment stays blocked (per `solid-terrain`)
 
 #### Scenario: Zorro ignores distant Oruga
 - **WHEN** an Oruga sits 150px from a Zorro
@@ -50,13 +63,13 @@ The system SHALL populate the map with carnivore agents (zorro, lobo) plus a sap
 - **WHEN** an Oruga player is T0 with a Sapo-NPC on the map
 - **THEN** the Sapo-NPC hops toward it in perception range
 
-#### Scenario: Zorro flees Lobo
-- **WHEN** a Lobo enters a Zorro NPC's perception range
-- **THEN** the Zorro abandons its hunt and flees away from the Lobo
-
 #### Scenario: Lobo only threatens the big
 - **WHEN** the player is a T0 or T1 form
 - **THEN** no Lobo is on the map
+
+#### Scenario: Zorro flees Lobo
+- **WHEN** a Lobo enters a Zorro NPC's perception range
+- **THEN** the Zorro abandons its hunt and flees away from the Lobo
 
 #### Scenario: Camp the hidden
 - **WHEN** the player hides in a refuge while chased
@@ -96,7 +109,7 @@ The system SHALL open the shop overlay on B without pausing the world (predators
 - **THEN** the shop closes and the Judgment screen appears instead
 
 ### Requirement: Refuges gate hiding by size
-The system SHALL spawn per life 3 burrow-S (max size 1), 3 burrow-M (max size 2), 2 hollow-trees (max size 2, climbers only: Ardilla), and 2 thorn-bushes (max size 2). Hiding SHALL require size fit, SHALL freeze movement and eating while hidden, SHALL keep hunger draining, and SHALL end on H or on death.
+The system SHALL spawn per life 3 burrow-S (max size 1), 3 burrow-M (max size 2), 2 hollow-trees (max size 2, climbers only: Ardilla), 2 thorn-bushes (max size 2), and 2 old-oaks (max size 3, no fruit, canopy cover vs ground predators; the Halcón is exempt — see `flora-lifecycle`). Hiding SHALL require size fit, SHALL freeze movement and eating while hidden, SHALL keep hunger draining, and SHALL end on H or on death.
 
 #### Scenario: Too big to hide
 - **WHEN** a Zorro (size 3) presses H near a burrow-M
@@ -105,6 +118,10 @@ The system SHALL spawn per life 3 burrow-S (max size 1), 3 burrow-M (max size 2)
 #### Scenario: Hiding costs time not safety forever
 - **WHEN** the player hides for 30s
 - **THEN** Vida has drained for 30s of hunger while predators lost the trail
+
+#### Scenario: Old oak fits the mid-sized
+- **WHEN** a Ratón or Zorro (size ≤ 3) presses H near an old-oak
+- **THEN** it hides under the canopy; ground predators lose the trail while the Halcón does not
 
 ### Requirement: Carrion rots on a clock
 The system SHALL age every carrion fresh (eat: +20 Vida) → stale after 30s (eat: +8 Vida) → rotten after 60s (eat: −25 Vida), with visible state (color shift, flies when rotten), and SHALL never change karma for eating carrion at any stage.
@@ -125,16 +142,16 @@ The system SHALL forbid an airborne Halcón from eating; attempting E near food 
 - **THEN** the Lobo can reach and damage it during the 1s grounded window
 
 ### Requirement: Vegetarian menu
-The system SHALL spawn per life, besides 7 berry bushes: 3 apple shrubs (2 apples each, +22/+8), 2 carrot patches (3 carrots each, +18/+5, Ratón/Topo), 4 mushroom clusters (2 mushrooms each, +10/+0, Ratón/Ardilla, 1-in-4 toxic at −20 Vida with tint + Keen-nose reveal), 4 leaf-clumps (3 leaves, +12/+3, Oruga only, regrow 1 per 60s, karma-exempt), 2 oak clumps (3 nuts each, +18/+5, Ardilla/Ratón/Topo, Ardilla-carriable), and 6 wandering insects (+10/+3, Sapo/Topo, respawn 1 per 20s max 6, Sapo tongue range applies). Food catalog:
+The system SHALL spawn per life the listed initial counts of each food — these are densities of a living total that regrows and reseeds per `flora-lifecycle` (caps are area-scaled per kind): 7 berry bushes (3 fruits each, +15/+5), 3 apple shrubs (2 apples each, +22/+8), 2 carrot patches (3 carrots each, +18/+5, Ratón/Topo), 4 mushroom clusters (2 mushrooms each, +10/+0, Ratón/Ardilla, 1-in-4 toxic at −20 Vida with tint + Keen-nose reveal), 4 leaf-clumps (3 leaves, +12/+3, Oruga only, regrow 1 per 60s, karma-exempt), 2 oak clumps (3 nuts each, +18/+5, Ardilla/Ratón/Topo, Ardilla-carriable), and 6 wandering insects (+10/+3, Sapo/Topo, respawn 1 per 20s max 6, Sapo tongue range applies). Food catalog:
 
 | Food | Entity | Count | Eaters | Payoff | Twist |
 |---|---|---|---|---|---|
-| berries | bush | 7×3 | Ratón, Ardilla | +15/+5, last −15K | baseline |
-| apples | shrub | 3×2 | Ardilla, Ratón | +22/+8, last −15K | scarce, rich |
-| carrots | patch | 2×3 | Ratón, Topo | +18/+5, last −15K | root veg |
-| mushrooms | cluster | 4×2 | Ratón, Ardilla | +10/+0, toxic −20 | 1-in-4 toxic |
+| berries | bush | 7×3 | Ratón, Ardilla | +15/+5, last −15K | regrows, reseeds |
+| apples | shrub | 3×2 | Ardilla, Ratón | +22/+8, last −15K | regrows, reseeds |
+| carrots | patch | 2×3 | Ratón, Topo | +18/+5, last −15K | regrows, reseeds |
+| mushrooms | cluster | 4×2 | Ratón, Ardilla | +10/+0, toxic −20 | 1-in-4 toxic, reseeds |
 | leaves | clump | 4×3 | Oruga | +12/+3 | regrow, karma-exempt |
-| nuts | oak clump | 2×3 | Ardilla, Ratón, Topo | +18/+5, last −15K | carriable |
+| nuts | oak clump | 2×3 | Ardilla, Ratón, Topo | +18/+5, last −15K | carriable, plantable |
 | insects | wanderer | 6 | Sapo, Topo | +10/+3 | Sapo +3K deed |
 
 #### Scenario: Toxic mushroom mirrors mimic
@@ -146,8 +163,13 @@ The system SHALL spawn per life, besides 7 berry bushes: 3 apple shrubs (2 apple
 - **THEN** one leaf has regrown
 
 ### Requirement: Lifelike animal rendering
-The system SHALL draw each form as a distinct lifelike shape with facing (features rotate toward movement) and motion (2-frame wiggle via time): Oruga 4 rippling segments, Sapo wide ellipse + throat pulse, Ratón circle + ears + tail line, Ardilla circle + big tail arc, Topo dark ellipse + snout dot, Halcón twin flapping triangles, Zorro circle + snout triangle + brush tail. Predator NPCs SHALL reuse their species draw with red outline and scale. Foods SHALL read distinctly: berries red dots, apples larger red, carrots orange triangles, mushrooms cap+stem, leaves green clusters, nuts brown ovals, insects tiny dark dots.
+The system SHALL draw each form as a distinct lifelike shape with facing (features rotate toward movement, eyes included) and motion (2-frame wiggle via time): Oruga 4 rippling segments, Sapo wide ellipse + throat pulse, Ratón circle + ears + tail line, Ardilla circle + big tail arc, Topo dark ellipse + snout dot, Halcón twin flapping triangles, Zorro circle + snout triangle + brush tail. Predator NPCs SHALL reuse their species draw with red outline and scale. Foods SHALL render as distinct per-kind glyphs (mats with fruit dots, canopy with apples, soil carrots, cap+stem mushrooms, trunk with nuts, leaf fans — per `solid-terrain`); refuge shapes SHALL read as mound+hole, trunk+knothole, spiky bush, and old-oak canopy; the ground SHALL show deterministic grass tufts and flowers.
 
 #### Scenario: Silhouettes differ
 - **WHEN** all seven forms stand side by side
 - **THEN** each is recognizable by shape without reading the HUD
+
+#### Scenario: The map reads at a glance
+- **WHEN** any gameplay moment is frozen
+- **THEN** foods, refuges, rocks, and animals are identifiable by silhouette, not only by color
+

@@ -1,5 +1,5 @@
 // test/harness.js - stubs minimos de navegador + carga src/script/*.js en orden.
-// Uso: const { reset, S, key } = require('./harness');
+// Uso: const { reset, S, key, keyUp } = require('./harness');
 const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
@@ -52,7 +52,7 @@ global.addEventListener = (type, fn) => {
 global.performance = { now: () => 0 };
 global.requestAnimationFrame = () => 0;
 
-const ORDER = ['data.js', 'utils.js', 'state.js', 'predators.js', 'eat.js', 'shop.js', 'hud.js', 'game.js', 'draw.js'];
+const ORDER = ['data.js', 'utils.js', 'state.js', 'predators.js', 'eat.js', 'shop.js', 'hud.js', 'ai.js', 'game.js', 'draw.js'];
 for (const f of ORDER) {
   const code = fs.readFileSync(path.join(__dirname, '..', 'src', 'script', f), 'utf8');
   vm.runInThisContext(code, { filename: f });
@@ -72,5 +72,9 @@ function S() {
 function key(k) {
   handlers.keydown.forEach((fn) => fn({ key: k }));
 }
+// Suelta una tecla (keyup): permite probar cadencias de movimiento (pulsar-soltar).
+function keyUp(k) {
+  handlers.keyup.forEach((fn) => fn({ key: k }));
+}
 
-module.exports = { reset, S, key, elsById };
+module.exports = { reset, S, key, keyUp, elsById };
