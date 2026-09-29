@@ -358,7 +358,7 @@ describe('integración updateAgents (ai-behavior-karma 6.1, 6.4, 6.5)', () => {
     const a = aiAgent('raton', 0, 0);
     a.hp = 0.05; a.karma = 40;
     s.agents = [a];
-    updateAgents(0.1);
+    updateAgents(1); // reloj lento por especie: 1s basta para 0.05 de vida
     assert.ok(!s.agents.includes(a));
     assert.equal(s.carrions.length, 1); // su ledger se descarta con él
   });

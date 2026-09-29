@@ -5,15 +5,23 @@
 Define the core creature attributes (Vida, Karma, PA) and their tuning so every life, decision, and reward behaves consistently and is testable without any engine.
 ## Requirements
 ### Requirement: Vida drains with hunger and triggers judgment at zero
-The system SHALL decrease Vida continuously over time and SHALL trigger the Judgment sequence when Vida reaches 0.
+The system SHALL decrease Vida continuously over time at a species-paced rate derived from life expectancy, and SHALL trigger the Judgment sequence when Vida reaches 0. The drain rate SHALL equal the global base rate multiplied by the possessed species' hunger multiplier: short-lived forms drain faster, long-lived forms drain slower. Default multipliers SHALL keep the Ratón near the historic baseline pace.
 
 #### Scenario: Hunger depletes vida
-- **WHEN** the player survives 10 seconds without eating at the default drain rate
-- **THEN** Vida is lower than at start by drain-rate × time and the creature remains alive while Vida > 0
+- **WHEN** the player survives 10 seconds without eating at its species drain rate
+- **THEN** Vida is lower than at start by species-rate × time and the creature remains alive while Vida > 0
 
 #### Scenario: Death opens judgment
 - **WHEN** Vida reaches 0 for any reason
 - **THEN** the game pauses the life loop and opens the Judgment screen instead of respawning silently
+
+#### Scenario: Short-lived starves faster than apex
+- **WHEN** an Oruga and a Lobo both survive 30 seconds without eating
+- **THEN** the Oruga has lost more Vida than the Lobo
+
+#### Scenario: Lobo anchor vive 30 minutos
+- **WHEN** a Lobo survives 1800 seconds without eating
+- **THEN** its total Vida loss equals its max Vida (species-rate × time ≈ 160), i.e. it starves at ~30 minutes, and every other species scales by its own multiplier
 
 ### Requirement: Karma stays within -100 to +100
 The system SHALL clamp Karma Ecológico to the range -100…+100 on every change.
@@ -240,7 +248,7 @@ The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the
 - **THEN** no AI agent targets the Lobo as prey; zorro agents flee from it
 
 ### Requirement: NPC agents share the hunger-eat-die loop
-The system SHALL run hunger drain, diet-gated eating with identical payoffs, and death for AI agents: every agent loses Vida continuously at the same drain rate, eats only its DIET table entries with the same Vida gains, and dies at 0 Vida leaving a fresh carrion for carnivore diets. AI kills obey the same contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
+The system SHALL run hunger drain, diet-gated eating with identical payoffs, and death for AI agents: every agent loses Vida continuously at its own species-paced drain rate (same multiplier as the player of that species), eats only its DIET table entries with the same Vida gains, and dies at 0 Vida leaving a fresh carrion for carnivore diets. AI kills obey the same contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
 
 #### Scenario: NPC grazer eats and survives
 - **WHEN** an AI raton reaches a berry patch with fruit remaining
@@ -248,7 +256,7 @@ The system SHALL run hunger drain, diet-gated eating with identical payoffs, and
 
 #### Scenario: NPC starves without food
 - **WHEN** an AI agent finds no food for an extended time
-- **THEN** its Vida drains at the standard rate and it dies at 0, spawning carrion
+- **THEN** its Vida drains at its species rate and it dies at 0, spawning carrion
 
 #### Scenario: NPC carnivore hunts fauna
 - **WHEN** an AI carnivore perceives a smaller or equal-size agent (any brain)
@@ -268,7 +276,11 @@ The system SHALL run hunger drain, diet-gated eating with identical payoffs, and
 
 #### Scenario: NPC agent dies leaving carrion
 - **WHEN** an AI agent finds no food for an extended time
-- **THEN** its HP drains at the standard rate, it dies at 0, and a fresh carrion spawns — **the agent's karma/PA are lost** (no reincarnation for AI)
+- **THEN** its HP drains at its species rate, it dies at 0, and a fresh carrion spawns — **the agent's karma/PA are lost** (no reincarnation for AI)
+
+#### Scenario: NPC short-lived drains faster
+- **WHEN** an AI Oruga and an AI Lobo both go unfed for the same duration
+- **THEN** the Oruga loses Vida faster than the Lobo
 
 ### Requirement: AI agents can purchase adaptations
 AI agents spend PA to buy items from `SHOP` using the same `buyItem` logic as the player. The same `owned` constraint applies: one purchase per stat, no stacking, no debt. Adaptations are per-life.

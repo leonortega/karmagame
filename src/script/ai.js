@@ -204,7 +204,7 @@ function aiGrazerEat(a, range) {
 }
 
 function aiOruga(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return; // oculto: nada de nada (el hambre ya drenó arriba)
   if (isHunted(a) && aiTryHide(a)) return;
@@ -214,7 +214,7 @@ function aiOruga(a, dt) {
 }
 
 function aiSapo(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
@@ -225,7 +225,7 @@ function aiSapo(a, dt) {
 }
 
 function aiRaton(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
@@ -244,7 +244,7 @@ function aiRaton(a, dt) {
 }
 
 function aiArdilla(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
@@ -267,7 +267,7 @@ function aiArdilla(a, dt) {
 }
 
 function aiTopo(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
@@ -284,7 +284,7 @@ function aiTopo(a, dt) {
 }
 
 function aiZorro(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (aiFlee(a, dt)) return;
   if ((a.satedT || 0) > 0) { // saciado: cede carroña (+15) si la hay, si no deambula
@@ -304,7 +304,7 @@ function aiZorro(a, dt) {
 }
 
 function aiLobo(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if ((a.strikeCd || 0) <= 0) { // hazaña primero: ahuyentar otro depredador de fila TIER_SPAWNS
     const p = nearestFrom(a.x, a.y, state.agents.filter(o =>
@@ -319,7 +319,7 @@ function aiLobo(a, dt) {
 }
 
 function aiHalcon(a, dt) {
-  a.hp -= TUNING.hungerPerSec * dt;
+  a.hp -= hungerRateFor(a.speciesKey) * dt;
   aiBase(a, dt);
   if (!a.grounded && (a.strikeCd || 0) <= 0) { // hazaña: picado defensivo contra depredador
     const p = nearestFrom(a.x, a.y, state.agents.filter(o =>

@@ -72,8 +72,8 @@ function update(dt) {
   // PA por sobrevivir
   state.paAcc += dt * TUNING.paPerSec;
   if (state.paAcc >= 1) { state.pa += Math.floor(state.paAcc); state.paAcc %= 1; }
-  // Hambre (también escondido: esconderse no pausa el hambre)
-  state.hp -= TUNING.hungerPerSec * dt;
+  // Hambre por especie (también escondido: esconderse no pausa el hambre)
+  state.hp -= hungerRateFor(state.speciesKey) * dt;
   for (const k of ['shoutCd','strikeCd','invuln','lureTimer','pounceCd','digCd','landT','senseCd','revealT','trackT','groomCd','curlCd','dietHintT'])
     if (state[k]>0) state[k]-=dt;
   for (let i = 0; i < state.verbCds.length; i++) if (state.verbCds[i] > 0) state.verbCds[i] -= dt; // cds de verbos (karma-verbs)

@@ -30,6 +30,7 @@ function nearestPredOf(types, maxD, from) {
 }
 function fmtTime(s){ const m=Math.floor(s/60), ss=Math.floor(s%60); return `${m}:${String(ss).padStart(2,'0')}`; }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+function hungerRateFor(speciesKey){ return TUNING.hungerPerSec * ((SPECIES[speciesKey]||{}).hungerMult || 1); }
 
 // --- Terreno sólido (readable-forest-solid-terrain) ---
 // Sólidos derivados del estado existente: refugios, plantas vivas y rocas. Sin registro paralelo.

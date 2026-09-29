@@ -163,13 +163,21 @@ The system SHALL spawn per life the listed initial counts of each food — these
 - **THEN** one leaf has regrown
 
 ### Requirement: Lifelike animal rendering
-The system SHALL draw each form as a distinct lifelike shape with facing (features rotate toward movement, eyes included) and motion (2-frame wiggle via time): Oruga 4 rippling segments, Sapo wide ellipse + throat pulse, Ratón circle + ears + tail line, Ardilla circle + big tail arc, Topo dark ellipse + snout dot, Halcón twin flapping triangles, Zorro circle + snout triangle + brush tail. Predator NPCs SHALL reuse their species draw with red outline and scale. Foods SHALL render as distinct per-kind glyphs (mats with fruit dots, canopy with apples, soil carrots, cap+stem mushrooms, trunk with nuts, leaf fans — per `solid-terrain`); refuge shapes SHALL read as mound+hole, trunk+knothole, spiky bush, and old-oak canopy; the ground SHALL show deterministic grass tufts and flowers.
+The system SHALL draw every world entity as a cohesive emoji glyph over a solid opaque color medal with a size tier by category: animals at animal size with per-species offsets (medal in species color), plants/foods at food size (medal in type color), terrain and small decor at terrain size, except landmark trees (old-oak, hollow-tree) which render larger as landscape anchors. Each form SHALL use its established species emoji, each food its food emoji, each refuge/rock/seedling its terrain emoji, rendered through shared helpers that apply category size, medal backing, shadow, and facing. Vector portrait painters SHALL NOT be the primary sprite. Info overlays SHALL remain: label pills with food counts and refuge names, HP bars with karma over agents, predator outline rings, reveal/tracking rings, vision circle, meadow, and grid. Depleted patches SHALL render a cross with a recovering tag, carrion SHALL use a per-stage icon (fresh, stale, rotten) with a freshness label, and oak-tree seedlings SHALL render as a young tree. Predator NPCs SHALL reuse their species emoji at animal size with a red outline and warning glyph. The legend and game-state warning texts are UI chrome and remain text.
 
 #### Scenario: Silhouettes differ
 - **WHEN** all seven forms stand side by side
-- **THEN** each is recognizable by shape without reading the HUD
+- **THEN** each is recognizable by its emoji glyph without reading the HUD
 
 #### Scenario: The map reads at a glance
 - **WHEN** any gameplay moment is frozen
-- **THEN** foods, refuges, rocks, and animals are identifiable by silhouette, not only by color
+- **THEN** foods, refuges, rocks, and animals are identifiable by emoji kind and size tier, not only by color
+
+#### Scenario: Size tiers by category
+- **WHEN** an animal, a food patch, and a rock appear together
+- **THEN** the animal glyph renders largest, the food glyph medium, and the rock/decor glyph smallest, except landmark trees (old-oak, hollow-tree) which render larger as landscape anchors
+
+#### Scenario: Apex reads larger than prey
+- **WHEN** a Lobo and an Oruga appear together
+- **THEN** the Lobo emoji renders larger than the Oruga emoji within the animal band
 

@@ -8,14 +8,14 @@ const POP = {
 };
 
 const SPECIES = {
-  oruga:   { name:'Oruga',   tier:0, speed:80,  vision:130, maxHp:60,  radius:8,  size:1, color:'#9ccc65', desc:'Castigo: lenta, todos te cazan' },
-  sapo:    { name:'Sapo',    tier:1, speed:110, vision:170, maxHp:80,  radius:9,  size:1, color:'#4db6ac', desc:'Lengua a 90px, cabe en madrigueras-S' },
-  raton:   { name:'Ratón',   tier:1, speed:150, vision:190, maxHp:100, radius:10, size:2, color:'#90caf9', desc:'Base: equilibrado, puede gritar (Q)' },
-  ardilla: { name:'Ardilla', tier:1, speed:175, vision:210, maxHp:90,  radius:10, size:2, climb:true, color:'#ffcc80', desc:'Lateral: rápida, trepa al árbol hueco' },
-  topo:    { name:'Topo',    tier:1, speed:135, vision:150, maxHp:95,  radius:10, size:2, color:'#a1887f', desc:'Cava madrigueras con E, puede gritar' },
-  halcon:  { name:'Halcón',  tier:2, speed:215, vision:340, maxHp:140, radius:12, size:3, color:'#ce93d8', desc:'Premio: veloz, gran visión, debe aterrizar para comer' },
-  zorro:   { name:'Zorro',   tier:2, speed:185, vision:260, maxHp:120, radius:11, size:3, color:'#ff8a65', desc:'Depredador jugable: Zarpazo (E), sin grito' },
-  lobo:    { name:'Lobo',    tier:2, speed:165, vision:300, maxHp:160, radius:14, size:4, color:'#4a3b52', desc:'Ápice jugable: caza T2 y zorros, nadie lo caza' },
+  oruga:   { name:'Oruga',   tier:0, speed:80,  vision:130, maxHp:60,  radius:8,  size:1, hungerMult:1.5, color:'#9ccc65', desc:'Castigo: lenta, todos te cazan' },
+  sapo:    { name:'Sapo',    tier:1, speed:110, vision:170, maxHp:80,  radius:9,  size:1, hungerMult:1.25, color:'#4db6ac', desc:'Lengua a 90px, cabe en madrigueras-S' },
+  raton:   { name:'Ratón',   tier:1, speed:150, vision:190, maxHp:100, radius:10, size:2, hungerMult:1.0, color:'#90caf9', desc:'Base: equilibrado, puede gritar (Q)' },
+  ardilla: { name:'Ardilla', tier:1, speed:175, vision:210, maxHp:90,  radius:10, size:2, hungerMult:1.0, climb:true, color:'#ffcc80', desc:'Lateral: rápida, trepa al árbol hueco' },
+  topo:    { name:'Topo',    tier:1, speed:135, vision:150, maxHp:95,  radius:10, size:2, hungerMult:1.1, color:'#a1887f', desc:'Cava madrigueras con E, puede gritar' },
+  halcon:  { name:'Halcón',  tier:2, speed:215, vision:340, maxHp:140, radius:12, size:3, hungerMult:0.8, color:'#ce93d8', desc:'Premio: veloz, gran visión, debe aterrizar para comer' },
+  zorro:   { name:'Zorro',   tier:2, speed:185, vision:260, maxHp:120, radius:11, size:3, hungerMult:0.85, color:'#ff8a65', desc:'Depredador jugable: Zarpazo (E), sin grito' },
+  lobo:    { name:'Lobo',    tier:2, speed:165, vision:300, maxHp:160, radius:14, size:4, hungerMult:0.7, color:'#4a3b52', desc:'Ápice jugable: caza T2 y zorros, nadie lo caza' },
 };
 
 // Dieta dura: cada forma come solo sus entradas
@@ -49,7 +49,7 @@ const TIER_SPAWNS = { 0:['zorro','saponpc'], 1:['zorro','zorro'], 2:['zorro','lo
 const T1POOL = ['raton','ardilla','topo','sapo'];
 
 const TUNING = {
-  hungerPerSec: 1.6,
+  hungerPerSec: SPECIES.lobo.maxHp / (30 * 60 * SPECIES.lobo.hungerMult), // base anclada: el lobo vive 30 min sin comer; el resto escala por su hungerMult
   paPerSec: 1 / 3, // ~20 PA/min por sobrevivir
   lastFruitHp: 20, lastFruitKarma: -15,
   shoutKarma: 30, shoutPa: 50, shoutCooldown: 10, shoutLureRange: 450,
