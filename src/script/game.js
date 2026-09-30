@@ -21,28 +21,32 @@ addEventListener('keydown', e => {
   if (k==='c' && !state?.dead) carryAction();
   if (k==='escape') hideShop();
   if (['1','2','3','4','5'].includes(k) && state && !state.shopOpen && !state.dead) castVerb(+k);
-  if (['1','2','3','4'].includes(k) && state?.shopOpen && !state?.dead) {
-    const item = SHOP.find(s=>s.key===k);
+  if (['1','2','3'].includes(k) && state?.shopOpen && !state?.dead) {
+    const item = catalogFor(state.speciesKey).find(s=>s.key===k);
     if (item) buyItem(item.id);
   }
   if (k==='r' && state?.dead) reincarnate();
 });
 addEventListener('keyup', e => keys[e.key.toLowerCase()] = false);
 document.getElementById('btnReencarnar').onclick = () => { if (state) reincarnate(); };
-document.getElementById('btnChooseRaton').onclick = () => chooseForm('raton');
-document.getElementById('btnChooseArdilla').onclick = () => chooseForm('ardilla');
-document.getElementById('btnChooseTopo').onclick = () => chooseForm('topo');
-document.getElementById('btnChooseSapo').onclick = () => chooseForm('sapo');
-document.getElementById('btnT2Halcon').onclick = () => pickT2('halcon');
-document.getElementById('btnT2Zorro').onclick = () => pickT2('zorro');
-for (const k of ['oruga','sapo','raton','ardilla','topo','halcon','zorro','lobo']) {
-  const btn = document.getElementById('btnStart' + k[0].toUpperCase() + k.slice(1));
-  if (btn) btn.onclick = () => startRun(k);
-}
+let startFateT = null;
+document.getElementById('btnNacer').onclick = () => {
+  const form = drawStartForm(); // destino decidido en sincronía
+  animateFateBlocks('startBlocks', Object.keys(SPECIES), form);
+  if (startFateT) clearTimeout(startFateT);
+  startFateT = setTimeout(() => { clearFateTimer(); startRun(form); }, 900); // la ceremonia retrasa, no decide
+};
 
-// Primera vida libre: el jugador elige cualquier especie antes de nacer
+// Primera vida azar: los dioses eligen entre las 8 especies, sin karma ni matriz
+function drawStartForm(rand) {
+  return drawFrom(Object.keys(SPECIES), rand);
+}
+function startRunAzar(rand) {
+  return startRun(drawStartForm(rand));
+}
 function showStart() {
   document.getElementById('start').classList.remove('hidden');
+  renderFateBlocks('startBlocks', Object.keys(SPECIES), null);
 }
 function startRun(speciesKey) {
   if (!SPECIES[speciesKey]) return false;
@@ -121,25 +125,27 @@ const FLORA_KIND = { berries: 'bushes', apples: 'shrubs', carrots: 'patches', mu
 function floraCap(kind) {
   return scaledCount(FLORA_BASE[kind] || 2);
 }
-// Insecto nuevo: con probabilidad sesga a la orilla de un lago (vitals-water),
+// Insecto nuevo: con probabilidad sesga al anillo de orilla de un lago (nunca dentro),
 // si no punto uniforme como siempre. Vagar, tope y cadencia intactos.
 function spawnInsectPt() {
   const lagos = (state.waters || []).filter((w) => w.kind === 'lago');
   if (lagos.length && Math.random() < TUNING.lakeInsectBias) {
     const l = lagos[(Math.random() * lagos.length) | 0];
-    const ang = Math.random() * 7, r = Math.random() * TUNING.lakeShore;
-    return { x: clamp(l.x + Math.cos(ang) * r, 20, WORLD.w - 20),
+    const ang = Math.random() * 7, r = l.r + 8 + Math.random() * TUNING.lakeShore;
+    const pt = { x: clamp(l.x + Math.cos(ang) * r, 20, WORLD.w - 20),
       y: clamp(l.y + Math.sin(ang) * r, 20, WORLD.h - 20) };
+    return nudgeDry(pt); // el recorte a bordes nunca devuelve al agua
   }
-  return spawnPt();
+  return dryPt();
 }
 // Semilla al suelo: kind 'oak-tree' = plantado deliberado (sin azar); resto = azar de fruta comida
 function dropSeed(kind, x, y) {
   if (kind !== 'oak-tree' && Math.random() >= TUNING.seedSproutChance) return;
   if (state.seedlings.length >= TUNING.seedlingMax) return; // banco de brotes lleno
   const ang = Math.random() * 7, r = Math.random() * TUNING.seedScatter;
-  state.seedlings.push({ kind, x: clamp(x + Math.cos(ang) * r, 20, WORLD.w - 20),
-    y: clamp(y + Math.sin(ang) * r, 20, WORLD.h - 20), age: 0 });
+  const pt = nudgeDry({ x: clamp(x + Math.cos(ang) * r, 20, WORLD.w - 20),
+    y: clamp(y + Math.sin(ang) * r, 20, WORLD.h - 20) });
+  state.seedlings.push({ kind, x: pt.x, y: pt.y, age: 0 });
 }
 // Maduración: brote → planta nueva (con estado ponzoñoso propio); espera si el tope de su especie está lleno
 function matureSeedlings(dt) {
@@ -147,6 +153,7 @@ function matureSeedlings(dt) {
     const s = state.seedlings[i];
     s.age += dt;
     if (s.age < TUNING.seedlingMaturity) continue;
+    if (insideWater(s.x, s.y)) continue; // en el agua no madura: reintenta el próximo tick
     if (s.kind === 'oak-tree') { // linaje de roble: madura en roble joven cargado
       if (state.oaks.length < floraCap('nuts') + TUNING.oakTreeCap) {
         state.oaks.push(mkPatch('nuts', s.x, s.y, 3));
@@ -201,7 +208,7 @@ function ageWorld(dt) {
   state.mateT += dt;
   if (state.mateT >= TUNING.mateRespawn && companyAgents().length < TUNING.mateMax) {
     state.mateT = 0;
-    const pt = spawnPt();
+    const pt = dryPt();
     state.agents.push(mkAgent({ role:'company', speciesKey: state.speciesKey,
       hp: state.sp.maxHp, x:pt.x, y:pt.y, saved:false }));
   }
@@ -251,7 +258,8 @@ function movePlayer(dt) {
     const skipRock = state.speciesKey === 'topo'; // tunel: bajo las piedras
     state.px = clamp(state.px + ix/l*effSpeed()*envelope*dt, 20, WORLD.w-20);
     state.py = clamp(state.py + iy/l*effSpeed()*envelope*dt, 20, WORLD.h-20);
-    resolveCollisions({ r: state.sp.radius, skipRock, get: () => ({ x: state.px, y: state.py }),
+    resolveCollisions({ r: state.sp.radius, skipRock, skipWater: skipsWater(state.speciesKey, state.grounded),
+      get: () => ({ x: state.px, y: state.py }),
       set: (k, v) => { if (k === 'x') state.px = v; else state.py = v; } });
   }
   // Quietud: camuflaje y rizo
@@ -306,11 +314,12 @@ const VERB_FN = {
     const px = a ? a.x : state.px, py = a ? a.y : state.py;
     const r = nearestFrom(px, py, state.refuges.filter(o => o.dug), TUNING.eatRange);
     if (!r) return false; // sin tierra fresca no hay lombriz
-    healEater(a, TUNING.wormHp);
-    refillHambre(a, TUNING.wormHp);
+    const wh = TUNING.wormHp + (hasAdapt(a || state, 'wormPlus') ? 8 : 0);
+    healEater(a, wh);
+    refillHambre(a, wh);
     if (a) return true; // la IA no cobra PA por comer (como siempre)
     addPa(TUNING.wormPa);
-    record(`Lombriz (+${TUNING.wormHp} vida, +${TUNING.wormPa} PA)`);
+    record(`Lombriz (+${wh} vida, +${TUNING.wormPa} PA)`);
     log('Rescatas una lombriz (+vida)', 'info');
     return true;
   },
@@ -376,8 +385,9 @@ const VERB_FN = {
     const p = nearestFrom(px, py, state.agents.filter(o => o.role === 'hunter'), 60);
     if (!p) return false;
     p.restT = TUNING.restTime; // el cazador descansa: caza rota
-    if (a) addKarma(TUNING.toxinKarma, `Rocío tóxico (+${TUNING.toxinKarma} karma)`, 'good', a);
-    else addKarma(TUNING.toxinKarma, `Rocío tóxico: el depredador retrocede (+${TUNING.toxinKarma} karma)`, 'good');
+    const tk = TUNING.toxinKarma * (hasAdapt(a || state, 'toxinPlus') ? 2 : 1);
+    if (a) addKarma(tk, `Rocío tóxico (+${tk} karma)`, 'good', a);
+    else addKarma(tk, `Rocío tóxico: el depredador retrocede (+${tk} karma)`, 'good');
     return true;
   },
   chorus(a) { // sapo 5: coro con congéneres (más cantores, más karma)
@@ -387,7 +397,7 @@ const VERB_FN = {
       (o.role === 'company' || o.role === 'fauna') &&
       Math.hypot(o.x - px, o.y - py) <= TUNING.groomRange);
     if (!choir.length) return false; // coro necesita compañía
-    const k = TUNING.chorusKarma * (1 + choir.length);
+    const k = TUNING.chorusKarma * (1 + choir.length) * (hasAdapt(a || state, 'chorusPlus') ? 2 : 1);
     if (a) addKarma(k, `Coro de croac con ${1 + choir.length} cantores (+${k} karma)`, 'good', a);
     else addKarma(k, `Coro de croac con ${1 + choir.length} cantores (+${k} karma)`, 'good');
     return true;
@@ -421,13 +431,14 @@ const VERB_FN = {
   },
   scout(a) { // ratón 4: ojea madrigueras (revela peligro, refugios y agua; solo jugador como el temblor)
     if (a) return false;
-    state.revealT = TUNING.revealTime;
+    state.revealT = TUNING.revealTime * (hasAdapt(state, 'scoutPlus') ? 2 : 1);
     addKarma(TUNING.prudentKarma, `Ojeas madrigueras (+${TUNING.prudentKarma} karma)`, 'good');
     record('Ojeada (peligro, refugios y agua a la vista)');
     return true;
   },
   share(a) { // ratón 5: comparte bocado con hambriento (le llena, te cuesta su valor)
     const px = a ? a.x : state.px, py = a ? a.y : state.py;
+    const sk = TUNING.shareKarma * (hasAdapt(a || state, 'sharePlus') ? 2 : 1);
     const mates = companyAgents().filter(o => (a ? o.speciesKey === a.speciesKey : true) &&
       (o.hambre ?? 100) < TUNING.regenHambre);
     const m = nearestFrom(px, py, mates, TUNING.groomRange);
@@ -436,10 +447,10 @@ const VERB_FN = {
     t.hp -= TUNING.shareBiteHp;
     m.hp = Math.min(SPECIES[m.speciesKey].maxHp, m.hp + TUNING.shareBiteHp);
     m.hambre = Math.min(100, (m.hambre ?? 100) + TUNING.shareBiteHp);
-    if (a) addKarma(TUNING.shareKarma, `Bocado compartido (+${TUNING.shareKarma} karma)`, 'good', a);
+    if (a) addKarma(sk, `Bocado compartido (+${sk} karma)`, 'good', a);
     else {
-      addKarma(TUNING.shareKarma, `Compartes tu bocado con un hambriento (+${TUNING.shareKarma} karma)`, 'good');
-      record(`Bocado compartido (−${TUNING.shareBiteHp} vida, +${TUNING.shareKarma} karma)`);
+      addKarma(sk, `Compartes tu bocado con un hambriento (+${sk} karma)`, 'good');
+      record(`Bocado compartido (−${TUNING.shareBiteHp} vida, +${sk} karma)`);
     }
     return true;
   },
@@ -457,7 +468,7 @@ const VERB_FN = {
   },
   falsecache(a) { // ardilla 3: cacha falsa (el cazador cercano pierde el tiempo)
     const px = a ? a.x : state.px, py = a ? a.y : state.py;
-    const p = nearestFrom(px, py, state.agents.filter(o => o.role === 'hunter'), 150);
+    const p = nearestFrom(px, py, state.agents.filter(o => o.role === 'hunter'), hasAdapt(a || state, 'cachePlus') ? 300 : 150);
     if (!p) return false;
     p.restT = TUNING.restTime; // cae en el engaño: descansa
     if (a) addKarma(TUNING.falseCacheKarma, `Cacha falsa (+${TUNING.falseCacheKarma} karma)`, 'good', a);
@@ -468,14 +479,16 @@ const VERB_FN = {
     const px = a ? a.x : state.px, py = a ? a.y : state.py;
     const oak = state.oaks.find(o => o.alive && o.amount > 0 && Math.hypot(o.x - px, o.y - py) <= TUNING.eatRange);
     if (!oak) return false;
+    const bp = TUNING.barkPa * (hasAdapt(a || state, 'barkPlus') ? 2 : 1);
+    const bk = TUNING.barkKarma * (hasAdapt(a || state, 'barkPlus') ? 2 : 1);
     if (a) {
-      addPa(TUNING.barkPa, a);
-      addKarma(TUNING.barkKarma, `Corteza cosechada (+${TUNING.barkKarma} karma)`, 'good', a);
+      addPa(bp, a);
+      addKarma(bk, `Corteza cosechada (+${bk} karma)`, 'good', a);
       return true;
     }
-    addPa(TUNING.barkPa);
-    addKarma(TUNING.barkKarma, `Cosechas corteza sin comer (+${TUNING.barkPa} PA, +${TUNING.barkKarma} karma)`, 'good');
-    record(`Corteza (+${TUNING.barkPa} PA)`);
+    addPa(bp);
+    addKarma(bk, `Cosechas corteza sin comer (+${bp} PA, +${bk} karma)`, 'good');
+    record(`Corteza (+${bp} PA)`);
     return true;
   },
   cede(a) { // zorro 3: cede la carroña cercana (+15, única por carroña)
@@ -483,7 +496,8 @@ const VERB_FN = {
       const w = nearestFrom(a.x, a.y, state.carrions, TUNING.eatRange);
       if (!w || w.ceded) return false;
       w.ceded = true;
-      addKarma(TUNING.cedeKarma, `Cede la presa a otros (+${TUNING.cedeKarma} karma)`, 'good', a);
+      const ck = TUNING.cedeKarma * (hasAdapt(a, 'cedePlus') ? 2 : 1);
+      addKarma(ck, `Cede la presa a otros (+${ck} karma)`, 'good', a);
       return true;
     }
     const c = nearest(state.carrions, TUNING.eatRange);
@@ -493,9 +507,10 @@ const VERB_FN = {
   howl(a) { // lobo 1: aúlla (la manada se anima; solo jugador, la IA caza al día)
     if (a) return false;
     if (!companyAgents().length) return false; // sin manada no hay coro
-    for (const m of companyAgents()) m.rallyT = TUNING.howlTime;
+    const ht = TUNING.howlTime * (hasAdapt(state, 'howlPlus') ? 2 : 1);
+    for (const m of companyAgents()) m.rallyT = ht;
     addKarma(TUNING.howlKarma, `Aúllas: la manada se anima (+${TUNING.howlKarma} karma)`, 'good');
-    record(`Aullido (+${TUNING.howlKarma} karma, rally ${TUNING.howlTime}s)`);
+    record(`Aullido (+${TUNING.howlKarma} karma, rally ${ht}s)`);
     return true;
   },
   regurg(a) { // lobo 2: regurgita al hambriento (le llena, te cuesta su valor)
@@ -540,7 +555,7 @@ const VERB_FN = {
       if (frac < sickFrac) { sickFrac = frac; sick = o; }
     }
     if (!sick) return false;
-    const weak = sickFrac < 0.3;
+    const weak = sickFrac < (hasAdapt(state, 'cullPlus') ? 0.5 : 0.3);
     if (!pounceKill(sick)) return false; // muerte con la economía del zarpazo
     if (weak) addKarma(TUNING.cullKarma, `Caza al débil, selección natural (+${TUNING.cullKarma} karma)`, 'good');
     return true;
@@ -566,7 +581,7 @@ const VERB_FN = {
   dive() { return eatAsHalcon(); }, // halcón 1: picado/ataque/aterrizaje de E
   thermal() { // halcón 2: térmica (ojo de águila breve; solo jugador como el temblor)
     if (state.thermalT > 0) return false;
-    state.thermalT = TUNING.thermalTime;
+    state.thermalT = TUNING.thermalTime * (hasAdapt(state, 'thermalPlus') ? 2 : 1);
     log('Térmica: ojo de águila (visión extra unos segundos)', 'info');
     return true;
   },
@@ -585,8 +600,9 @@ const VERB_FN = {
     const d = Math.hypot(v.x - px, v.y - py) || 1;
     v.x = clamp(v.x + (v.x - px) / d * 60, 20, WORLD.w - 20);
     v.y = clamp(v.y + (v.y - py) / d * 60, 20, WORLD.h - 20);
-    if (a) addKarma(TUNING.scareKarma, `Ahuyenta sin matar (+${TUNING.scareKarma} karma)`, 'good', a);
-    else addKarma(TUNING.scareKarma, `Ahuyentas sin matar (+${TUNING.scareKarma} karma)`, 'good');
+    const k = TUNING.scareKarma * (hasAdapt(a || state, 'scarePlus') ? 2 : 1);
+    if (a) addKarma(k, `Ahuyenta sin matar (+${k} karma)`, 'good', a);
+    else addKarma(k, `Ahuyentas sin matar (+${k} karma)`, 'good');
     return true;
   },
   bone(a) { // halcón 5: suelta hueso (resto fresco que alimenta a quien lo halle)
@@ -631,7 +647,7 @@ const VERB_FN = {
     const px = a ? a.x : state.px, py = a ? a.y : state.py;
     const clump = nearestFrom(px, py, state.clumps, TUNING.eatRange);
     if (!clump) return false; // vale mata pelada: cobijo en lo podado, sin gastar hojas
-    state.refuges.push({ type: 'leafroll', maxSize: 1, orugaOnly: true, x: px, y: py, dug: false, ttl: TUNING.leafrollTtl });
+    state.refuges.push({ type: 'leafroll', maxSize: 1, orugaOnly: true, x: px, y: py, dug: false, ttl: TUNING.leafrollTtl * (hasAdapt(a || state, 'leafrollPlus') ? 2 : 1) });
     if (a) addKarma(TUNING.leafrollKarma, `Hoja enrollada (+${TUNING.leafrollKarma} karma)`, 'good', a);
     else {
       addKarma(TUNING.leafrollKarma, `Enrollas una hoja (+${TUNING.leafrollKarma} karma)`, 'good');
@@ -654,8 +670,9 @@ function silkDrop(a) {
     state.agents.filter(o => o.role === 'hunter' || o.kind === 'hunter'), 150);
   if (!h) return false; // sin cazador cerca, no hay escape que pagar
   const d = Math.hypot(px - h.x, py - h.y) || 1;
-  const nx = clamp(px + (px - h.x) / d * 40, 20, WORLD.w - 20);
-  const ny = clamp(py + (py - h.y) / d * 40, 20, WORLD.h - 20);
+  const dist = hasAdapt(a || state, 'silkPlus') ? 80 : 40;
+  const nx = clamp(px + (px - h.x) / d * dist, 20, WORLD.w - 20);
+  const ny = clamp(py + (py - h.y) / d * dist, 20, WORLD.h - 20);
   if (a) { a.x = nx; a.y = ny; return true; }
   state.px = nx; state.py = ny;
   return true;
@@ -692,6 +709,7 @@ function updateAgents(dt) {
   for (const a of state.agents) {
     aiStep(a, dt);
     if (a.hp > 0) resolveCollisions({ r: SPECIES[a.speciesKey].radius, skipRock: a.speciesKey === 'topo',
+      skipWater: skipsWater(a.speciesKey, a.grounded),
       get: () => ({ x: a.x, y: a.y }), set: (k, v) => { if (k === 'x') a.x = v; else a.y = v; } }, solids);
     if (a.hp <= 0) dead.push(a);
   }

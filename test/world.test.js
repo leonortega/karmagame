@@ -76,8 +76,7 @@ describe('data', () => {
     assert.equal(TUNING.mimicHp, -20);
     assert.equal(TUNING.carrionRottenHp, -25);
   });
-  it('SHOP tiene 4 items con tecla unica', () => {
-    assert.equal(SHOP.length, 4);
-    assert.equal(new Set(SHOP.map((s) => s.key)).size, 4);
+  it('T2POOL cubre halcón, zorro y lobo para el sorteo alto', () => {
+    assert.deepEqual([...T2POOL], ['halcon', 'zorro', 'lobo']);
   });
 });

@@ -243,41 +243,49 @@ describe('aiHalcon (ai-behavior-karma 2.9)', () => {
   });
 });
 
-describe('aiBuyAdaptation (ai-behavior-karma 3.1-3.5)', () => {
-  it('compra estómago con PA y vida baja: paga, posee y cura', () => {
+describe('aiBuyAdaptation por especie (azar-birth)', () => {
+  it('topo herido compra panza de su catálogo: paga, posee y cura', () => {
     reset('raton');
-    const a = aiAgent('raton');
-    a.pa = 50; a.hp = SPECIES.raton.maxHp * 0.3; // <50%
-    aiBuyAdaptation(a);
-    assert.equal(a.pa, 50 - SHOP.find(s => s.id === 'stomach').cost);
-    assert.ok(a.owned.stomach);
-    assert.ok(a.hp > SPECIES.raton.maxHp * 0.3);
+    const a = aiAgent('topo');
+    a.pa = 100; a.hp = SPECIES.topo.maxHp * 0.3; // <50%
+    assert.ok(aiBuyAdaptation(a));
+    assert.equal(a.pa, 100 - 60); // topo_panza
+    assert.ok(a.owned.topo_panza);
+    assert.ok(a.hp > SPECIES.topo.maxHp * 0.3);
   });
   it('rechaza compra sin PA suficiente: nada cambia', () => {
     reset('raton');
     const a = aiAgent('raton');
     a.pa = 10; a.hp = 1;
-    aiBuyAdaptation(a);
+    assert.ok(!aiBuyAdaptation(a));
     assert.equal(a.pa, 10);
     assert.deepEqual(a.owned, {});
   });
-  it('respeta una compra por stat (sin apilado): estómago ya owned → compra otra', () => {
+  it('sin apilado: owned no se recompra, pasa al siguiente asequible', () => {
     reset('raton');
     const a = aiAgent('raton');
-    a.pa = 200; a.hp = 1; a.owned.stomach = true;
+    a.pa = 200; a.hp = 1; a.owned.raton_zarpas = true;
+    assert.ok(aiBuyAdaptation(a));
+    assert.ok(a.owned.raton_zarpas); // no recompró
+    assert.ok(a.owned.raton_ojeada); // siguiente asequible del catálogo
+    assert.equal(a.pa, 200 - 65);
+  });
+  it('solo compra de su especie aunque tenga PA de sobra', () => {
+    reset('raton');
+    const a = aiAgent('raton');
+    a.pa = 500; a.hp = SPECIES.raton.maxHp;
     aiBuyAdaptation(a);
-    assert.ok(a.owned.stomach); // no recompró
-    assert.ok(!a.owned.swift && !a.owned.nose === false || a.owned.nose); // compró la siguiente necesidad
-    assert.equal(a.pa, 200 - SHOP.find(s => s.id === 'nose').cost); // olfato (25) tras estómago
+    assert.ok(!a.owned.sapo_lengua);
+    assert.ok(Object.keys(a.owned).every((id) => id.startsWith('raton_')));
   });
   it('schedule: aiBase llama a la compra cada aiBuyEvery segundos', () => {
     const s = reset('raton');
     clearFood(s);
     const a = aiAgent('raton');
-    a.pa = 50; a.hp = 1; a.buyT = 0; a.shoutCd = 99; // ventana vencida
+    a.pa = 100; a.hp = SPECIES.raton.maxHp; a.buyT = 0; a.shoutCd = 99; // ventana vencida
     s.agents = [a];
     aiRaton(a, 0.1);
-    assert.ok(a.owned.stomach); // compró en su ventana
+    assert.ok(a.owned.raton_zarpas); // compró en su ventana
     assert.ok(a.buyT > 0); // reprogramó
   });
 });

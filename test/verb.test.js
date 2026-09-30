@@ -49,10 +49,10 @@ describe('castVerb: costes, cooldown y efecto (2.2)', () => {
 describe('enrutado de teclas (2.3)', () => {
   it('con la tienda abierta, 2 compra y no lanza verbo', () => {
     const s = reset('raton');
-    s.pa = 50;
+    s.pa = 100;
     s.shopOpen = true;
     key('2');
-    assert.ok(s.owned.stomach, 'la tienda vende como siempre');
+    assert.ok(s.owned.raton_ojeada, 'la tienda vende su catálogo');
     assert.equal(s.karma, 0, 'ningún verbo lanzado');
   });
   it('con la tienda cerrada, 1 lanza el verbo del slot 1 (ratón: alarma +30)', () => {

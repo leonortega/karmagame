@@ -24,9 +24,8 @@ function blankState(speciesKey, sp, karma, pa) {
     agents: [], possessed: 0, // roster unificado: el poseído es state
     lifeLog: [], // causa-efecto de esta vida para el juicio
     owned: {},   // adaptaciones compradas (se pierden al morir)
-    voiceUsed: false,
     shopOpen: false,
-    pendingNext: null, pendingChoice: null, formChosen: false,
+    pendingNext: null, pendingPool: null,
     mateT:0, insectT:0, respawnT:0,
   };
 }
@@ -45,24 +44,25 @@ function newRun(speciesKey, carryKarma = 0, carryPa = 0, carrySaplings = 0) {
 
 function seedFood(carrySaplings) {
   // Mundo fresco cada vida; densidades = floraCap (una sola fuente: FLORA_BASE en game.js)
+  // El agua va primero: todo lo demas nace seco (water-terrain-entry)
+  seedWaters();
   const extraBushes = Math.min(carrySaplings, TUNING.saplingCap);
   state.bushes = [];
-  scatter(floraCap('berries') + extraBushes).forEach((pt,i) => state.bushes.push(mkPatch('berries', pt.x, pt.y, 3, {
+  scatterDry(floraCap('berries') + extraBushes).forEach((pt,i) => state.bushes.push(mkPatch('berries', pt.x, pt.y, 3, {
     mimic: (i % 3 === 2), mimicEaten: false, // ponzoñoso en cada 3er arbusto
   })));
   if (extraBushes > 0) record(`Tus nueces plantadas brotaron (+${extraBushes} arbustos)`);
-  state.shrubs = scatter(floraCap('apples')).map(pt => mkPatch('apples', pt.x, pt.y, 2));
-  state.patches = scatter(floraCap('carrots')).map(pt => mkPatch('carrots', pt.x, pt.y, 3));
-  state.clusters = scatter(floraCap('mushrooms')).map(pt => mkPatch('mushrooms', pt.x, pt.y, 2, {
+  state.shrubs = scatterDry(floraCap('apples')).map(pt => mkPatch('apples', pt.x, pt.y, 2));
+  state.patches = scatterDry(floraCap('carrots')).map(pt => mkPatch('carrots', pt.x, pt.y, 3));
+  state.clusters = scatterDry(floraCap('mushrooms')).map(pt => mkPatch('mushrooms', pt.x, pt.y, 2, {
     toxicLeft: Math.random() < 0.5 ? 1 : 0, toxicEaten: false, // ~1 de cada 4 tóxica
   }));
-  state.clumps = scatter(floraCap('leaves')).map(pt => mkPatch('leaves', pt.x, pt.y, 3, { regrowT: 0 }));
-  state.oaks = scatter(floraCap('nuts')).map(pt => mkPatch('nuts', pt.x, pt.y, 3));
-  seedWaters(); // antes que insectos: el sesgo al lago necesita el agua (vitals-water)
+  state.clumps = scatterDry(floraCap('leaves')).map(pt => mkPatch('leaves', pt.x, pt.y, 3, { regrowT: 0 }));
+  state.oaks = scatterDry(floraCap('nuts')).map(pt => mkPatch('nuts', pt.x, pt.y, 3));
   state.insects = [];
   for (let i = 0; i < scaledCount(6); i++) state.insects.push(spawnInsectPt());
   state.seedlings = []; // banco de brotes del bosque vivo (flora-lifecycle)
-  state.rocks = scatter(scaledCount(TUNING.rockCount)).map(pt => ({ x: pt.x, y: pt.y })); // terreno sólido
+  state.rocks = scatterDry(scaledCount(TUNING.rockCount)).map(pt => ({ x: pt.x, y: pt.y })); // terreno sólido
 }
 
 // Agua infinita como terreno (posición + radio, sin cantidad ni agotamiento)
@@ -76,7 +76,7 @@ function seedFoes(sp) {
   const table = TIER_SPAWNS[sp.tier] || TIER_SPAWNS[1];
   const reps = Math.max(1, Math.round(areaScale()));
   for (let r = 0; r < reps; r++) table.forEach(t => {
-    const pt = spawnPt();
+    const pt = dryPt();
     state.agents.push(mkAgent({ role:'hunter', ...mkPredator(t, pt.x, pt.y, sp.tier) }));
   });
 }
@@ -98,13 +98,16 @@ function playerAgent() {
 function roster() { return [playerAgent(), ...state.agents]; }
 
 function seedCompany() {
-  for (let i=0;i<POP.company;i++) state.agents.push(mkAgent({
-    role:'company', speciesKey: state.speciesKey, hp: state.sp.maxHp,
-    x: state.px+(Math.random()*200-100), y: state.py+(Math.random()*200-100), saved:false,
-  }));
+  for (let i=0;i<POP.company;i++) {
+    const pt = nudgeDry({ x: state.px+(Math.random()*200-100), y: state.py+(Math.random()*200-100) });
+    state.agents.push(mkAgent({
+      role:'company', speciesKey: state.speciesKey, hp: state.sp.maxHp,
+      x: pt.x, y: pt.y, saved:false,
+    }));
+  }
   seedFauna();
   state.refuges = [];
-  REFUGES.forEach(r => scatter(scaledCount(r.count)).forEach(pt => state.refuges.push({
+  REFUGES.forEach(r => scatterDry(scaledCount(r.count)).forEach(pt => state.refuges.push({
     type:r.type, maxSize:r.maxSize, climbOnly:!!r.climbOnly, x:pt.x, y:pt.y, dug:false,
   })));
 }
@@ -129,7 +132,7 @@ function spawnFauna(k, x, y) {
 function seedFauna() {
   for (const k of Object.keys(POP.faunaFloor)) {
     for (let i=0;i<faunaCount(k);i++) {
-      const pt = spawnPt();
+      const pt = dryPt();
       spawnFauna(k, pt.x, pt.y);
     }
   }
@@ -137,9 +140,9 @@ function seedFauna() {
 
 // Punto lejano al jugador y a los cazadores para repoblar sin emboscadas
 function distantPt() {
-  let best = spawnPt(), bd = -1;
+  let best = dryPt(), bd = -1;
   for (let i=0;i<5;i++) {
-    const pt = spawnPt();
+    const pt = dryPt();
     let d = Math.hypot(pt.x-state.px, pt.y-state.py);
     for (const h of allHunters()) d = Math.min(d, Math.hypot(pt.x-h.x, pt.y-h.y));
     if (d > bd) { bd = d; best = pt; }
@@ -159,10 +162,10 @@ function respawnMissing() {
 }
 
 function effSpeed(){
-  return state.sp.speed * (state.owned.swift ? 1.15 : 1); // la media velocidad del halcón en tierra va en la marcha (locoMult)
+  return state.sp.speed * (hasAdapt(state, 'swift') ? 1.15 : 1); // la media velocidad del halcón en tierra va en la marcha (locoMult)
 }
-function effVision(){ return state.sp.vision + (state.owned.nose ? 50 : 0) + (state.thermalT > 0 ? TUNING.thermalVision : 0); }
-function effMaxHp(){ return state.sp.maxHp + (state.owned.stomach ? 25 : 0); }
+function effVision(){ return state.sp.vision + (hasAdapt(state, 'nose') ? 50 : 0) + (state.thermalT > 0 ? TUNING.thermalVision : 0); }
+function effMaxHp(){ return state.sp.maxHp + (hasAdapt(state, 'stomach') ? 25 : 0); }
 function effSize(){ return state.speciesKey==='raton' ? 1 : state.sp.size; } // Squeeze: el ratón cabe en S
 
 function dietHint() {
@@ -173,12 +176,12 @@ function dietHint() {
 
 // Ponzoña visible con olfato dentro de visión
 function mimicsVisible() {
-  if (!state.owned.nose) return [];
+  if (!hasAdapt(state, 'nose')) return [];
   return state.bushes.filter(b => b.alive && b.mimic && !b.mimicEaten &&
     Math.hypot(b.x-state.px, b.y-state.py) <= effVision());
 }
 function toxicsVisible() {
-  if (!state.owned.nose) return [];
+  if (!hasAdapt(state, 'nose')) return [];
   return state.clusters.filter(c => c.alive && c.toxicLeft > 0 &&
     Math.hypot(c.x-state.px, c.y-state.py) <= effVision());
 }
@@ -187,8 +190,8 @@ function trackedCarrion() {
   return nearest(state.carrions, 9999);
 }
 
-// Matriz de reencarnación v2: evalúa el saldo restante de PA tras gastar
-// shop.js (A): judge, isLateral, showJudgment, hideJudgment, refreshChooseButtons, refreshT2Buttons, paintNext, pickT2, chooseForm
+// Juicio azar (karma -> pool -> sorteo, sin PA ni elección)
+// shop.js (A): poolFor, drawFrom, judge, showJudgment, hideJudgment, renderFateBlocks, animateFateBlocks
 
 function reincarnate() {
   if (!state.dead) return;
@@ -203,15 +206,16 @@ function reincarnate() {
 function possessOrSpawn(next, carryKarma, carryPa, carrySaplings) {
   const sp = SPECIES[next];
   const host = state.agents.find(a => a.speciesKey === next && a.brain !== 'PLAYER');
-  const at = host || spawnPt();
+  const at = host || dryPt();
   if (host) removeAgent(host); // posees su cuerpo: aparece donde vivía
+  else if (!skipsWater(next, false)) nudgeDry(at); // no-nadador nunca nace dentro del agua
   const keep = { bushes: state.bushes, shrubs: state.shrubs, patches: state.patches,
     clusters: state.clusters, clumps: state.clumps, oaks: state.oaks, insects: state.insects,
     refuges: state.refuges, carrions: state.carrions, agents: state.agents, seedlings: state.seedlings,
     rocks: state.rocks, waters: state.waters };
   state = { ...blankState(next, sp, carryKarma, carryPa), ...keep, px: at.x, py: at.y, saplings: 0 };
   const extra = Math.min(carrySaplings, TUNING.saplingCap);
-  scatter(extra).forEach(pt => state.bushes.push(mkPatch('berries', pt.x, pt.y, 3)));
+  scatterDry(extra).forEach(pt => state.bushes.push(mkPatch('berries', pt.x, pt.y, 3)));
   if (extra > 0) record(`Tus nueces plantadas brotaron (+${extra} arbustos)`);
   hideJudgment();
   hideShop();
@@ -249,8 +253,7 @@ function tryShout() {
   }
   if (state.hidden) { state.hidden = false; state.hideRef = null; } // gritar te delata
   state.shoutCd = TUNING.shoutCooldown;
-  const lure = (state.owned.voice && !state.voiceUsed) ? 2 : 5; // voz suave: 2s en vez de 5s
-  if (lure === 2) state.voiceUsed = true;
+  const lure = 5; // gritar te delata 5s (la voz suave murió con la tienda global)
   state.lureTimer = lure;
   const verb = state.speciesKey === 'sapo' ? 'Croas' : 'Alerta';
   addKarma(TUNING.shoutKarma, `${verb} a tu especie: te expones (${TUNING.shoutKarma} karma, +${TUNING.shoutPa} PA, atrae ${lure}s)`, 'good');
@@ -265,7 +268,10 @@ function tryShout() {
 function addKarma(n, msg, cls='info', agent) {
   const t = agent || state; // IA escribe a su ledger; omitir agente = jugador (api sin cambios)
   t.karma = Math.max(-100, Math.min(100, t.karma + n));
-  if (msg) { record(msg, agent); log(msg, n>0?'good':n<0?'bad':'info'); }
+  if (!msg) return;
+  record(msg, agent);
+  if (agent) logOther(msg, n>0?'good':n<0?'bad':'info'); // panel izquierdo: otros animales
+  else log(msg, n>0?'good':n<0?'bad':'info'); // panel derecho: jugador
 }
 function addPa(n, agent){ (agent || state).pa += n; }
 function record(msg, agent){ (agent || state).lifeLog.push(msg); }

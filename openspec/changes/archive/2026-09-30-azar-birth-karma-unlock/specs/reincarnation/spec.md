@@ -1,10 +1,4 @@
-# reincarnation
-
-## Purpose
-
-Turn death into a legible judgment that maps Karma to the next body through a fated draw, preserving progression while making the reason for each reincarnation explicit.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Judgment matrix maps karma and current PA balance to next tier
 The system SHALL compute the eligible reincarnation pool from final Karma only (PA ignored, dead form ignored) as: pool {oruga} WHEN Karma ≤ -50 (involution); pool {sapo, raton, ardilla, topo} WHEN -50 < Karma < +50 (T1 full, no cycle order); pool {sapo, raton, ardilla, topo, halcon, zorro, lobo} WHEN Karma ≥ +50 (additive floor: good karma adds T2, never guarantees it). The system SHALL then draw one form uniform-azar from the pool; Lobo draws like any T2 with no exception. The first life is pure azar over all 8 species and never evaluates the matrix.
@@ -57,3 +51,9 @@ The system SHALL keep the persistent world across reincarnation (food, carrion, 
 #### Scenario: Planted saplings convert in place
 - **WHEN** a life ended with 2 sapling carry banked
 - **THEN** the next world holds those saplings converted to berry bushes and sapling carry resets to 0
+
+## REMOVED Requirements
+
+### Requirement: Judgment offers lateral form choice for PA
+**Reason**: Azar replaces negotiation; no picks and no reroll by design.
+**Migration**: Delete `pickT2`/`chooseForm` paths, T2-pick and Choose-form buttons, and the 15 PA cost; PA remains only as the adaptation shop wallet.

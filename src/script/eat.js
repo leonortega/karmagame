@@ -1,7 +1,8 @@
 // eat.js - comer, cazar y acciones de especie (extraido de game.js, sin cambios)
 // Depende de globales: state, DIET, FOODDEF, TUNING + utils.js + game.js (canEat, dietHint, effMaxHp, addKarma, addPa, record, log).
 function eatRange() {
-  return state.speciesKey === 'sapo' ? TUNING.tongueRange : TUNING.eatRange;
+  if (state.speciesKey !== 'sapo') return TUNING.eatRange;
+  return TUNING.tongueRange + (hasAdapt(state, 'tonguePlus') ? 40 : 0);
 }
 
 // Agua del jugador desde la orilla (utils.js: nearestWaterFor)
@@ -61,7 +62,8 @@ function eatAsZorro() {
 // para la rama de E del zorro y su verbo 3 (karma-verbs).
 function cedeCarrion(c) {
   c.ceded = true;
-  addKarma(TUNING.cedeKarma, `Cedes la presa a otros (+${TUNING.cedeKarma} karma, la dejas)`, 'good');
+  const k = TUNING.cedeKarma * (hasAdapt(state, 'cedePlus') ? 2 : 1);
+  addKarma(k, `Cedes la presa a otros (+${k} karma, la dejas)`, 'good');
   return true;
 }
 
@@ -81,8 +83,8 @@ function strikePredator(p, forAgent) {
   p.x += (p.x-ox)*0.6; p.y += (p.y-oy)*0.6; // picado: lo aleja
   p.hitCd = 2;
   if (forAgent) return true; // golpe IA: mismo knockback, sin karma
-  const k = lobo ? TUNING.loboStrikeKarma : TUNING.strikeKarma;
-  addKarma(k, lobo ? `¡Ahuyentas un Lobo! Hazaña (+${k} karma)` : 'Caza necesaria: ahuyentas depredador (+5 karma)', k>5?'good':'info');
+  const k = (lobo ? TUNING.loboStrikeKarma : TUNING.strikeKarma) * (hasAdapt(state, 'strikePlus') ? 2 : 1);
+  addKarma(k, lobo ? `¡Ahuyentas un Lobo! Hazaña (+${k} karma)` : `Caza necesaria: ahuyentas depredador (+${k} karma)`, k>5?'good':'info');
   addPa(TUNING.strikePa);
   state.hp = Math.min(effMaxHp(), state.hp+TUNING.strikeHp);
   return true; // el verbo 1 del halcón lee el resultado (karma-verbs)
@@ -204,7 +206,7 @@ function diveKill(m, forAgent) {
 
 function digBurrow(forAgent) {
   const t = forAgent || state;
-  if ((t.digCd || 0) > 0 || (t.dug || 0) >= TUNING.digMax) return false;
+  if ((t.digCd || 0) > 0 || (t.dug || 0) >= TUNING.digMax + (hasAdapt(t, 'digPlus') ? 1 : 0)) return false;
   t.digCd = TUNING.digCd; t.dug = (t.dug || 0) + 1;
   const px = forAgent ? forAgent.x : state.px, py = forAgent ? forAgent.y : state.py;
   state.refuges.push({ type:'burrow-M', maxSize:2, climbOnly:false, x:px, y:py, dug:true });
@@ -303,7 +305,8 @@ function carrionStage(c) {
   return 'rotten';
 }
 function addCarrion(x, y) {
-  state.carrions.push({ x, y, age: 0 });
+  const pt = nudgeDry({ x, y }); // la carroña nunca cae dentro del agua
+  state.carrions.push({ x: pt.x, y: pt.y, age: 0 });
   while (state.carrions.length > TUNING.carrionCap) {
     // cap 5: fuera la podrida más vieja primero, si no la más vieja
     let idx = 0, worst = -1;

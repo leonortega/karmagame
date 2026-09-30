@@ -148,23 +148,23 @@ The system SHALL deduct PA immediately on every purchase, SHALL reject any purch
 - **THEN** no PA is deducted, no effect applies, and the item shows as unaffordable
 
 ### Requirement: Mid-life adaptations are per-life and non-stackable
-The system SHALL offer stat adaptations (Swift paws +15% speed for 50 PA, Big stomach +25 max Vida and +25 heal for 30 PA, Keen nose +50 vision for 25 PA and reveals mimic fruit exactly within vision, Quiet voice reducing the next shout lure to 2s for 35 PA), each purchasable at most once per life, and SHALL remove all of them on death.
+The system SHALL offer 3 unique adaptations per species (24 total) from per-species catalogs priced 50–80 PA each, each purchasable at most once per life, and SHALL remove all of them on death. Each catalog SHALL follow the pattern 1 stat + 1 verb-upgrade + 1 signature (e.g. Sapo longer tongue / stronger toxin / wider chorus; mechanics may share numbers with distinct flavor). PA wallet rules (immediate deduct, reject on insufficient funds, never negative) apply unchanged.
 
-#### Scenario: Adaptation applies once
-- **WHEN** the player buys Swift paws mid-life
-- **THEN** speed rises by 15% immediately and the item shows as owned for the rest of the life
+#### Scenario: Signature applies once
+- **WHEN** a Sapo buys its tongue upgrade mid-life
+- **THEN** the tongue range rises immediately and the item shows as owned for the rest of the life
 
 #### Scenario: No stacking
-- **WHEN** the player who already owns Swift paws attempts to buy it again in the same life
+- **WHEN** the player who already owns an item attempts to buy it again in the same life
 - **THEN** the purchase is rejected with no PA change
 
 #### Scenario: Death clears adaptations
 - **WHEN** a life ends with purchased adaptations
 - **THEN** the next life starts with base species stats only
 
-#### Scenario: Keen nose reveals mimics
-- **WHEN** a player owning Keen nose has a mimic fruit within vision
-- **THEN** the mimic is visually marked as poison before being eaten
+#### Scenario: Typical life affords one item
+- **WHEN** a player earns ~60–100 PA in a life and items cost 50–80 PA
+- **THEN** at most one item is affordable per life in the common case
 
 ### Requirement: Wasteful kills cost karma
 The system SHALL grant −10 Karma when a carnivore form (Zorro Pounce, Halcón Dive, and any future killing verb) kills prey while its Vida is at or above 80% of max, and SHALL still grant the normal Vida gain capped at max.
@@ -287,15 +287,19 @@ The system SHALL run hunger drain, diet-gated eating with identical payoffs, and
 - **THEN** the Oruga loses Vida faster than the Lobo
 
 ### Requirement: AI agents can purchase adaptations
-AI agents spend PA to buy items from `SHOP` using the same `buyItem` logic as the player. The same `owned` constraint applies: one purchase per stat, no stacking, no debt. Adaptations are per-life.
+AI agents spend PA to buy items from their own species catalog using the same `buyItem` logic as the player. The same `owned` constraint applies: one purchase per item, no stacking, no debt. Adaptations are per-life.
 
 #### Scenario: AI agent buys adaptation with sufficient PA
-- **WHEN** an AI agent has PA ≥ an item's cost and does not own it
+- **WHEN** an AI Sapo has PA ≥ its tongue upgrade cost and does not own it
 - **THEN** PA is deducted, `owned[item.id]` becomes true, and the effect applies immediately
 
 #### Scenario: AI agent cannot buy without PA
 - **WHEN** an AI agent has PA < item cost
 - **THEN** no PA is deducted, no effect applies
+
+#### Scenario: AI buys only its species catalog
+- **WHEN** an AI Ratón has PA for a Sapo-only item
+- **THEN** that item is not offered and cannot be bought
 
 ### Requirement: AI karma is lost on death
 When an AI agent dies, its `karma`, `pa`, `owned`, and `lifeLog` are discarded. The agent becomes a carrion. AI agents do not reincarnate or transfer karma.

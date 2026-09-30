@@ -26,6 +26,8 @@ const DIET = {
   topo: ['carrots','insects','nuts'],
   halcon: ['carrion','mates'], zorro: ['carrion','mates'], lobo: ['carrion','mates'],
 };
+// Quien nada: solo anfibios/agua (el pato futuro entra aqui como una fila)
+const WATER_ENTER = { sapo: true };
 const DIET_HINT = { oruga:'hojas', sapo:'insectos', raton:'bayas, manzanas, zanahorias, setas o nueces',
   ardilla:'bayas, manzanas, setas o nueces', topo:'zanahorias, insectos o nueces',
   halcon:'carroña o presas', zorro:'carroña o presas', lobo:'carroña o presas' };
@@ -47,6 +49,7 @@ const PRED = {
 };
 const TIER_SPAWNS = { 0:['zorro','saponpc'], 1:['zorro','zorro'], 2:['zorro','lobo'] };
 const T1POOL = ['raton','ardilla','topo','sapo'];
+const T2POOL = ['halcon','zorro','lobo']; // azar-birth: el lobo ya no es especial, sortea como T2
 
 const TUNING = {
   hungerPerSec: SPECIES.lobo.maxHp / (30 * 60 * SPECIES.lobo.hungerMult), // base anclada: el lobo vive 30 min sin comer; el resto escala por su hungerMult
@@ -54,9 +57,8 @@ const TUNING = {
   lastFruitHp: 20, lastFruitKarma: -15,
   shoutKarma: 30, shoutPa: 50, shoutCooldown: 10, shoutLureRange: 450,
   predatorDamage: 28, predatorInvuln: 1.0,
-  tierUpKarma: 50, tierUpPa: 100,
-  tierDownKarma: -50, sapoHopKarma: 20,
-  chooseFormCost: 15,
+  tierUpKarma: 50,
+  tierDownKarma: -50,
   // cadena y verbos
   chaseMult: 1.35, loboChaseMult: 1.3, chaseMax: 6, restTime: 2, fleeHysteresis: 1.5,
   snapRange: 25, // forrajeo óptimo: snap por contacto aunque difiera talla
@@ -96,7 +98,7 @@ const TUNING = {
   regenHambre: 30, regenSed: 30, thirstMult: 2, deficitMax: 2,
   sipSed: 35, sipHp: 5, drinkRange: 46,
   // agua infinita: charcos chicos dispersos, lagos grandes escasos (densidades por área)
-  charcoCount: 6, lagoCount: 2, charcoR: 20, lagoR: 55,
+  charcoCount: 6, lagoCount: 2, charcoR: 20, lagoR: 95,
   // insectos anclados al lago: sesgo de aparición en la orilla
   lakeInsectBias: 0.6, lakeShore: 120,
   // supervivencia IA (foraging-survival-ai)
@@ -110,13 +112,50 @@ const TUNING = {
 // regen por debajo del peor drenaje con tope: quieto y necesitado siempre pierde vida (vitals-water)
 TUNING.vidaRegenPerSec = TUNING.hungerPerSec * 2;
 
-// Tienda mid-life: adaptaciones per-life, una compra por stat, sin apilado
-const SHOP = [
-  { id:'swift',   key:'1', name:'Zarpas veloces',  cost:50, desc:'+15% velocidad (esta vida)' },
-  { id:'stomach', key:'2', name:'Estómago grande', cost:30, desc:'+25 Vida máx y cura +25' },
-  { id:'nose',    key:'3', name:'Olfato agudo',    cost:25, desc:'+50 visión y revela ponzoña' },
-  { id:'voice',   key:'4', name:'Voz suave',       cost:35, desc:'próximo grito atrae 2s en vez de 5s' },
-];
+// Tienda mid-life por especie (azar-birth): 3 adaptaciones únicas cada una (1 stat + 1 verbo + 1 firma),
+// per-life, sin apilado, 50-80 PA (una vida típica ~60-100 PA da para ~1). `effect` es la mecánica que resuelve hasAdapt.
+const SHOP_BY_SPECIES = {
+  oruga: [
+    { id:'oruga_panza', key:'1', name:'Panza grande',  cost:60, desc:'+25 Vida máx y cura +25 (esta vida)', effect:'stomach' },
+    { id:'oruga_seda',  key:'2', name:'Seda gruesa',   cost:60, desc:'escape de seda más lejos (80px)', effect:'silkPlus' },
+    { id:'oruga_hoja',  key:'3', name:'Hoja maestra',  cost:55, desc:'hoja enrollada dura el doble', effect:'leafrollPlus' },
+  ],
+  sapo: [
+    { id:'sapo_lengua', key:'1', name:'Lengua larga',   cost:70, desc:'lengua a 130px', effect:'tonguePlus' },
+    { id:'sapo_toxina', key:'2', name:'Toxina potente', cost:60, desc:'rocío con doble karma', effect:'toxinPlus' },
+    { id:'sapo_coro',   key:'3', name:'Coro mayor',     cost:55, desc:'coro con doble karma', effect:'chorusPlus' },
+  ],
+  raton: [
+    { id:'raton_zarpas', key:'1', name:'Zarpas veloces',  cost:60, desc:'+15% velocidad (esta vida)', effect:'swift' },
+    { id:'raton_ojeada', key:'2', name:'Ojeada experta',  cost:65, desc:'ojea el doble de tiempo', effect:'scoutPlus' },
+    { id:'raton_bocado', key:'3', name:'Bocado generoso', cost:55, desc:'compartir da doble karma', effect:'sharePlus' },
+  ],
+  ardilla: [
+    { id:'ardilla_olfato',  key:'1', name:'Olfato agudo',   cost:60, desc:'+50 visión y revela ponzoña', effect:'nose' },
+    { id:'ardilla_corteza', key:'2', name:'Corteza dulce',  cost:55, desc:'doble PA y karma por corteza', effect:'barkPlus' },
+    { id:'ardilla_engano',  key:'3', name:'Cacha maestra',  cost:60, desc:'cacha falsa a mayor distancia', effect:'cachePlus' },
+  ],
+  topo: [
+    { id:'topo_panza',   key:'1', name:'Panza grande',   cost:60, desc:'+25 Vida máx y cura +25 (esta vida)', effect:'stomach' },
+    { id:'topo_lombriz', key:'2', name:'Lombriz gorda',  cost:55, desc:'más vida por lombriz (+8)', effect:'wormPlus' },
+    { id:'topo_tunel',   key:'3', name:'Túnel maestro',  cost:70, desc:'+1 madriguera por vida', effect:'digPlus' },
+  ],
+  halcon: [
+    { id:'halcon_ojo',     key:'1', name:'Ojo de águila',  cost:65, desc:'+50 visión y revela ponzoña', effect:'nose' },
+    { id:'halcon_termica', key:'2', name:'Térmica alta',   cost:70, desc:'ojo de águila más duradero', effect:'thermalPlus' },
+    { id:'halcon_sombra',  key:'3', name:'Sombra temible', cost:55, desc:'ahuyentar da doble karma', effect:'scarePlus' },
+  ],
+  zorro: [
+    { id:'zorro_zarpas',  key:'1', name:'Zarpas veloces', cost:60, desc:'+15% velocidad (esta vida)', effect:'swift' },
+    { id:'zorro_reparto', key:'2', name:'Reparto noble',  cost:55, desc:'ceder da doble karma', effect:'cedePlus' },
+    { id:'zorro_alarde',  key:'3', name:'Alarde feroz',   cost:60, desc:'ahuyentar da doble karma', effect:'strikePlus' },
+  ],
+  lobo: [
+    { id:'lobo_piel',      key:'1', name:'Piel gruesa',       cost:65, desc:'+25 Vida máx y cura +25 (esta vida)', effect:'stomach' },
+    { id:'lobo_aullido',   key:'2', name:'Aullido profundo',  cost:60, desc:'rally de manada más duradero', effect:'howlPlus' },
+    { id:'lobo_seleccion', key:'3', name:'Selección natural', cost:70, desc:'caza al menos débil (50% vida)', effect:'cullPlus' },
+  ],
+};
 
 const REFUGES = [
   { type:'burrow-S',    maxSize:1, count:3 },

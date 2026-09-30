@@ -1,5 +1,5 @@
 // ai.js - motor de comportamiento IA por especie (ai-behavior-karma)
-// Depende de globales: state, SPECIES, DIET, TUNING, SHOP + utils.js
+// Depende de globales: state, SPECIES, DIET, TUNING, SHOP_BY_SPECIES + utils.js
 //   + state.js (addKarma, addPa, record, aiTryShout, removeAgent, companyAgents, allHunters)
 //   + eat.js (eatPatch, eatInsect, eatCarrion, healEater, nearestEdiblePatchFor, addCarrion)
 //   + predators.js (PRED, edibleFor, strikePredator).
@@ -108,34 +108,32 @@ function aiBase(a, dt) {
 // Hazaña IA: ahuyentar depredador (mismos valores que el jugador: lobo 20, resto 5)
 function aiStrike(a, p) {
   strikePredator(p, a);
-  const k = p.type === 'lobo' ? TUNING.loboStrikeKarma : TUNING.strikeKarma;
+  const k = (p.type === 'lobo' ? TUNING.loboStrikeKarma : TUNING.strikeKarma) * (hasAdapt(a, 'strikePlus') ? 2 : 1);
   addKarma(k, `¡Ahuyenta a un ${p.type}! (+${k} karma)`, k > 5 ? 'good' : 'info', a);
   addPa(TUNING.strikePa, a);
   a.hp = Math.min(SPECIES[a.speciesKey].maxHp, a.hp + TUNING.strikeHp);
   a.strikeCd = TUNING.strikeCd;
 }
 
-// --- Compra de adaptaciones (3.1-3.5): PA interno, sin UI, una por stat ---
+// --- Compra de adaptaciones por especie: PA interno, sin UI, una por item ---
 function aiBuyAdaptation(a) {
-  if (a.owned.stomach && a.owned.swift && a.owned.nose) return false;
-  const maxHp = SPECIES[a.speciesKey].maxHp + (a.owned.stomach ? 25 : 0);
-  let want = null;
-  if (a.hp < maxHp / 2 && !a.owned.stomach) want = 'stomach';
-  else if (!a.owned.nose) want = 'nose';
-  else if (!a.owned.swift) want = 'swift';
+  const cat = catalogFor(a.speciesKey);
+  if (!cat.length || cat.every(it => a.owned[it.id])) return false;
+  const maxHp = SPECIES[a.speciesKey].maxHp + (hasAdapt(a, 'stomach') ? 25 : 0);
+  let want = null; // herido: panza de su especie si la hay y la puede pagar
+  if (a.hp < maxHp / 2) want = cat.find(it => it.effect === 'stomach' && !a.owned[it.id] && a.pa >= it.cost);
+  if (!want) want = cat.find(it => !a.owned[it.id] && a.pa >= it.cost); // si no, lo primero asequible
   if (!want) return false;
-  const item = SHOP.find(s => s.id === want);
-  if (!item || a.pa < item.cost) return false;
-  a.pa -= item.cost;
-  a.owned[want] = true;
-  if (want === 'stomach') a.hp = Math.min(maxHp, a.hp + 25);
-  record(`Adaptación IA ${item.name} (−${item.cost} PA)`, a);
+  a.pa -= want.cost;
+  a.owned[want.id] = true;
+  if (want.effect === 'stomach') a.hp = Math.min(SPECIES[a.speciesKey].maxHp + 25, a.hp + 25);
+  record(`Adaptación IA ${want.name} (−${want.cost} PA)`, a);
   return true;
 }
 
 // Tope de vida IA con adaptación de estómago (paridad con effMaxHp del jugador)
 function aiMaxHp(a) {
-  return SPECIES[a.speciesKey].maxHp + (a.owned && a.owned.stomach ? 25 : 0);
+  return SPECIES[a.speciesKey].maxHp + (hasAdapt(a, 'stomach') ? 25 : 0);
 }
 // --- Supervivencia (foraging-survival-ai) ---
 // ¿Hambriento? El umbral corta comportamientos secundarios cuando la vida baja
@@ -322,7 +320,7 @@ function aiSapo(a, dt) {
   if (isHunted(a) && aiTryHide(a)) return;
   if (aiFlee(a, dt)) { a.stillT = 0; return; }
   if (aiThirst(a, dt)) return; // sediento: agua antes que insecto y que camuflarse
-  if (aiGrazerEat(a, TUNING.tongueRange)) { a.stillT = 0; return; }
+  if (aiGrazerEat(a, TUNING.tongueRange + (hasAdapt(a, 'tonguePlus') ? 40 : 0))) { a.stillT = 0; return; }
   if (aiForage(a, dt)) { a.stillT = 0; return; } // hambre manda: buscar antes que verbos
   if (aiMaybeVerb(a, dt)) return; // toxina/entierro/coro por el núcleo
   a.stillT = (a.stillT || 0) + dt; // quieto: camuflado (predators.js lo respeta vía camouflaged(a))

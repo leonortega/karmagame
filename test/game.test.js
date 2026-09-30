@@ -159,15 +159,18 @@ describe('draw', () => {  it('drawSpecies no revienta por forma', () => {
 });
 
 describe('input', () => {
-  it('start-select inicia como cualquier especie con 0/0 sin matriz', () => {
-    assert.ok(startRun('lobo'));
+  it('nacer azar sortea entre las 8 sin matriz ni karma', () => {
+    assert.ok(startRunAzar(() => 0));
     let s = S();
-    assert.equal(s.speciesKey, 'lobo');
+    assert.equal(s.speciesKey, 'oruga');
     assert.equal(s.karma, 0);
     assert.equal(s.pa, 0);
     assert.ok(!s.dead);
-    assert.ok(startRun('zorro')); // depredador también libre
-    assert.equal(S().speciesKey, 'zorro');
+    assert.ok(startRunAzar(() => 0.999)); // el último también puede tocar, lobo incluido
+    assert.equal(S().speciesKey, 'lobo');
+  });
+  it('botón Nacer cableado al azar', () => {
+    assert.equal(typeof elsById.btnNacer.onclick, 'function');
   });
   it('teclas cableadas: e/q/b/h/v/c/r no revientan', () => {
     reset('topo');

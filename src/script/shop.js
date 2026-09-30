@@ -1,99 +1,90 @@
 // shop.js - juicio de reencarnacion y tienda (extraido de game.js, sin cambios)
-// Depende de globales: state, SPECIES, T1POOL, TUNING, SHOP + game.js (record, log, addKarma, addPa, hideShop).
-function judge() {
-  const { karma, pa, lifeLog } = state;
-  let next, reason, choice = null;
-  if (karma >= TUNING.tierUpKarma && pa >= TUNING.tierUpPa) {
-    next = 'halcon';
-    choice = ['halcon','zorro']; // ascenso dual, pick gratis
-    reason = `Karma ${karma} ≥ +50 y PA ${Math.floor(pa)} ≥ 100 → asciendes. Elige cuerpo T2.`;
-  } else if (karma <= TUNING.tierDownKarma) {
-    next = 'oruga';
-    reason = `Karma ${karma} ≤ -50 → involución (castigo), sin importar PA.`;
-  } else if (state.speciesKey === 'oruga' && karma >= TUNING.sapoHopKarma) {
-    next = 'sapo'; // salto de redención
-    reason = `Oruga con karma ${karma} ≥ +20 → redención parcial: Sapo.`;
-  } else {
-    const i = T1POOL.indexOf(state.speciesKey);
-    next = i >= 0 ? T1POOL[(i+1) % T1POOL.length] : 'raton';
-    reason = `Karma neutral (${karma}) → adaptación lateral, misma dificultad.`;
-  }
-  return { next, reason, choice, log: [...lifeLog] };
+// Depende de globales: state, SPECIES, T1POOL, T2POOL, TUNING, SHOP_BY_SPECIES + game.js (record, log, addKarma, addPa, hideShop).
+// Piso de desbloqueo por karma (azar-birth): castigo -> T1 -> T1+T2 aditivo, sin PA ni forma muerta.
+function poolFor(karma) {
+  if (karma <= TUNING.tierDownKarma) return ['oruga'];
+  if (karma >= TUNING.tierUpKarma) return [...T1POOL, ...T2POOL];
+  return [...T1POOL];
+}
+// Sorteo uniforme sobre el pool con azar inyectable (tests pasan stub, el juego pasa Math.random)
+function drawFrom(pool, rand) {
+  const r = typeof rand === 'function' ? rand : Math.random;
+  return pool[Math.floor(r() * pool.length) % pool.length];
+}
+// Juicio azar: el pool lo decide el karma, el cuerpo lo deciden los dioses. Sin PA, sin forma muerta, sin elección.
+function judge(rand) {
+  const { karma } = state;
+  const pool = poolFor(karma);
+  const next = drawFrom(pool, rand);
+  const names = pool.map(k => SPECIES[k].name).join(', ');
+  let reason;
+  if (karma <= TUNING.tierDownKarma) reason = `Karma ${karma} ≤ -50 → involución: los dioses te devuelven como Oruga.`;
+  else if (karma >= TUNING.tierUpKarma) reason = `Karma ${karma} ≥ +50 → los dioses te abren el pool T1+T2 (${names}).`;
+  else reason = `Karma neutral (${karma}) → pool T1 (${names}).`;
+  return { pool, next, reason };
 }
 
-function isLateral(next) {
-  return T1POOL.includes(state.speciesKey) && T1POOL.includes(next);
+// Catálogo por especie: cada bicho compra solo lo suyo (misma lógica jugador/IA).
+function catalogFor(speciesKey) { return SHOP_BY_SPECIES[speciesKey] || []; }
+// Efecto mecánico de un item (las claves heredadas swift/stomach/nose/voice ya son su efecto).
+function adaptEffect(id) {
+  for (const k of Object.keys(SHOP_BY_SPECIES)) {
+    const it = SHOP_BY_SPECIES[k].find(s => s.id === id);
+    if (it) return it.effect;
+  }
+  return id;
 }
+function hasAdapt(t, effect) {
+  if (!t || !t.owned) return false;
+  if (t.owned[effect]) return true;
+  return Object.keys(t.owned).some(id => t.owned[id] && adaptEffect(id) === effect);
+}
+
+let fateTimer = null; // el ciclo decorativo vive fuera del state: la pantalla inicial nace sin state
+function clearFateTimer() { if (fateTimer) { clearTimeout(fateTimer); fateTimer = null; } }
 
 function showJudgment() {
-  const { next, reason, choice } = judge();
-  state.pendingNext = next;
-  state.pendingChoice = choice;
-  state.formChosen = false;
+  const { pool, next, reason } = judge();
+  state.pendingNext = next; // destino decidido en sincronía: la animación solo lo revela
+  state.pendingPool = pool;
   state.shopOpen = false;
   state.hidden = false;
   hideShop();
+  clearFateTimer();
   document.getElementById('jStats').innerHTML =
     `Karma final: <b>${state.karma}</b> · PA: <b>${Math.floor(state.pa)}</b> · Tiempo: <b>${fmtTime(state.time)}</b>`;
-  document.getElementById('jReason').textContent = reason;
-  document.getElementById('jNext').textContent = `Siguiente vida: ${SPECIES[next].name} (Tier ${SPECIES[next].tier})`;
   // Historial causa-efecto
   const hist = state.lifeLog.slice(-4).map(e=>`• ${e}`).join('<br>');
   document.getElementById('jReason').innerHTML = reason + (hist?`<br><br>${hist}`:'');
-  // Pick T2 gratis vs Choose-form lateral de pago
-  document.getElementById('t2pick').style.display = choice ? 'block' : 'none';
-  const cf = document.getElementById('chooseForm');
-  cf.style.display = (!choice && isLateral(next)) ? 'block' : 'none';
-  refreshChooseButtons();
-  refreshT2Buttons();
+  document.getElementById('jNext').textContent =
+    `los dioses eligen que reencarnes en... ${SPECIES[next].name} (Tier ${SPECIES[next].tier})`;
+  renderFateBlocks('fateBlocks', pool, next);
+  animateFateBlocks('fateBlocks', pool, next);
   document.getElementById('judgment').classList.remove('hidden');
 }
-function hideJudgment(){ document.getElementById('judgment').classList.add('hidden'); }
-
-function refreshChooseButtons() {
-  const can = state.pa >= TUNING.chooseFormCost && !state.formChosen;
-  ['Raton','Ardilla','Topo','Sapo'].forEach(f => {
-    document.getElementById('btnChoose'+f).disabled = !can;
-  });
+// Bloques del destino: un bloque por especie, las no elegibles atenuadas, la elegida iluminada. Sin botones: el azar no se negocia.
+function renderFateBlocks(elId, pool, winner) {
+  const el = document.getElementById(elId);
+  if (!el) return;
+  el.innerHTML = Object.keys(SPECIES).map(k => {
+    const cls = k === winner ? 'fate winner' : pool.includes(k) ? 'fate' : 'fate dim';
+    return `<span class="${cls}">${SPECIES[k].name}</span>`;
+  }).join(' ');
 }
-function refreshT2Buttons() {
-  const off = state.formChosen;
-  document.getElementById('btnT2Halcon').disabled = off;
-  document.getElementById('btnT2Zorro').disabled = off;
+// Ciclo decorativo (~1s): ilumina elegibles por turnos y se asienta en el destino ya decidido. Nunca cambia el resultado.
+function animateFateBlocks(elId, pool, winner) {
+  clearFateTimer();
+  let i = 0;
+  const tick = () => {
+    renderFateBlocks(elId, pool, pool[i % pool.length]);
+    if (++i < 10) fateTimer = setTimeout(tick, 90);
+    else { renderFateBlocks(elId, pool, winner); fateTimer = null; }
+  };
+  fateTimer = setTimeout(tick, 90);
 }
-function paintNext(form) {
-  document.getElementById('jNext').textContent = `Siguiente vida: ${SPECIES[form].name} (Tier ${SPECIES[form].tier})`;
-  document.getElementById('jStats').innerHTML =
-    `Karma final: <b>${state.karma}</b> · PA: <b>${Math.floor(state.pa)}</b> · Tiempo: <b>${fmtTime(state.time)}</b>`;
-}
-
-// Pick T2 gratis en el juicio
-function pickT2(form) {
-  if (!state.dead || state.formChosen) return false;
-  if (!state.pendingChoice || !state.pendingChoice.includes(form)) return false;
-  state.pendingNext = form;
-  state.formChosen = true;
-  paintNext(form);
-  refreshT2Buttons(); refreshChooseButtons();
-  record(`Elegiste cuerpo T2 ${SPECIES[form].name} (gratis)`);
-  log(`Eliges reencarnar como ${SPECIES[form].name}`, 'info');
-  return true;
-}
-
-// Item Choose-form del juicio: elige lateral T1 por 15 PA del saldo arrastrado
-function chooseForm(form) {
-  if (!state.dead || state.formChosen) return false;
-  if (!isLateral(state.pendingNext)) return false;
-  if (!T1POOL.includes(form)) return false;
-  if (state.pa < TUNING.chooseFormCost) return false;
-  state.pa -= TUNING.chooseFormCost;
-  state.pendingNext = form;
-  state.formChosen = true;
-  paintNext(form);
-  refreshChooseButtons();
-  record(`Elegiste forma ${SPECIES[form].name} (−${TUNING.chooseFormCost} PA)`);
-  log(`Eliges reencarnar como ${SPECIES[form].name} (−${TUNING.chooseFormCost} PA)`, 'info');
-  return true;
+function hideJudgment(){
+  clearFateTimer();
+  document.getElementById('judgment').classList.add('hidden');
 }
 
 function toggleShop() {
@@ -109,8 +100,8 @@ function hideShop(){
 }
 function renderShop() {
   const box = document.getElementById('shopItems');
-  box.innerHTML = SHOP.map(s => {
-    const owned = !!state.owned[s.id] || (s.id==='voice' && state.voiceUsed);
+  box.innerHTML = catalogFor(state.speciesKey).map(s => {
+    const owned = !!state.owned[s.id];
     const poor = !owned && state.pa < s.cost;
     const tag = owned ? '[comprado]' : poor ? '[sin PA]' : `[${s.key}]`;
     const cls = owned ? 'owned' : poor ? 'poor' : '';
@@ -119,14 +110,13 @@ function renderShop() {
 }
 function buyItem(id) {
   if (state.dead || !state.shopOpen) return false;
-  const item = SHOP.find(s=>s.id===id);
-  if (!item) return false;
-  if (state.owned[id]) return false; // sin apilado: una compra por stat
-  if (id === 'voice' && state.voiceUsed) return false;
+  const item = catalogFor(state.speciesKey).find(s=>s.id===id);
+  if (!item) return false; // solo tu especie vende
+  if (state.owned[id]) return false; // sin apilado: una compra por item
   if (state.pa < item.cost) return false; // sin deuda
   state.pa -= item.cost;
   state.owned[id] = true;
-  if (id === 'stomach') state.hp = Math.min(effMaxHp(), state.hp + 25);
+  if (item.effect === 'stomach') state.hp = Math.min(effMaxHp(), state.hp + 25);
   record(`Adaptación ${item.name} (−${item.cost} PA)`);
   log(`Compras <b>${item.name}</b> (−${item.cost} PA): ${item.desc}`, 'info');
   renderShop();
