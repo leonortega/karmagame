@@ -241,6 +241,7 @@ describe('tryEat dispatch', () => {
     s.hp = effMaxHp();
     s.pounceCd = 99; // sin zarpazo: va a la carroña
     s.agents = [];
+    s.waters = []; // sin agua: la E no bebe por empate
     s.carrions = [{ x: s.px + 5, y: s.py, age: 0 }];
     tryEat();
     assert.equal(s.karma, TUNING.cedeKarma);
@@ -249,6 +250,7 @@ describe('tryEat dispatch', () => {
   it('halcon aterriza para comer carroña', () => {
     const s = reset('halcon');
     s.agents = [];
+    s.waters = []; // sin agua: aterriza por la carroña, no por sed
     s.hp = 50;
     s.carrions = [{ x: s.px + 5, y: s.py, age: 0 }];
     assert.ok(!s.grounded);

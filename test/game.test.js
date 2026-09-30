@@ -6,13 +6,14 @@ const { reset, S, key, elsById } = require('./harness');
 describe('update', () => {
   it('hambre drena y PA acumula con el tiempo', () => {
     const s = reset();
+    s.hambre = 10; s.sed = 10; // bajo umbral: drena en vez de regenerar
     const hp0 = s.hp;
     update(1);
     assert.ok(s.hp < hp0 && s.time > 0 && s.paAcc >= 0);
   });
   it('muerte a hp 0 abre el juicio', () => {
     const s = reset();
-    s.hp = 0.01;
+    s.hp = 0.01; s.hambre = 5; s.sed = 5; // sin regen que lo salve
     update(1);
     assert.ok(s.dead);
     assert.ok(s.pendingNext);
@@ -61,7 +62,7 @@ describe('updateAgents', () => {
   it('agente sin comida muere de hambre y deja carroña', () => {
     const s = reset('raton');
     s.agents = [];
-    const a = { role: 'fauna', speciesKey: 'raton', x: 0, y: 0, hp: 0.05, brain: 'AI', kind: 'grazer' };
+    const a = { role: 'fauna', speciesKey: 'raton', x: 0, y: 0, hp: 0.05, hambre: 5, sed: 5, brain: 'AI', kind: 'grazer' };
     s.agents.push(a);
     s.bushes = []; s.shrubs = []; s.patches = []; s.clusters = [];
     s.clumps = []; s.oaks = []; s.insects = [];

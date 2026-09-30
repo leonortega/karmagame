@@ -11,8 +11,9 @@ Karma is equally generic: species-share a pool of verbs (shout, groom, aerate, p
 - **Locomotion per species**: 8 movement modes replace uniform sliding — sapo hops (impulse+pause), oruga inchworms (burst+stop), ratón scurries, ardilla bounds, topo tunnels low and steady, halcón glides, zorro/lobo trot. Player AND AI move through one shared locomotion step so gaits are ecosystem-wide.
 - **Karma verb bar 1–5**: each species gets 5 species-real verbs (40 total) drawn from actual animal behavior. Keys 1–5 cast verbs; when the shop overlay (B) is open, 1–5 buy shop items instead (context routing).
 - **Real costs**: verbs cost vida and/or PA with per-verb cooldowns; karma pays out when used in the right context (e.g. regurgitate feeds a hungry packmate, culling targets the weak).
-- **Full AI parity**: AI agents of each species cast their own verbs contextually through the same verb table and cooldowns (same parity standard as foraging-survival-ai).
+- **Full AI parity**: AI agents of each species cast their own verbs contextually through the same verb table and cooldowns (same parity standard as foraging-survival-ai). AI verb checks run after the thirst branch: thirst overrides verbs exactly as it overrides other deeds.
 - Shop stays global and unchanged (swift/stomach/nose/voice); per-species PA upgrades are explicitly deferred.
+- **Needs interplay** (`vitals-water`, now in main specs): verb vida costs recover through threshold-gated regen like any damage; hungry-recipient checks (share-bite, regurgitate-feed) read hambre stocks and recipients refill hambre like any eat; food-granting verbs (worm-rescue, larder, stash, bone-drop) refill hambre through the normal eat paths; new shelters (burrow-in, leaf-roll, nest-dig, den-dig) obey hidden drain rules (hunger and thirst drain, regen suspended unless double threshold); tunnel-scout also reveals nearby water.
 
 ## Capabilities
 
@@ -27,6 +28,6 @@ The 1–5 verb bar: VERB_DEFS data table per species, VERB_FN dispatch, context 
 - `src/script/data.js`: LOCO + VERB_DEFS tables, new TUNING keys.
 - `src/script/game.js`: locomotion stepping in movePlayer + moveAgent helper; verb routing in keydown; VERB_FN map.
 - `src/script/ai.js`: aiMaybeVerb helper + species wiring.
-- `src/script/eat.js`: no changes (E stays).
+- `src/script/eat.js`: E resolves drink-by-need per `vitals-water` (thirstier drinks, kill verbs first); verb effects that delegate to eat paths inherit need-driven behavior.
 - `src/css/style.css`: verb bar HUD + hop/inch visuals hooks (draw.js).
 - Risks: existing speed-based tests (chase/flee/forage timings) must stay green — envelopes are calibrated in TUNING, not hardcoded; 40 verbs are the bulk of the change and land species by species under TDD.

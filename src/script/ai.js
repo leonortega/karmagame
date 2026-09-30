@@ -64,7 +64,7 @@ function aiFlee(a, dt) {
   const d = Math.hypot(dx, dy) || 1;
   dx /= d; dy /= d;
   // sesgo: si hay refugio apto cerca, mezcla el vector de huida con el de cobertura (60/40)
-  const cover = state.refuges.find(r => refugeFitsSize(SPECIES[a.speciesKey], r) &&
+  const cover = state.refuges.find(r => refugeFitsSize(SPECIES[a.speciesKey], r, a.speciesKey) &&
     Math.hypot(r.x - a.x, r.y - a.y) <= TUNING.aiCoverRange);
   if (cover) {
     const cd = Math.hypot(cover.x - a.x, cover.y - a.y) || 1;
@@ -88,6 +88,7 @@ function aiShoutIfReady(a) {
 function aiBase(a, dt) {
   for (const k of ['shoutCd', 'pounceCd', 'strikeCd', 'digCd', 'curlCd', 'groomCd', 'senseCd', 'lureTimer', 'satedT', 'landT'])
     if ((a[k] || 0) > 0) a[k] -= dt;
+  if (a.verbCds) for (let i = 0; i < a.verbCds.length; i++) if (a.verbCds[i] > 0) a.verbCds[i] -= dt;
   aiShoutIfReady(a);
   a.buyT = (a.buyT || 0) - dt; // compra de adaptaciones: evaluación periódica (3.2)
   if (a.buyT <= 0) {
@@ -132,6 +133,10 @@ function aiBuyAdaptation(a) {
   return true;
 }
 
+// Tope de vida IA con adaptación de estómago (paridad con effMaxHp del jugador)
+function aiMaxHp(a) {
+  return SPECIES[a.speciesKey].maxHp + (a.owned && a.owned.stomach ? 25 : 0);
+}
 // --- Supervivencia (foraging-survival-ai) ---
 // ¿Hambriento? El umbral corta comportamientos secundarios cuando la vida baja
 function isHungry(a) {
@@ -151,18 +156,113 @@ function aiForage(a, dt) {
   moveToward(a, target.x, target.y, 1, dt); // misma marcha que el jugador (paridad)
   return true;
 }
+// Beber IA en rango (paridad con tryDrink del jugador, sin karma ni PA)
+function aiDrink(a, range) {
+  const w = nearestWaterFor(a.x, a.y, range || TUNING.drinkRange);
+  return w ? drinkWater(w, a) : false;
+}
+// Viaje solo si la sed supera al hambre en serio: el empate en E bebe (sin
+// coste de viaje), pero viajar empatado anclaría al agente al agua para siempre.
+function seeksWater(a) {
+  return (100 - (a.sed ?? 100)) > (100 - (a.hambre ?? 100));
+}
+// Buscar agua más allá del rango de boca (paridad con aiForage, desde la orilla)
+function aiSeekWater(a, dt) {
+  const range = SPECIES[a.speciesKey].vision * TUNING.forageRangeMult;
+  let best = null, bd = range;
+  for (const w of state.waters || []) {
+    const d = Math.hypot(w.x - a.x, w.y - a.y) - w.r;
+    if (d < bd) { bd = d; best = w; }
+  }
+  if (!best) return false;
+  moveToward(a, best.x, best.y, 1, dt); // misma marcha que el jugador (paridad)
+  return true;
+}
+// Rama de sed compartida: beber al alcance o caminar al agua (devuelve true si ocupa el tick).
+// Solo viaja bajo el umbral de regen: recién saciado no abandona la comida por una décima de sed.
+function aiThirst(a, dt) {
+  if ((a.sed ?? 100) >= TUNING.regenSed) return false;
+  if (!seeksWater(a)) return false;
+  if (aiDrink(a, TUNING.drinkRange)) { a.stillT = 0; return true; }
+  if (aiSeekWater(a, dt)) { a.stillT = 0; return true; }
+  return false;
+}
+// Verbos propios por especie a través del núcleo compartido (karma-verbs 3.3):
+// las mismas VERB_FN que las teclas 1-5, con el ledger del agente. Se llama
+// tras la sed y tras la comida (el hambre manda), antes del deambular ocioso.
+// El acicalado largo (+5/3s, spec karma-core/ai-survival) no cabe en el slot
+// instantáneo (+2 social): vive aquí con su acumulación intacta.
+function aiMaybeVerb(a, dt) {
+  switch (a.speciesKey) {
+    case 'raton': {
+      if ((a.groomCd || 0) > 0 || !nearestFrom(a.x, a.y, companyAgents(), TUNING.groomRange)) {
+        a.groomT = 0;
+      } else {
+        a.groomT = (a.groomT || 0) + dt;
+        if (a.groomT >= TUNING.groomTime) {
+          a.groomT = 0; a.groomCd = TUNING.groomCd;
+          addKarma(TUNING.groomKarma, `Acicala a un congénere (+${TUNING.groomKarma} karma)`, 'good', a);
+          return true;
+        }
+      }
+      return castVerbFor(a, 5); // bocado al hambriento (el verbo guarda el hambre)
+    }
+    case 'topo': {
+      const dugNear = nearestFrom(a.x, a.y, state.refuges.filter(r => r.dug), TUNING.eatRange);
+      if (isHungry(a) && dugNear && castVerbFor(a, 3)) return true; // hambriento en tierra fresca: lombriz
+      if (dugNear && castVerbFor(a, 2)) return true; // refuerza lo cavado en vez de cavar de nuevo
+      if (castVerbFor(a, 1)) return true; // si no, cava nuevo
+      return castVerbFor(a, 4); // despensa: comparte, come o guarda
+    }
+    case 'ardilla': {
+      if (a.carriedNut && isHungry(a)) a.carriedNut = false; // hambre: suelta la nuez (spec ai-survival)
+      const danger = nearestFrom(a.x, a.y, state.agents.filter(o => o.role === 'hunter'), TUNING.shoutLureRange);
+      if (danger && (a.shoutCd || 0) > 0 && castVerbFor(a, 1)) return true; // sin grito: cola al aire
+      if (danger && castVerbFor(a, 3)) return true; // engaño al cercano antes que recados
+      if (a.carriedNut) return castVerbFor(a, 2); // enterrar por el núcleo (con cd)
+      if (isHungry(a)) return false; // hambriento sin nuez: a comer, no a la despensa
+      if (castVerbFor(a, 4)) return true; // corteza primero: no gasta nueces
+      return buryOrCarryNut(a); // llevar: preparo sin cd (el verbo con karma es enterrar)
+    }
+    case 'zorro':
+      if ((a.satedT || 0) <= 0) return false; // solo saciado cede
+      castVerbFor(a, 3);
+      return true; // saciado descansa aunque no haya que ceder (como siempre)
+    case 'sapo': {
+      if (castVerbFor(a, 4)) return true; // toxina si hay depredador encima (60px)
+      const pressure = nearestFrom(a.x, a.y,
+        state.agents.filter(o => o.role === 'hunter'), TUNING.aiFearRange);
+      if (pressure) return castVerbFor(a, 3); // presión sin refugio (aiTryHide falló): entiérrate
+      return castVerbFor(a, 5); // en calma: coro si hay compañía
+    }
+    case 'oruga': {
+      const h = nearestFrom(a.x, a.y,
+        state.agents.filter(o => o.role === 'hunter' || o.kind === 'hunter'), 150);
+      if (h) return castVerbFor(a, 2); // acosada: seda por el núcleo
+      return castVerbFor(a, 4); // en calma junto a mata: enrolla (el verbo guarda la mata)
+    }
+    case 'lobo': {
+      const hungry = nearestFrom(a.x, a.y, companyAgents().filter(o =>
+        o.speciesKey === a.speciesKey && (o.hambre ?? 100) < TUNING.regenHambre), TUNING.groomRange);
+      if (hungry) return castVerbFor(a, 2); // regurgita al hambriento de su especie
+      return false;
+    }
+    default: return false; // resto de especies (halcón/zorro: verbos de jugador)
+  }
+}
 // Ocultación real (3.1-3.6): entra en un refugio apto como el jugador; sale al irse el peligro o por tope
 function aiTryHide(a) {
   if (a.hidden) return true;
   const near = state.refuges.filter(r => Math.hypot(r.x - a.x, r.y - a.y) <= TUNING.hideRange);
-  const fit = near.find(r => refugeFitsSize(SPECIES[a.speciesKey], r));
+  const fit = near.find(r => refugeFitsSize(SPECIES[a.speciesKey], r, a.speciesKey));
   if (!fit) return false;
   a.hidden = true; a.hideRef = fit; a.hideT = TUNING.aiHideMax;
   return true;
 }
-function refugeFitsSize(sp, r) {
+function refugeFitsSize(sp, r, key) {
   if (sp.size > r.maxSize) return false;
   if (r.climbOnly && !sp.climb) return false;
+  if (r.orugaOnly && key !== 'oruga') return false;
   return true;
 }
 // ¿Alguien me caza? depredador de fila que me tiene en su menú, dentro de mi ventana de miedo
@@ -204,97 +304,74 @@ function aiGrazerEat(a, range) {
 }
 
 function aiOruga(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return; // oculto: nada de nada (el hambre ya drenó arriba)
   if (isHunted(a) && aiTryHide(a)) return;
+  if (aiThirst(a, dt)) return; // sediento: agua antes que hoja y que enroscarse
   if (aiGrazerEat(a, TUNING.eatRange)) { a.stillT = 0; return; }
-  if (aiForage(a, dt)) { a.stillT = 0; return; } // hambre manda: buscar antes que enroscarse
+  if (aiForage(a, dt)) { a.stillT = 0; return; } // hambre manda: buscar antes que verbos
+  if (aiMaybeVerb(a, dt)) return; // seda/enrolla por el núcleo
   a.stillT = (a.stillT || 0) + dt; // quieta: enroscada (curled(a) la cubre, mitad de daño)
 }
 
 function aiSapo(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
   if (aiFlee(a, dt)) { a.stillT = 0; return; }
+  if (aiThirst(a, dt)) return; // sediento: agua antes que insecto y que camuflarse
   if (aiGrazerEat(a, TUNING.tongueRange)) { a.stillT = 0; return; }
-  if (aiForage(a, dt)) { a.stillT = 0; return; } // hambre manda: buscar antes que camuflarse
+  if (aiForage(a, dt)) { a.stillT = 0; return; } // hambre manda: buscar antes que verbos
+  if (aiMaybeVerb(a, dt)) return; // toxina/entierro/coro por el núcleo
   a.stillT = (a.stillT || 0) + dt; // quieto: camuflado (predators.js lo respeta vía camouflaged(a))
 }
 
 function aiRaton(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
+  if (aiThirst(a, dt)) return; // sediento: agua antes que comida y que acicalar
   if (aiGrazerEat(a, TUNING.eatRange)) return;
   if (aiForage(a, dt)) return; // buscar antes que acicalar/deambular (hambre o provisión)
-  // Acicalado: congénere cerca, cd listo → +5 karma tras groomTime
-  if ((a.groomCd || 0) <= 0 && nearestFrom(a.x, a.y, companyAgents(), TUNING.groomRange)) {
-    a.groomT = (a.groomT || 0) + dt;
-    if (a.groomT >= TUNING.groomTime) {
-      a.groomT = 0; a.groomCd = TUNING.groomCd;
-      addKarma(TUNING.groomKarma, `Acicala a un congénere (+${TUNING.groomKarma} karma)`, 'good', a);
-    }
-  } else a.groomT = 0;
+  if (aiMaybeVerb(a, dt)) return; // acicalado por el núcleo
   a.x += (Math.random() - 0.5) * 40 * dt;
   a.y += (Math.random() - 0.5) * 40 * dt;
 }
 
 function aiArdilla(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
-  if (a.carriedNut && isHungry(a)) a.carriedNut = false; // hambre: suelta la nuez y come (spec ai-survival)
-  if (a.carriedNut) { // planta donde está: +10 karma, retoño banked, brote real (flora-lifecycle)
-    a.carriedNut = false; a.saplings = (a.saplings || 0) + 1;
-    dropSeed('oak-tree', a.x, a.y);
-    addKarma(TUNING.plantKarma, `Planta un bosque futuro (+${TUNING.plantKarma} karma)`, 'good', a);
-    return;
-  }
-  const oak = state.oaks.find(o => o.alive && o.amount > 0 && Math.hypot(o.x - a.x, o.y - a.y) <= TUNING.eatRange);
-  if (oak && !isHungry(a)) { // el roble es despensa para llevar, no merienda (identidad de especie)
-    oak.amount--; if (oak.amount <= 0) oak.alive = false;
-    a.carriedNut = true;
-    return;
-  }
+  if (aiThirst(a, dt)) return; // sediento con agua a mano: beber antes que plantar/llevar
+  if (aiMaybeVerb(a, dt)) return; // nuez por el núcleo (suelta, planta o lleva)
   if (aiGrazerEat(a, TUNING.eatRange)) return; // comer (no-nuez) si hay; con hambre también nuez al vuelo
   a.x += (Math.random() - 0.5) * 40 * dt;
   a.y += (Math.random() - 0.5) * 40 * dt;
 }
 
 function aiTopo(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (aiHideTick(a, dt)) return;
   if (isHunted(a) && aiTryHide(a)) return;
+  if (aiThirst(a, dt)) return; // sediento: agua antes que comer y que cavar
   if (aiGrazerEat(a, TUNING.eatRange)) return;
   if (aiForage(a, dt)) return; // buscar antes que cavar
-  if ((a.digCd || 0) <= 0 && (a.dug || 0) < TUNING.digMax) { // cavar: +3 karma de aireado
-    a.digCd = TUNING.digCd; a.dug = (a.dug || 0) + 1;
-    state.refuges.push({ type: 'burrow-M', maxSize: 2, climbOnly: false, x: a.x, y: a.y, dug: true });
-    addKarma(TUNING.aerateKarma, `Airea la tierra (+${TUNING.aerateKarma} karma)`, 'good', a);
-    return;
-  }
+  if (aiMaybeVerb(a, dt)) return; // airear por el núcleo
   a.x += (Math.random() - 0.5) * 40 * dt;
   a.y += (Math.random() - 0.5) * 40 * dt;
 }
 
 function aiZorro(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (aiFlee(a, dt)) return;
-  if ((a.satedT || 0) > 0) { // saciado: cede carroña (+15) si la hay, si no deambula
-    const c = nearestFrom(a.x, a.y, state.carrions, TUNING.eatRange);
-    if (c && !c.ceded) {
-      c.ceded = true;
-      addKarma(TUNING.cedeKarma, `Cede la presa a otros (+${TUNING.cedeKarma} karma)`, 'good', a);
-    }
-    return;
-  }
+  if (aiThirst(a, dt)) return; // sediento: agua antes que carroña y que caza
+  if (aiMaybeVerb(a, dt)) return; // saciado cede por el núcleo (o descansa)
   if (isHungry(a) && aiSeekCarrion(a, dt)) return; // flaco: carroña primero, a cualquier distancia
   const prey = nearestAiPrey(a, aiPredRow(a).perception);
   if (prey) { aiHuntEat(a, prey, dt); return; }
@@ -304,14 +381,16 @@ function aiZorro(a, dt) {
 }
 
 function aiLobo(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if ((a.strikeCd || 0) <= 0) { // hazaña primero: ahuyentar otro depredador de fila TIER_SPAWNS
     const p = nearestFrom(a.x, a.y, state.agents.filter(o =>
       o !== a && o.role === 'hunter' && o.type !== a.speciesKey), 60);
     if (p) { aiStrike(a, p); return; }
   }
+  if (aiThirst(a, dt)) return; // sediento: agua antes que carroña y que caza
   if (isHungry(a) && aiSeekCarrion(a, dt)) return; // flaco: carroña primero
+  if (aiMaybeVerb(a, dt)) return; // regurgita al hambriento antes de cazar
   const prey = nearestAiPrey(a, aiPredRow(a).perception);
   if (prey) { aiHuntEat(a, prey, dt); return; }
   const c = nearestFrom(a.x, a.y, state.carrions, TUNING.eatRange);
@@ -319,13 +398,14 @@ function aiLobo(a, dt) {
 }
 
 function aiHalcon(a, dt) {
-  a.hp -= hungerRateFor(a.speciesKey) * dt;
+  updateNeeds(a, aiMaxHp(a), dt);
   aiBase(a, dt);
   if (!a.grounded && (a.strikeCd || 0) <= 0) { // hazaña: picado defensivo contra depredador
     const p = nearestFrom(a.x, a.y, state.agents.filter(o =>
       o !== a && (o.role === 'hunter' || o.kind === 'hunter')), 60);
     if (p) { aiStrike(a, p); return; }
   }
+  if (aiThirst(a, dt)) return; // sediento: agua antes que picar (bebe al vuelo)
   if (a.grounded) { // en tierra: come carroña o despega
     const c = nearestFrom(a.x, a.y, state.carrions, TUNING.eatRange);
     if (c && (a.landT || 0) <= 0 && eatCarrion(c, a)) { a.grounded = false; return; }

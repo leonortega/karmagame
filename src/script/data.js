@@ -75,6 +75,14 @@ const TUNING = {
   leafRegrow: 60, insectRespawn: 20, insectMax: 6,
   dietHintCd: 5, groomRange: 30, groomTime: 3, groomCd: 30, groomKarma: 5,
   pestKarma: 3, prudentKarma: 2, aerateKarma: 3, plantKarma: 10,
+  toxinKarma: 5, chorusKarma: 5, // sapo 4-5: defensa química y coro por cantor
+  nectarKarma: 8, leafrollKarma: 5, leafrollTtl: 60, // oruga 3-4: mutualismo y cobijo temporal
+  seedCacheKarma: 5, shareBiteHp: 15, shareKarma: 8, // ratón 2+5: banco lite y bocado (hambre manda)
+  tailflickKarma: 10, falseCacheKarma: 5, barkPa: 5, barkKarma: 2, // ardilla 1+3+4: alarma sin cebo, engaño y corteza
+  wormHp: 12, wormPa: 5, // topo 3-4: lombriz (come, guarda o comparte; la nuez ajena no)
+  thermalTime: 8, thermalVision: 150, scareKarma: 5, boneKarma: 5, // halcón 2+4+5: ojo, espanto y hueso
+  howlKarma: 10, howlTime: 10, regurgKarma: 15, regurgCost: 8, // lobo 1-2: rally y regurgito
+  escortKarma: 12, escortTime: 10, cullKarma: 10, // lobo 4-5: escolta que sobrevive y caza al débil
   loboStrikeKarma: 20, strikeKarma: 5, strikePa: 10, strikeHp: 10,
   cedeKarma: 15, divePa: 10,
   senseTremorCd: 25, senseTrackCd: 30, revealTime: 3, trackTime: 5,
@@ -84,6 +92,13 @@ const TUNING = {
   seedlingMax: 10, seedScatter: 60, oakTreeCap: 6,
   // terreno sólido (readable-forest-solid-terrain)
   rockCount: 8, solidRefuge: 16, solidPlant: 12, solidRock: 14, losSamples: 10,
+  // necesidades vitales (vitals-water): stocks 100 = lleno, umbrales de regen, sed 2x hambre
+  regenHambre: 30, regenSed: 30, thirstMult: 2, deficitMax: 2,
+  sipSed: 35, sipHp: 5, drinkRange: 46,
+  // agua infinita: charcos chicos dispersos, lagos grandes escasos (densidades por área)
+  charcoCount: 6, lagoCount: 2, charcoR: 20, lagoR: 55,
+  // insectos anclados al lago: sesgo de aparición en la orilla
+  lakeInsectBias: 0.6, lakeShore: 120,
   // supervivencia IA (foraging-survival-ai)
   forageRangeMult: 0.5, hungerPriority: 0.4, aiHideMax: 5, aiCoverRange: 250, lowHpPercept: 1.4,
   aiFearRange: 200,
@@ -92,6 +107,8 @@ const TUNING = {
   // verbos (karma-verbs)
   groomSocialKarma: 2, // acicala social instantánea (el acicalado de 3s de karma-core queda intacto)
 };
+// regen por debajo del peor drenaje con tope: quieto y necesitado siempre pierde vida (vitals-water)
+TUNING.vidaRegenPerSec = TUNING.hungerPerSec * 2;
 
 // Tienda mid-life: adaptaciones per-life, una compra por stat, sin apilado
 const SHOP = [
@@ -163,7 +180,7 @@ const VERB_DEFS = {
   ],
   lobo: [
     { slot:1, id:'howl',     name:'Aúlla',         desc:'la manada se anima (+karma)', cd:35, costHp:0, costPa:0 },
-    { slot:2, id:'regurg',   name:'Regurgita',     desc:'alimenta (−8 vida, +karma)', cd:30, costHp:8,  costPa:0 },
+    { slot:2, id:'regurg',   name:'Regurgita',     desc:'alimenta (−8 vida, +karma)', cd:30, costHp:0, costPa:0 },
     { slot:3, id:'strike',   name:'Ahuyenta',      desc:'hazaña (+20)',               cd:4,  costHp:0,  costPa:0 },
     { slot:4, id:'escort',   name:'Escolta',       desc:'protege a un congénere (+karma)', cd:25, costHp:0, costPa:0 },
     { slot:5, id:'cull',     name:'Caza al débil', desc:'selección natural (+karma)', cd:12, costHp:0,  costPa:0 },

@@ -6,6 +6,10 @@ body { margin:0; background:#14161a; color:#e8e8e8; font-family:system-ui, sans-
 .bar { flex:1; height:14px; background:#0c0e11; border-radius:7px; overflow:hidden; position:relative; }
 .fill { height:100%; width:100%; transition:width .2s; }
 .fill.hp { background:#4caf50; }
+.fill.hunger { background:#ffb300; }
+.fill.sed { background:#29b6f6; }
+.fill.low { background:#f44336; }
+.thresh { position:absolute; top:0; bottom:0; width:2px; background:#fff; opacity:.7; }
 .fill.karma { background:#2196f3; width:50%; margin-left:50%; }
 .karma-bar { background:linear-gradient(to right,#f44336 0%,#0c0e11 50%,#0c0e11 50%,#2e7d32 100%); }
 #controls { font-size:12px; opacity:.7; margin-top:4px; }

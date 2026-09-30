@@ -3,8 +3,10 @@ const SPECIES_ICON = { oruga:'🐛', sapo:'🐸', raton:'🐭', ardilla:'🐿️
 const FOOD_ICON = { berries:'🍒', apples:'🍎', carrots:'🥕', mushrooms:'🍄', nuts:'🌰', leaves:'🍃', insects:'🦗', carrion:'🍖' };
 const FOOD_LABEL = { berries:'bayas', apples:'manzana', carrots:'zanahoria', mushrooms:'setas', nuts:'nuez', leaves:'hojas', insects:'insectos', carrion:'carroña' };
 const CARRION_ICON = { fresh:'🍖', stale:'🍗', rotten:'🤢' };
-const REFUGE_ICON = { 'burrow-S':'🕳️', 'burrow-M':'🕳️', 'hollow-tree':'🪵', 'thorn-bush':'🌵', 'old-oak':'🌳' };
-const REFUGE_LABEL = { 'burrow-S':'madriguera S', 'burrow-M':'madriguera M', 'hollow-tree':'tronco hueco', 'thorn-bush':'zarza', 'old-oak':'roble viejo' };
+const REFUGE_ICON = { 'burrow-S':'🕳️', 'burrow-M':'🕳️', 'hollow-tree':'🪵', 'thorn-bush':'🌵', 'old-oak':'🌳', 'leafroll':'🍂' };
+const WATER_ICON = { charco:'💧', lago:'🌊' };
+const WATER_LABEL = { charco:'charco', lago:'lago' };
+const REFUGE_LABEL = { 'burrow-S':'madriguera S', 'burrow-M':'madriguera M', 'hollow-tree':'tronco hueco', 'thorn-bush':'zarza', 'old-oak':'roble viejo', 'leafroll':'hoja enrollada' };
 // Base opaca bajo el emoji: el color identifica el tipo, el emoji la especie exacta
 const FOOD_BASE = { berries:'#1b5e20', apples:'#2e7d32', carrots:'#4e342e', mushrooms:'#8d6e63', nuts:'#5d4037', leaves:'#33691e' };
 const REFUGE_BASE = { 'burrow-S':'#6d4c41', 'burrow-M':'#6d4c41', 'hollow-tree':'#5d4037', 'thorn-bush':'#1b5e20', 'old-oak':'#2e7d32' };
@@ -12,6 +14,7 @@ function speciesIcon(form) { return SPECIES_ICON[form] || '❓'; }
 function foodIcon(kind) { return FOOD_ICON[kind] || '❓'; }
 function refugeIcon(type) { return REFUGE_ICON[type] || '⛺'; }
 function carrionIcon(stage) { return CARRION_ICON[stage] || '🍖'; }
+function waterIcon(kind) { return WATER_ICON[kind] || '💧'; }
 
 // Cohesion emoji por categoria: animal > comida > terreno > decor (tamanos en px)
 // Los robles son hitos de paisaje: exceden la banda animal a proposito
@@ -159,6 +162,21 @@ function drawRefugeField() {
   }
 }
 
+// Agua infinita: medalla azul + glifo por tipo + etiqueta (sin estado de agotamiento)
+function drawWaterField() {
+  for (const w of state.waters || []) {
+    ctx.save(); ctx.translate(w.x, w.y);
+    drawMedal(EMOJI_SIZE.terrain + w.r / 10, '#1565c0');
+    if (state.revealT > 0) { // ojeada/temblor: el alcance de bebida se delinea
+      ctx.strokeStyle = '#ffee58'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, w.r, 0, 7); ctx.stroke();
+    }
+    ctx.restore();
+    drawEmoji(waterIcon(w.kind), w.x, w.y - 6, EMOJI_SIZE.terrain);
+    drawTag(WATER_LABEL[w.kind] || w.kind, w.x, w.y + 16);
+  }
+}
+
 function drawRockField() {
   for (const k of state.rocks || []) {
     ctx.save(); ctx.translate(k.x, k.y);
@@ -237,6 +255,7 @@ function render() {
   const tile = 160;
   const x0 = Math.floor(state.cam.x / tile) * tile, y0 = Math.floor(state.cam.y / tile) * tile;
   drawMeadow(x0, y0, tile);
+  drawWaterField();
   drawRockField();
   drawRefugeField();
   drawSeedlingField();
@@ -288,7 +307,7 @@ function render() {
   drawLegend();
   let y = 18;
   if (state.lureTimer > 0) { ctx.fillStyle = '#ff5252'; ctx.fillText('¡Te expusiste! Depredadores hacia ti ' + Math.ceil(state.lureTimer) + 's', 12, y); y += 16; }
-  if (state.hidden) { ctx.fillStyle = '#9ccc65'; ctx.fillText('OCULTO (H para salir, el hambre sigue)', 12, y); y += 16; }
+  if (state.hidden) { ctx.fillStyle = '#9ccc65'; ctx.fillText('OCULTO (H para salir, hambre y sed siguen)', 12, y); y += 16; }
   if (state.grounded) { ctx.fillStyle = '#ffcc80'; ctx.fillText('EN TIERRA (muévete para despegar)', 12, y); y += 16; }
   if (camouflaged()) { ctx.fillStyle = '#4db6ac'; ctx.fillText('MIMETIZADO (inmóvil)', 12, y); y += 16; }
   if (curled()) { ctx.fillStyle = '#9ccc65'; ctx.fillText('ENROSCADO (mitad de daño)', 12, y); }

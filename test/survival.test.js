@@ -144,6 +144,7 @@ describe('ocultación real (3.1-3.7)', () => {
     const s = reset('raton');
     clearWorld(s);
     const a = grazerAgent('raton', 100, 100);
+    a.hambre = 20; a.sed = 20; // bajo umbral: el escondite drena, no regenera
     s.agents = [a, predAgent('zorro', 160, 100)];
     s.refuges = [{ type: 'burrow-M', maxSize: 2, climbOnly: false, x: 104, y: 100 }];
     return { s, a };

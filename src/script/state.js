@@ -9,14 +9,16 @@ function blankState(speciesKey, sp, karma, pa) {
     speciesKey, sp,
     px: WORLD.w/2, py: WORLD.h/2, face:{x:1,y:0}, moved:false,
     hp: sp.maxHp, karma,
+    hambre: 100, sed: 100, edad: 0, // necesidades vitales: stocks llenos, edad cero (vitals-water)
     pa, saplings: 0,
     time: 0, dead:false, paAcc:0,
     shoutCd:0, invuln:0, lureTimer:0, strikeCd:0,
     verbCds: [0, 0, 0, 0, 0], // barra de verbos 1-5 (karma-verbs)
     pounceCd:0, digCd:0, dug:0, senseCd:0, revealT:0, trackT:0,
     groomT:0, groomCd:0, stillT:0, curlCd:0, dietHintT:0,
-    carriedNut:false,
-    hidden:false, hideRef:null,
+    carriedNut:false, larder:0, // despensa de lombrices del topo (verbo 4)
+    stash:0, // despensa de carroña del zorro (verbo 2; la IA no la usa)
+    hidden:false, hideRef:null, bristled:false, // erizo de oruga: un zarpazo se revierte
     grounded:false, landT:0,
     cam:{x:0,y:0},
     agents: [], possessed: 0, // roster unificado: el poseído es state
@@ -56,9 +58,18 @@ function seedFood(carrySaplings) {
   }));
   state.clumps = scatter(floraCap('leaves')).map(pt => mkPatch('leaves', pt.x, pt.y, 3, { regrowT: 0 }));
   state.oaks = scatter(floraCap('nuts')).map(pt => mkPatch('nuts', pt.x, pt.y, 3));
-  state.insects = scatter(scaledCount(6)).map(pt => ({ x:pt.x, y:pt.y }));
+  seedWaters(); // antes que insectos: el sesgo al lago necesita el agua (vitals-water)
+  state.insects = [];
+  for (let i = 0; i < scaledCount(6); i++) state.insects.push(spawnInsectPt());
   state.seedlings = []; // banco de brotes del bosque vivo (flora-lifecycle)
   state.rocks = scatter(scaledCount(TUNING.rockCount)).map(pt => ({ x: pt.x, y: pt.y })); // terreno sólido
+}
+
+// Agua infinita como terreno (posición + radio, sin cantidad ni agotamiento)
+function seedWaters() {
+  state.waters = [];
+  scatter(scaledCount(TUNING.charcoCount)).forEach(pt => state.waters.push({ kind: 'charco', x: pt.x, y: pt.y, r: TUNING.charcoR }));
+  scatter(scaledCount(TUNING.lagoCount)).forEach(pt => state.waters.push({ kind: 'lago', x: pt.x, y: pt.y, r: TUNING.lagoR }));
 }
 
 function seedFoes(sp) {
@@ -71,7 +82,8 @@ function seedFoes(sp) {
 }
 
 function mkAgent(a) {
-  return { brain: 'AI', kind: 'grazer', hp: 60, karma: 0, pa: 0, owned: {}, lifeLog: [], ...a };
+  return { brain: 'AI', kind: 'grazer', hp: 60, hambre: 100, sed: 100, edad: 0, larder: 0,
+    karma: 0, pa: 0, owned: {}, lifeLog: [], ...a };
 }
 function companyAgents() { return state.agents.filter(a => a.role === 'company'); }
 function hunterAgents() { return state.agents.filter(a => a.role === 'hunter'); }
@@ -149,7 +161,7 @@ function respawnMissing() {
 function effSpeed(){
   return state.sp.speed * (state.owned.swift ? 1.15 : 1); // la media velocidad del halcón en tierra va en la marcha (locoMult)
 }
-function effVision(){ return state.sp.vision + (state.owned.nose ? 50 : 0); }
+function effVision(){ return state.sp.vision + (state.owned.nose ? 50 : 0) + (state.thermalT > 0 ? TUNING.thermalVision : 0); }
 function effMaxHp(){ return state.sp.maxHp + (state.owned.stomach ? 25 : 0); }
 function effSize(){ return state.speciesKey==='raton' ? 1 : state.sp.size; } // Squeeze: el ratón cabe en S
 
@@ -196,7 +208,7 @@ function possessOrSpawn(next, carryKarma, carryPa, carrySaplings) {
   const keep = { bushes: state.bushes, shrubs: state.shrubs, patches: state.patches,
     clusters: state.clusters, clumps: state.clumps, oaks: state.oaks, insects: state.insects,
     refuges: state.refuges, carrions: state.carrions, agents: state.agents, seedlings: state.seedlings,
-    rocks: state.rocks };
+    rocks: state.rocks, waters: state.waters };
   state = { ...blankState(next, sp, carryKarma, carryPa), ...keep, px: at.x, py: at.y, saplings: 0 };
   const extra = Math.min(carrySaplings, TUNING.saplingCap);
   scatter(extra).forEach(pt => state.bushes.push(mkPatch('berries', pt.x, pt.y, 3)));
@@ -211,6 +223,7 @@ function possessOrSpawn(next, carryKarma, carryPa, carrySaplings) {
 function refugeFits(r) {
   if (effSize() > r.maxSize) return false;
   if (r.climbOnly && !state.sp.climb) return false;
+  if (r.orugaOnly && state.speciesKey !== 'oruga') return false;
   return true;
 }
 function toggleHide() {

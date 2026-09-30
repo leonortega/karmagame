@@ -7,6 +7,7 @@ function mkPredator(type, x, y, playerTier) {
   const t = PRED[type];
   return { type, speciesKey: type === 'saponpc' ? 'sapo' : type, kind: 'hunter',
     hp: SPECIES[type === 'saponpc' ? 'sapo' : type].maxHp,
+    hambre: 100, sed: 100, edad: 0, // necesidades: drenan y beben, sin efecto en vida (rol de presión)
     x, y, wx:x, wy:y,
     speed: t.speed + (playerTier===0 && type==='zorro' ? 25 : 0), // oruga: más presión
     mode:'wander', campT:0, huntT:0, restT:0, satedT:0, fleeLatch:false, huntingPlayer:false,
@@ -52,10 +53,16 @@ function updatePredators(dt) {
 
 function stepPredator(p, dt, dead) {
   const t = PRED[p.type] || PRED_FALLBACK;
+  // Necesidades del cazador: drenan hambre/sed/edad como a todos, pero la vida
+  // no depende de ellas (rol de presión; la caza y el festín mandan como siempre)
+  p.hambre = clamp((p.hambre ?? 100) - hungerRateFor(p.speciesKey) * dt, 0, 100);
+  p.sed = clamp((p.sed ?? 100) - thirstRateFor(p.speciesKey) * dt, 0, 100);
+  p.edad = (p.edad || 0) + dt;
   if (p.satedT>0) p.satedT-=dt;
   if (p.restT>0) p.restT-=dt;
   if (fleeCheck(p, t, dt)) return;
   if (campStep(p, dt)) return;
+  if (aiThirst(p, dt)) return; // sediento bajo umbral: bebe o viaja al agua (sin efecto en vida)
   const dp = Math.hypot(state.px-p.x, state.py-p.y);
   // (camuflado rompe el seguimiento del zorro, no del lobo)
   const camoHidden = camouflaged() && p.type === 'zorro';
@@ -166,9 +173,17 @@ function chase(p, t, hit, lureOn, dt) {
 }
 
 function strikeContact(p, t, dp) {
-  // 4) Contacto (sapo: susto 10; rizo: mitad)
+  // 4) Contacto (sapo: susto 10; rizo: mitad; erizo: se revierte al cazador)
   if (!state.hidden && dp < state.sp.radius + t.body/2 && state.invuln<=0) {
     let dmg = t.damage;
+    if (state.bristled) { // erizado: el zarpazo vuelve al que muerde (el coste ya se pagó al erizar)
+      state.bristled = false;
+      p.hp -= dmg; // el cazador no muere por esto: su hp solo modera festines
+      state.invuln = TUNING.predatorInvuln;
+      log(`¡Espinas! El zarpazo se revierte (−${dmg} al ${t.name.toLowerCase()})`, 'good');
+      record(`Zarpazo revertido (−${dmg} al depredador)`);
+      return;
+    }
     if (curled()) { dmg = Math.ceil(dmg/2); state.curlCd = TUNING.curlCd; }
     state.hp -= dmg;
     state.invuln = TUNING.predatorInvuln;

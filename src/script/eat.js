@@ -4,6 +4,33 @@ function eatRange() {
   return state.speciesKey === 'sapo' ? TUNING.tongueRange : TUNING.eatRange;
 }
 
+// Agua del jugador desde la orilla (utils.js: nearestWaterFor)
+function nearestWater(maxD) {
+  return nearestWaterFor(state.px, state.py, maxD);
+}
+// Comer llena el tanque además de curar: el pago de vida es también saciedad (vitals-water)
+function refillHambre(forAgent, n) {
+  if (forAgent) forAgent.hambre = Math.min(100, (forAgent.hambre ?? 100) + n);
+  else state.hambre = Math.min(100, state.hambre + n);
+}
+// Beber: recarga sed + sorbo de vida, sin karma ni PA; el agua es infinita
+function drinkWater(w, forAgent) {
+  if (!w) return false;
+  if (forAgent) {
+    forAgent.sed = Math.min(100, (forAgent.sed ?? 100) + TUNING.sipSed);
+    healEater(forAgent, TUNING.sipHp);
+    return true;
+  }
+  state.sed = Math.min(100, state.sed + TUNING.sipSed);
+  state.hp = Math.min(effMaxHp(), state.hp + TUNING.sipHp);
+  record(`Bebes agua (+${TUNING.sipSed} sed, +${TUNING.sipHp} vida)`);
+  log('Bebes agua (+sed, +vida)', 'info');
+  return true;
+}
+function tryDrink() {
+  return drinkWater(nearestWater(TUNING.drinkRange), null);
+}
+
 function tryEat() {
   if (state.dead || state.hidden) return;
   const sp = state.speciesKey;
@@ -15,16 +42,18 @@ function tryEat() {
 }
 
 function eatAsZorro() {
-  // Zarpazo a presa, si no carroña (ceder si saciado); sin fruta
+  // Zarpazo a presa, si no necesidad: sediento bebe, hambriento carroña; sin fruta
   if (state.pounceCd <= 0) {
     const m = nearest(companyAgents(), TUNING.pounceRange);
     if (m) return pounceKill(m);
   }
+  if (thirstier()) { if (tryDrink()) return true; }
   const c = nearest(state.carrions, TUNING.eatRange);
   if (c) {
     if (state.hp >= TUNING.wastefulHpFrac * effMaxHp() && !c.ceded) return cedeCarrion(c);
     return eatCarrion(c);
   }
+  if (tryDrink()) return true;
   return dietHintIfNear();
 }
 
@@ -37,12 +66,12 @@ function cedeCarrion(c) {
 }
 
 function eatAsHalcon() {
-  // Picado defensivo, Dive a presa, si no aterriza para carroña
+  // Picado defensivo, Dive a presa, si no aterriza para carroña o agua por necesidad
   const p = nearest(allHunters(), 60);
   if (p && state.strikeCd <= 0) return strikePredator(p);
   const m = nearest(companyAgents(), 60);
   if (m) return diveKill(m);
-  return landForCarrion();
+  return landForMeal();
 }
 
 function strikePredator(p, forAgent) {
@@ -59,34 +88,43 @@ function strikePredator(p, forAgent) {
   return true; // el verbo 1 del halcón lee el resultado (karma-verbs)
 }
 
-function landForCarrion() {
+// Aterriza 1s vulnerable y resuelve carroña o agua por necesidad (antes solo carroña)
+function landForMeal() {
   const c = nearest(state.carrions, TUNING.eatRange);
-  if (!c) return dietHintIfNear();
+  const w = nearestWater(TUNING.drinkRange);
+  if (!c && !w) return dietHintIfNear();
   if (!state.grounded) {
     state.grounded = true; state.landT = TUNING.landTime;
     log('Aterrizas para comer (vulnerable 1s)…', 'info');
     return;
   }
   if (state.landT > 0) return; // aún posándose
-  return eatCarrion(c);
+  if (thirstier()) return tryDrink() || (c && eatCarrion(c));
+  return (c && eatCarrion(c)) || tryDrink();
 }
 
 function eatAsTopo() {
+  if (thirstier()) { if (tryDrink()) return true; }
   if (eatCarrion(nearest(state.carrions, TUNING.eatRange))) return true;
   if (eatInsect(nearest(state.insects, TUNING.eatRange))) return true;
   if (eatPatch(nearestEdiblePatch(TUNING.eatRange))) return true;
+  if (tryDrink()) return true;
   return digBurrow();
 }
 
 function eatAsSapo() {
+  if (thirstier()) { if (tryDrink()) return true; }
   if (eatInsect(nearest(state.insects, eatRange()))) return true;
+  if (tryDrink()) return true;
   return dietHintIfNear();
 }
 
 function eatAsGrazer() {
-  // Roedores y oruga: parche comestible cercano
+  // Roedores y oruga: sediento bebe primero, si no parche comestible cercano
+  if (thirstier()) { if (tryDrink()) return true; }
   if (eatCarrion(nearest(state.carrions, TUNING.eatRange))) return true;
   if (eatPatch(nearestEdiblePatch(TUNING.eatRange))) return true;
+  if (tryDrink()) return true;
   return dietHintIfNear();
 }
 
@@ -164,10 +202,16 @@ function diveKill(m, forAgent) {
   return true; // el verbo 1 del halcón lee el resultado (karma-verbs)
 }
 
-function digBurrow() {
-  if (state.digCd > 0 || state.dug >= TUNING.digMax) return false;
-  state.digCd = TUNING.digCd; state.dug++;
-  state.refuges.push({ type:'burrow-M', maxSize:2, climbOnly:false, x:state.px, y:state.py, dug:true });
+function digBurrow(forAgent) {
+  const t = forAgent || state;
+  if ((t.digCd || 0) > 0 || (t.dug || 0) >= TUNING.digMax) return false;
+  t.digCd = TUNING.digCd; t.dug = (t.dug || 0) + 1;
+  const px = forAgent ? forAgent.x : state.px, py = forAgent ? forAgent.y : state.py;
+  state.refuges.push({ type:'burrow-M', maxSize:2, climbOnly:false, x:px, y:py, dug:true });
+  if (forAgent) {
+    addKarma(TUNING.aerateKarma, `Airea la tierra (+${TUNING.aerateKarma} karma)`, 'good', forAgent);
+    return true;
+  }
   addKarma(TUNING.aerateKarma, `Aireas la tierra (+${TUNING.aerateKarma} karma)`);
   record(`Cavaste madriguera (${state.dug}/${TUNING.digMax})`);
   log(`Cavas una madriguera (H para esconderte)`, 'info');
@@ -210,6 +254,7 @@ function eatToxicShroom(p, forAgent) {
 function eatLastFruit(p, forAgent) {
   p.alive = false;
   healEater(forAgent, TUNING.lastFruitHp);
+  refillHambre(forAgent, TUNING.lastFruitHp);
   if (!forAgent) addKarma(TUNING.lastFruitKarma, `Último ${p.kind}: se seca para siempre (${TUNING.lastFruitKarma} karma, +${TUNING.lastFruitHp} vida)`, 'bad');
   return true;
 }
@@ -217,6 +262,7 @@ function eatLastFruit(p, forAgent) {
 function eatSustainable(p, pay, forAgent) {
   if (p.amount <= 0) { p.alive = false; p.regrowT = 0; } // rebrota desde cero: 60s reales
   healEater(forAgent, pay.hp);
+  refillHambre(forAgent, pay.hp);
   if (forAgent) { // IA: vida siempre; karma de buena acción por especie (spec ai-karma)
     if (forAgent.speciesKey === 'oruga' && p.kind === 'leaves' && p.amount > 0)
       addKarma(TUNING.prudentKarma, `Mordisqueo prudente (+${TUNING.prudentKarma} karma)`, 'good', forAgent);
@@ -237,6 +283,7 @@ function eatInsect(i, forAgent) {
   state.insects.splice(state.insects.indexOf(i), 1);
   const pay = FOODDEF.insects;
   healEater(forAgent, pay.hp);
+  refillHambre(forAgent, pay.hp);
   if (forAgent) { // IA: karma de control de plagas si es sapo (spec ai-karma)
     if (forAgent.speciesKey === 'sapo')
       addKarma(TUNING.pestKarma, `Control de plagas (+${TUNING.pestKarma} karma)`, 'good', forAgent);
@@ -273,14 +320,26 @@ function eatCarrion(c, forAgent) {
   state.carrions.splice(state.carrions.indexOf(c), 1);
   if (stage === 'fresh') {
     healEater(forAgent, TUNING.carrionFreshHp);
+    refillHambre(forAgent, TUNING.carrionFreshHp);
     if (!forAgent) {
       addPa(TUNING.carrionFreshPa);
+      if (state.stash > 0) { // bono de despensa propia: se consume en la próxima
+        state.stash--;
+        addPa(TUNING.pouncePa);
+        record(`Bono de despensa (+${TUNING.pouncePa} PA)`);
+      }
       record(`Carroña fresca (+${TUNING.carrionFreshHp} vida, sin karma)`);
       log('Comes carroña fresca (+vida)', 'info');
     }
   } else if (stage === 'stale') {
     healEater(forAgent, TUNING.carrionStaleHp);
+    refillHambre(forAgent, TUNING.carrionStaleHp);
     if (!forAgent) {
+      if (state.stash > 0) { // el bono también vale en pasada
+        state.stash--;
+        addPa(TUNING.pouncePa);
+        record(`Bono de despensa (+${TUNING.pouncePa} PA)`);
+      }
       record(`Carroña pasada (+${TUNING.carrionStaleHp} vida, sin karma)`);
       log('Carroña pasada (+poca vida)', 'info');
     }
@@ -294,24 +353,34 @@ function eatCarrion(c, forAgent) {
   return true;
 }
 
-// Llevar/enterrar nuez (C, ardilla)
-function carryAction() {
-  if (state.dead || state.hidden || state.speciesKey !== 'ardilla') return false;
-  if (state.carriedNut) {
-    state.carriedNut = false;
-    state.saplings++;
-    dropSeed('oak-tree', state.px, state.py); // la nuez enterrada brota aquí (flora-lifecycle)
+// Llevar/enterrar nuez (C y verbo 2 de la ardilla, jugador o IA: un solo núcleo)
+function buryOrCarryNut(forAgent) {
+  const t = forAgent || state;
+  const px = forAgent ? forAgent.x : state.px, py = forAgent ? forAgent.y : state.py;
+  if (t.carriedNut) {
+    t.carriedNut = false;
+    if (forAgent) t.saplings = (t.saplings || 0) + 1;
+    else state.saplings++;
+    dropSeed('oak-tree', px, py); // la nuez enterrada brota aquí (flora-lifecycle)
+    if (forAgent) {
+      addKarma(TUNING.plantKarma, `Planta un bosque futuro (+${TUNING.plantKarma} karma)`, 'good', forAgent);
+      return true;
+    }
     addKarma(TUNING.plantKarma, `Plantas un bosque futuro (+${TUNING.plantKarma} karma, retoño banked)`, 'good');
     record('Nuez enterrada (retoño +1)');
     return true;
   }
-  const oak = state.oaks.find(o => o.alive && o.amount > 0 && Math.hypot(o.x-state.px, o.y-state.py) <= 46);
+  const oak = state.oaks.find(o => o.alive && o.amount > 0 && Math.hypot(o.x-px, o.y-py) <= 46);
   if (!oak) return false;
   oak.amount--;
   if (oak.amount <= 0) oak.alive = false; // se agota en silencio: reubicas, no destruyes con karma
-  state.carriedNut = true;
-  log('Llevas una nuez (C para enterrar)', 'info');
+  t.carriedNut = true;
+  if (!forAgent) log('Llevas una nuez (C para enterrar)', 'info');
   return true;
+}
+function carryAction() {
+  if (state.dead || state.hidden || state.speciesKey !== 'ardilla') return false;
+  return buryOrCarryNut(null);
 }
 
 // Sentido de especie (V: topo temblor / zorro rastro)

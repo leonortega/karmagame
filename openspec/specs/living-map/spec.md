@@ -5,7 +5,7 @@
 Define the living ecosystem shared by player and CPU animals: one unified roster of agents of every species on a bigger persistent map, where the player possesses exactly one agent and can start as any species.
 ## Requirements
 ### Requirement: Unified animal roster with possessed player agent
-The system SHALL represent every animal on the map (player and CPU alike) as an agent with species, position, facing, HP, and brain (PLAYER or AI), where exactly one agent is possessed by the player. The possessed agent carries judgment eligibility; every AI agent additionally carries its own `karma`, `pa`, `owned`, and `lifeLog` ledger.
+The system SHALL represent every animal on the map (player and CPU alike) as an agent with species, position, facing, HP, hambre, sed, edad, and brain (PLAYER or AI), where exactly one agent is possessed by the player. The possessed agent carries judgment eligibility; every AI agent additionally carries its own `karma`, `pa`, `owned`, and `lifeLog` ledger.
 
 - **WHEN** an AI agent interacts with flora
 - **THEN** it **SHALL** plant nuts (Ardilla) that grow young oaks in the shared world, graze diet plants, and shelter per its species behavior
@@ -38,6 +38,10 @@ The system SHALL represent every animal on the map (player and CPU alike) as an 
 - **WHEN** an AI Ardilla buries a carried nut
 - **THEN** an oak-tree seedling spawns at the bury spot exactly as when the player plants, and both grow under the same flora caps
 
+#### Scenario: Every agent carries needs
+- **WHEN** any AI agent is on the map
+- **THEN** it carries hambre, sed, and edad values with the same ranges and reset rules as the player, discarded on death like the rest of its ledger
+
 ### Requirement: Mixed-species population composition by density
 The system SHALL seed and maintain a mixed-species population scaled to world area: at least one agent of every playable grazer kind (oruga, sapo, raton, ardilla, topo), at least one airborne halcon and at least two carnivores (zorro and lobo) whenever the world area supports them, with per-species target counts defined as densities (agents per unit area).
 
@@ -54,19 +58,27 @@ The system SHALL seed and maintain a mixed-species population scaled to world ar
 - **THEN** agent counts scale proportionally so per-agent food availability stays comparable
 
 ### Requirement: Shared hunger-eat-die loop for all agents
-Every agent on the map (player or AI) SHALL lose Vida continuously at the same drain rate, eat only its DIET table entries with the same Vida gains (no karma, no PA for AI), and die at 0 Vida leaving a fresh carrion. AI kills obey the same contact and kill verbs as player kills.
+Every agent on the map (player or AI) SHALL drain hambre and sed continuously at the same species rates, regenerate vida over time only when hambre AND sed are both above threshold, otherwise drain vida with the same deficit multiplier, drink from charcos and lagos with the same sed and sip-vida gains, eat only its DIET table entries with the same Vida gains (no karma, no PA for AI), and die at 0 Vida leaving a fresh carrion. AI kills obey the same contact and kill verbs as player kills. Role-hunter NPC predators (zorro, lobo, saponpc pressure roles) SHALL drain hambre/sed/edad and drink like other agents, but their Vida SHALL be unaffected by needs and they SHALL NOT die of hunger or thirst: their stamina is a pressure-role constant, and combat and feast gains still apply.
 
 #### Scenario: NPC grazer eats and survives
 - **WHEN** an AI raton reaches a berry patch with fruit remaining
 - **THEN** the patch loses one fruit and the agent gains the same Vida as a player would, with no karma or PA granted
 
 #### Scenario: NPC starves without food
-- **WHEN** an AI agent finds no food for an extended time
-- **THEN** its Vida drains at the standard rate and it dies at 0, spawning carrion
+- **WHEN** an AI agent finds no food or water for an extended time below threshold
+- **THEN** its Vida drains at the standard deficit rate and it dies at 0, spawning carrion
 
 #### Scenario: NPC carnivore hunts fauna
 - **WHEN** an AI carnivore (zorro or lobo) perceives a smaller or equal-size agent
 - **THEN** it pursues and strikes on contact, killing the victim and spawning carrion; it never targets itself
+
+#### Scenario: NPC drinks like the player
+- **WHEN** an AI agent with sed below threshold reaches a charco edge within drink range
+- **THEN** it gains the same sed refill and sip-vida heal as a player would, with no karma or PA granted
+
+#### Scenario: Hunter pressure never starves out
+- **WHEN** a role-hunter NPC goes unfed and unwatered for an extended time
+- **THEN** its hambre, sed, and edad drain and it detours to drink when thirsty, but its Vida never drops from needs and it keeps hunting per the trophic table
 
 ### Requirement: Player can start as any species
 The start-select screen SHALL list all playable species across all tiers (oruga, sapo, raton, ardilla, topo, halcon, zorro, lobo) and the player MAY choose any of them for the first life. The first life is exempt from the judgment matrix.

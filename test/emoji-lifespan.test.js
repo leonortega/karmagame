@@ -171,13 +171,15 @@ describe('info restaurada: etiquetas, barras y anillos', () => {
 describe('hambre por especie (jugador)', () => {
   it('oruga pierde mas vida que lobo en 1s sin comer ni depredadores', () => {
     let s = reset('oruga');
-    s.agents = []; // sin fauna ni cazadores: solo el hambre
+    s.agents = []; // sin fauna ni cazadores: solo las necesidades
+    s.hambre = 10; s.sed = 10; // bajo umbral: drena en vez de regenerar
     const hp0 = s.hp;
     update(1);
     const lossOruga = hp0 - S().hp;
     reset('lobo');
     const s2 = S();
     s2.agents = [];
+    s2.hambre = 10; s2.sed = 10;
     const hp02 = s2.hp;
     update(1);
     const lossLobo = hp02 - S().hp;
@@ -190,6 +192,7 @@ describe('hambre por especie (IA)', () => {
     reset('raton');
     const o = mkAgent({ role: 'fauna', speciesKey: 'oruga', x: 0, y: 0, hp: 50, brain: 'AI', kind: 'grazer' });
     const l = mkAgent({ role: 'fauna', speciesKey: 'lobo', x: 0, y: 0, hp: 50, brain: 'AI', kind: 'hunter', type: 'lobo' });
+    o.hambre = 10; o.sed = 10; l.hambre = 10; l.sed = 10; // bajo umbral: drena
     const s = S();
     s.agents = [];
     s.bushes = []; s.shrubs = []; s.patches = []; s.clusters = [];

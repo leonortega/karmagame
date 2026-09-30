@@ -61,6 +61,7 @@ describe('aiArdilla (ai-behavior-karma 2.3)', () => {
     const s = reset('raton');
     clearFood(s);
     const a = aiAgent('ardilla');
+    a.verbCds = [0, 0, 0, 99, 0]; // corteza en cd: aísla la ruta llevar→plantar
     s.agents = [a];
     s.oaks = [mkPatch('nuts', a.x + 5, a.y, 3)];
     aiArdilla(a, 0.1);
@@ -356,7 +357,7 @@ describe('integración updateAgents (ai-behavior-karma 6.1, 6.4, 6.5)', () => {
     const s = reset('raton');
     clearFood(s);
     const a = aiAgent('raton', 0, 0);
-    a.hp = 0.05; a.karma = 40;
+    a.hp = 0.05; a.karma = 40; a.hambre = 10; a.sed = 10; // bajo umbral: drena y muere
     s.agents = [a];
     updateAgents(1); // reloj lento por especie: 1s basta para 0.05 de vida
     assert.ok(!s.agents.includes(a));

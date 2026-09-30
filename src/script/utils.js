@@ -31,6 +31,39 @@ function nearestPredOf(types, maxD, from) {
 function fmtTime(s){ const m=Math.floor(s/60), ss=Math.floor(s%60); return `${m}:${String(ss).padStart(2,'0')}`; }
 function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
 function hungerRateFor(speciesKey){ return TUNING.hungerPerSec * ((SPECIES[speciesKey]||{}).hungerMult || 1); }
+// sed drena thirstMult veces más rápido que el hambre (vitals-water)
+function thirstRateFor(speciesKey){ return hungerRateFor(speciesKey) * TUNING.thirstMult; }
+// Gancho futuro de edad: hoy 1.0 (la edad solo cuenta, no modera)
+function effAgeMult(){ return 1; }
+// ¿Más sediento que hambriento? El empate bebe: la sed drena más rápido (vitals-water).
+// Sin argumento lee al jugador; con agente lee su propio ledger (paridad IA).
+function thirstier(t) {
+  const o = t || state;
+  return (100 - (o.sed ?? 100)) >= (100 - (o.hambre ?? 100));
+}
+// Agua más cercana desde el borde (se bebe en la orilla, no en el centro)
+function nearestWaterFor(ax, ay, maxD) {
+  let best = null, bd = maxD;
+  for (const w of state.waters || []) {
+    const d = Math.hypot(w.x - ax, w.y - ay) - w.r;
+    if (d < bd) { bd = d; best = w; }
+  }
+  return best;
+}
+// Tick compartido jugador/IA (vitals-water): stocks drenan siempre; la vida
+// regen solo si hambre Y sed superan umbrales, si no drena con tope de déficit.
+// El daño (mordisco, ponzoña, verbos) resta hp aparte: aquí nunca se compensa.
+function updateNeeds(t, maxHp, dt) {
+  t.hambre = clamp((t.hambre ?? 100) - hungerRateFor(t.speciesKey) * dt, 0, 100);
+  t.sed = clamp((t.sed ?? 100) - thirstRateFor(t.speciesKey) * dt, 0, 100);
+  t.edad = (t.edad || 0) + dt;
+  if (t.hambre > TUNING.regenHambre && t.sed > TUNING.regenSed) {
+    t.hp = Math.min(maxHp, t.hp + TUNING.vidaRegenPerSec * dt);
+    return;
+  }
+  const deficit = Math.min((100 - t.hambre) / 100 + (100 - t.sed) / 100, TUNING.deficitMax);
+  t.hp -= hungerRateFor(t.speciesKey) * (1 + deficit) * effAgeMult() * dt;
+}
 
 // --- Terreno sólido (readable-forest-solid-terrain) ---
 // Sólidos derivados del estado existente: refugios, plantas vivas y rocas. Sin registro paralelo.

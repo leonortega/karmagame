@@ -20,11 +20,15 @@ The system SHALL confine play to a bounded 2D world larger than the 1600×1200 b
 - **THEN** reachable food of its diet lies within a bounded travel time comparable to baseline proportions, because counts scale with area
 
 ### Requirement: Keyboard controls for move, eat, shout, shop
-The system SHALL support WASD/arrows for movement, E for eat/strike/Pounce/tongue/Dig/Dive (context by species), Q for shout, B to open/close the mid-life shop, H to hide in / exit a nearby fitting refuge, V for species-sense (Topo/Zorro), C to carry/drop/bury a nut (Ardilla), number keys 1-4 to buy shop items, and R to reincarnate from the Judgment screen.
+The system SHALL support WASD/arrows for movement, E for eat/drink/strike/Pounce/tongue/Dig/Dive (context by species and need: drink when thirstier with water in range, eat when hungrier with food in range, kill verbs first for carnivores), Q for shout, B to open/close the mid-life shop, H to hide in / exit a nearby fitting refuge, V for species-sense (Topo/Zorro), C to carry/drop/bury a nut (Ardilla), number keys 1-4 to buy shop items, and R to reincarnate from the Judgment screen.
 
 #### Scenario: Basic control mapping
 - **WHEN** the user presses movement, E, Q, B, H, V, C, number, or R keys in their valid contexts
 - **THEN** the corresponding move, species action, shout, shop toggle, hide toggle, sense, carry, purchase, or reincarnate action occurs
+
+#### Scenario: E drinks when thirsty
+- **WHEN** the player presses E with water in drink range and sed deficit exceeding hambre deficit
+- **THEN** a drink resolves (sed plus small vida gain) instead of an eat
 
 ### Requirement: Bushes hold finite fruit and die permanently
 **Reason**: Replaced — permanent plant death contradicts a living forest. Plants now regrow fruit and repopulate via seedlings (see `flora-lifecycle`); the last-fruit karma penalty and mimic poison rule are unchanged.
@@ -87,7 +91,7 @@ The system SHALL spawn 4 congeners that wander normally and flee from predators 
 - **THEN** congeners switch to fleeing behavior away from predators
 
 ### Requirement: HUD and cause-effect log are always visible
-The system SHALL display species/tier, Vida with max, Karma value with polarity, PA, elapsed time, shout cooldown state, hidden state with refuge prompt when near a fitting refuge, carried nut state, species-sense cooldown, and the last 5 cause-effect log entries with good/bad/info polarity.
+The system SHALL display species/tier, Vida with max, hambre stock, sed stock, edad counter, Karma value with polarity, PA, elapsed time, shout cooldown state, hidden state with refuge prompt when near a fitting refuge, carried nut state, species-sense cooldown, and the last 5 cause-effect log entries with good/bad/info polarity.
 
 #### Scenario: Player reads consequences
 - **WHEN** any karma-relevant event occurs
@@ -96,6 +100,10 @@ The system SHALL display species/tier, Vida with max, Karma value with polarity,
 #### Scenario: Refuge prompt appears
 - **WHEN** the player stands near a refuge its size fits
 - **THEN** a prompt shows the H key and the refuge name
+
+#### Scenario: Needs read at a glance
+- **WHEN** hambre drops below its regen threshold or sed drops below its regen threshold
+- **THEN** the corresponding bar shows the shortfall state immediately without opening any overlay
 
 ### Requirement: Mid-life shop runs in real time
 The system SHALL open the shop overlay on B without pausing the world (predators keep hunting, hunger keeps draining), SHALL close it on B, number-key purchase, or Escape, SHALL list each item with cost, effect, and affordable/owned state, and SHALL log every purchase as a cause-effect entry.
@@ -109,7 +117,7 @@ The system SHALL open the shop overlay on B without pausing the world (predators
 - **THEN** the shop closes and the Judgment screen appears instead
 
 ### Requirement: Refuges gate hiding by size
-The system SHALL spawn per life 3 burrow-S (max size 1), 3 burrow-M (max size 2), 2 hollow-trees (max size 2, climbers only: Ardilla), 2 thorn-bushes (max size 2), and 2 old-oaks (max size 3, no fruit, canopy cover vs ground predators; the Halcón is exempt — see `flora-lifecycle`). Hiding SHALL require size fit, SHALL freeze movement and eating while hidden, SHALL keep hunger draining, and SHALL end on H or on death.
+The system SHALL spawn per life 3 burrow-S (max size 1), 3 burrow-M (max size 2), 2 hollow-trees (max size 2, climbers only: Ardilla), 2 thorn-bushes (max size 2), and 2 old-oaks (max size 3, no fruit, canopy cover vs ground predators; the Halcón is exempt — see `flora-lifecycle`). Hiding SHALL require size fit, SHALL freeze movement and eating while hidden, SHALL keep hunger and thirst draining, SHALL suspend vida regen while hidden unless both needs stay above threshold, and SHALL end on H or on death.
 
 #### Scenario: Too big to hide
 - **WHEN** a Zorro (size 3) presses H near a burrow-M
@@ -122,6 +130,10 @@ The system SHALL spawn per life 3 burrow-S (max size 1), 3 burrow-M (max size 2)
 #### Scenario: Old oak fits the mid-sized
 - **WHEN** a Ratón or Zorro (size ≤ 3) presses H near an old-oak
 - **THEN** it hides under the canopy; ground predators lose the trail while the Halcón does not
+
+#### Scenario: Hiding drains thirst too
+- **WHEN** the player hides for 30s without drinking
+- **THEN** sed has drained for 30s exactly as hambre did, and vida regen stayed suspended unless both needs held above threshold
 
 ### Requirement: Carrion rots on a clock
 The system SHALL age every carrion fresh (eat: +20 Vida) → stale after 30s (eat: +8 Vida) → rotten after 60s (eat: −25 Vida), with visible state (color shift, flies when rotten), and SHALL never change karma for eating carrion at any stage.
@@ -180,4 +192,18 @@ The system SHALL draw every world entity as a cohesive emoji glyph over a solid 
 #### Scenario: Apex reads larger than prey
 - **WHEN** a Lobo and an Oruga appear together
 - **THEN** the Lobo emoji renders larger than the Oruga emoji within the animal band
+
+### Requirement: Infinite water bodies dot the map
+The system SHALL seed infinite charcos (small, scattered) and lagos (large, few) as drinkable terrain with counts scaled by world area as densities, SHALL render each with a distinct water glyph and drink radius, and SHALL persist them across reincarnation like refuges and rocks.
+
+#### Scenario: Water is reachable by density
+- **WHEN** the possessed agent crosses the enlarged world at its species speed
+- **THEN** a drinkable charco or lago lies within a bounded travel time comparable to food proportions, because counts scale with area
+
+### Requirement: Insects cluster at lagos
+The system SHALL bias insect respawns near lagos while keeping the existing respawn cadence (1 per 20s, max 6) and wander behavior, so lake shores visibly hold more insects for Sapo/Topo hunters.
+
+#### Scenario: Shore respawn bias
+- **WHEN** an insect respawns with a lago on the map
+- **THEN** it appears within lake-shore range far more often than at a uniform random point
 
