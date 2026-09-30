@@ -6,7 +6,7 @@ const { reset, S, key } = require('./harness');
 function clearWorld(s) {
   s.bushes = []; s.shrubs = []; s.patches = []; s.clusters = [];
   s.clumps = []; s.oaks = []; s.seedlings = []; s.carrions = []; s.insects = [];
-  s.refuges = []; s.rocks = [];
+  s.refuges = []; s.rocks = []; s.waters = [];
 }
 
 describe('sólidos (1.3)', () => {
@@ -122,6 +122,12 @@ describe('línea de visión de troncos (2.1-2.5)', () => {
     setupTrunk();
     assert.ok(!losBlocked(0, 0, 400, 0, true));
   });
+  it('el agua nunca ciega aunque el lago sea grande', () => {
+    const s = reset('raton');
+    clearWorld(s);
+    s.waters = [{ kind: 'lago', x: 200, y: 0, r: TUNING.lagoR }]; // r lago > tronco: sin exencion taparia
+    assert.ok(!losBlocked(0, 0, 400, 0, false));
+  });
   it('strikeAgents del zorro pierde a la presa tras el tronco: ni persigue ni mata', () => {
     const s = setupTrunk();
     s.px = 1000; s.py = 1000; // jugador lejos
@@ -192,8 +198,49 @@ describe('legibilidad del render (3.1-3.7)', () => {
   });
 });
 
-describe('rocas (1.8)', () => {
-  it('nacen escaladas por área y persisten entre vidas', () => {
+describe('agua solida selectiva (water-terrain-entry 2.2)', () => {
+  function lakeAt(s, x = 100, y = 100) {
+    s.waters = [{ kind: 'lago', x, y, r: TUNING.lagoR }];
+  }
+  it('no-nadador dentro del lago acaba en la orilla', () => {
+    const s = reset('raton');
+    clearWorld(s); lakeAt(s);
+    const a = { x: 110, y: 100 }; // dentro (r lago >> 10)
+    resolveCollisions({ r: SPECIES.raton.radius, get: () => a, set: (k, v) => a[k] = v });
+    assert.ok(Math.hypot(a.x - 100, a.y - 100) >= TUNING.lagoR + SPECIES.raton.radius - 0.01);
+  });
+  it('sapo nada: el agua no lo empuja', () => {
+    const s = reset('sapo');
+    clearWorld(s); lakeAt(s);
+    const a = { x: 110, y: 100 };
+    resolveCollisions({ r: SPECIES.sapo.radius, skipWater: true, get: () => a, set: (k, v) => a[k] = v });
+    assert.equal(a.x, 110);
+    assert.equal(a.y, 100);
+  });
+  it('halcon en vuelo ignora el agua; topo bloqueado como el resto', () => {
+    const s = reset('halcon');
+    clearWorld(s); lakeAt(s);
+    const f = { x: 110, y: 100 };
+    resolveCollisions({ r: SPECIES.halcon.radius, skipWater: true, get: () => f, set: (k, v) => f[k] = v });
+    assert.equal(f.x, 110);
+    const t = { x: 110, y: 100 };
+    resolveCollisions({ r: SPECIES.topo.radius, get: () => t, set: (k, v) => t[k] = v });
+    assert.ok(Math.hypot(t.x - 100, t.y - 100) >= TUNING.lagoR + SPECIES.topo.radius - 0.01);
+  });
+  it('desliza por la orilla: no penetra al avanzar hacia el lago', () => {
+    const s = reset('raton');
+    clearWorld(s); lakeAt(s);
+    const min = TUNING.lagoR + SPECIES.raton.radius;
+    const a = { x: 100 - min, y: 100 };
+    for (let i = 0; i < 30; i++) {
+      a.x += 2;
+      resolveCollisions({ r: SPECIES.raton.radius, get: () => a, set: (k, v) => a[k] = v });
+    }
+    assert.ok(Math.hypot(a.x - 100, a.y - 100) >= min - 0.01);
+  });
+});
+
+describe('rocas (1.8)', () => {  it('nacen escaladas por área y persisten entre vidas', () => {
     WORLD.w = 1600; WORLD.h = 1200;
     let s = reset('raton');
     const base = s.rocks.length;

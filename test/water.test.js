@@ -199,7 +199,7 @@ describe('insectos anclados al lago (4.1-4.2)', () => {
     } finally { TUNING.lakeInsectBias = keep; }
     assert.ok(s.insects.length > 0);
     assert.ok(s.insects.every((ins) =>
-      Math.hypot(ins.x - 1600, ins.y - 1200) - TUNING.lagoR <= TUNING.lakeShore + 1));
+      Math.hypot(ins.x - 1600, ins.y - 1200) - TUNING.lagoR <= TUNING.lakeShore + 30)); // anillo (r+8) + deriva del vagar
   });
   it('tope y cadencia intactos aunque haya lago', () => {
     const s = reset('sapo');
@@ -426,6 +426,52 @@ describe('updateNeeds compartido (1.3)', () => {
     assert.ok(t.hambre < 100);
   });
 });
+describe('solo agua dentro del agua (water-terrain-entry 3.3)', () => {
+  function contentsInside(s) {
+    const pts = [];
+    for (const l of [s.bushes, s.shrubs, s.patches, s.clusters, s.clumps, s.oaks]) for (const p of l) pts.push(p);
+    for (const r of s.refuges) pts.push(r);
+    for (const k of s.rocks) pts.push(k);
+    for (const a of s.agents) pts.push(a);
+    for (const i of s.insects) pts.push(i);
+    return pts.filter((p) => insideWater(p.x, p.y));
+  }
+  it('insideWater dice dentro/fuera con margen', () => {
+    const s = reset('raton');
+    s.waters = [{ kind: 'lago', x: 100, y: 100, r: 50 }];
+    assert.ok(insideWater(100, 100));
+    assert.ok(!insideWater(100 + 50 + 1, 100));
+    assert.ok(insideWater(100 + 50 + 1, 100, 5));
+  });
+  it('mundo fresco: nada salvo agua dentro de charcos y lagos', () => {
+    for (let i = 0; i < 3; i++) {
+      const s = reset('raton');
+      assert.deepEqual(contentsInside(s), [], `vida ${i}: algo nacio dentro del agua`);
+    }
+  });
+  it('insectos sesgados caen en el anillo de orilla, nunca dentro', () => {
+    const s = reset('sapo');
+    s.waters = [{ kind: 'lago', x: 1600, y: 1200, r: TUNING.lagoR }];
+    s.insects = [];
+    const keep = TUNING.lakeInsectBias;
+    TUNING.lakeInsectBias = 1;
+    try {
+      for (let i = 0; i < 8; i++) s.insects.push(spawnInsectPt());
+    } finally { TUNING.lakeInsectBias = keep; }
+    assert.ok(s.insects.length === 8);
+    for (const ins of s.insects) {
+      const d = Math.hypot(ins.x - 1600, ins.y - 1200);
+      assert.ok(d >= TUNING.lagoR, `insecto fuera del agua: dist ${d}`);
+      assert.ok(d <= TUNING.lagoR + 8 + TUNING.lakeShore + 1, `insecto en orilla: dist ${d}`);
+    }
+  });
+  it('addCarrion junto al agua no deja carne dentro', () => {
+    const s = reset('raton');
+    s.waters = [{ kind: 'lago', x: 500, y: 500, r: TUNING.lagoR }];
+    addCarrion(500, 500);
+    assert.ok(!insideWater(s.carrions[0].x, s.carrions[0].y));
+  });
+});
 describe('TUNING de necesidades (1.1)', () => {
   it('umbrales de regen existen y sed exige mas que hambre vacia', () => {
     assert.equal(TUNING.regenHambre, 30);
@@ -450,5 +496,26 @@ describe('TUNING de necesidades (1.1)', () => {
   it('insectos anclados al lago: probabilidad y alcance de orilla', () => {
     assert.ok(TUNING.lakeInsectBias > 0 && TUNING.lakeInsectBias < 1);
     assert.ok(TUNING.lakeShore > 0);
+  });
+});
+describe('entrada anfibia al agua (water-terrain-entry 1.2)', () => {
+  it('la tabla deja entrar solo al sapo (el pato futuro es una fila)', () => {
+    assert.equal(WATER_ENTER.sapo, true);
+    for (const k of Object.keys(SPECIES)) {
+      if (k === 'sapo') continue;
+      assert.ok(!WATER_ENTER[k], `${k} no entra al agua`);
+    }
+  });
+  it('el lago lee como lago y el charco como charco (radio muy mayor)', () => {
+    assert.ok(TUNING.lagoR >= 3 * TUNING.charcoR, `lago ${TUNING.lagoR} >= 3x charco ${TUNING.charcoR}`);
+  });
+  it('orilla mordible con tabla trofica intacta: zorro caza sapo, lobo no', () => {
+    assert.ok(edibleFor('zorro', 'sapo', TUNING.snapRange), 'zorro muerde sapo al contacto en la orilla');
+    assert.ok(!edibleFor('lobo', 'sapo', TUNING.snapRange), 'lobo no abre caza de sapo por el agua');
+  });
+  it('charco nunca esconde (centro al alcance) y el lago hondo si', () => {
+    const reach = SPECIES.sapo.radius + PRED.zorro.body / 2; // alcance de contacto existente
+    assert.ok(TUNING.charcoR < reach, `charco ${TUNING.charcoR} < alcance ${reach}`);
+    assert.ok(TUNING.lagoR > reach + SPECIES.zorro.radius, `lago ${TUNING.lagoR} esconde en el centro`);
   });
 });

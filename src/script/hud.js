@@ -2,10 +2,42 @@
 // Depende de globales: state + state.js (effMaxHp, effSize, refugeFits) + utils.js (fmtTime) + shop.js (renderShop).
 function log(html, cls='info') {
   const el = document.getElementById('log');
+  if (!el) return;
   const d = document.createElement('div');
   d.className = cls; d.innerHTML = html;
   el.prepend(d);
   while (el.children.length>5) el.lastChild.remove();
+}
+
+// Eventos de otros animales: panel izquierdo (leyenda + fauna)
+function logOther(html, cls='info') {
+  const el = document.getElementById('otherLog');
+  if (!el) return;
+  const d = document.createElement('div');
+  d.className = cls; d.innerHTML = html;
+  el.prepend(d);
+  while (el.children.length>5) el.lastChild.remove();
+}
+
+// Fila del panel izquierdo: icono + karma + vida de cada agente visible
+function otherPanelLines() {
+  if (typeof state === 'undefined' || !state.agents) return [];
+  return state.agents.slice(0, 8).map(a => {
+    const sp = SPECIES[a.speciesKey];
+    if (!sp) return '';
+    const icon = speciesIcon(a.speciesKey);
+    const last = (a.lifeLog || []).slice(-1)[0];
+    return `${icon} ${sp.name} k:${Math.round(a.karma || 0)} hp:${Math.ceil(a.hp)}${last ? ' · ' + last : ''}`;
+  });
+}
+
+function renderOtherPanel() {
+  const el = document.getElementById('otherPanel');
+  if (!el) return;
+  const lines = otherPanelLines();
+  el.innerHTML = lines.length
+    ? lines.map(l => `<div class="other">${l}</div>`).join('')
+    : '<div class="other">sin fauna cerca</div>';
 }
 
 // utils.js: fmtTime
@@ -58,4 +90,5 @@ function updateHud() {
     return `<span class="verb${cd ? ' cd' : ''}${poor}">[${v.slot}] ${v.name}${cd}</span>`;
   }).join(' ');
   if (state.shopOpen) renderShop();
+  renderOtherPanel();
 }

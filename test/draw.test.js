@@ -1,7 +1,7 @@
 // test/draw.test.js - cada elemento tiene icono/etiqueta distinguible (legibilidad)
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { reset } = require('./harness');
+const { reset, S } = require('./harness');
 
 describe('iconos distinguibles por elemento', () => {
   it('speciesIcon da un emoji distinto por especie (8 especies)', () => {
@@ -47,5 +47,24 @@ describe('iconos distinguibles por elemento', () => {
   it('render dibuja un mundo fresco sin lanzar', () => {
     reset();
     assert.doesNotThrow(() => render());
+  });
+  it('agua: disco azul a escala del radio con glifo y etiqueta propios', () => {
+    reset();
+    const charco = { kind: 'charco', x: 0, y: 0, r: TUNING.charcoR };
+    const lago = { kind: 'lago', x: 0, y: 0, r: TUNING.lagoR };
+    assert.ok(waterDisc(lago).r > waterDisc(charco).r, 'el lago dibuja mas grande');
+    assert.ok(waterDisc(lago).color && waterDisc(charco).color, 'cuerpo azul por tipo');
+    assert.ok(waterIcon('charco') !== waterIcon('lago'), 'glifo propio por tipo');
+    const calls = [];
+    const orig = globalThis.drawEmoji;
+    globalThis.drawEmoji = (icon, x, y, size) => { calls.push({ icon, size }); };
+    try {
+      S().waters = [charco, lago];
+      assert.doesNotThrow(() => drawWaterField());
+    } finally {
+      globalThis.drawEmoji = orig;
+    }
+    assert.ok(calls.some((c) => c.icon === waterIcon('charco')), 'charco conserva glifo');
+    assert.ok(calls.some((c) => c.icon === waterIcon('lago')), 'lago conserva glifo');
   });
 });

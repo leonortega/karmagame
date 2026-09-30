@@ -162,14 +162,22 @@ function drawRefugeField() {
   }
 }
 
-// Agua infinita: medalla azul + glifo por tipo + etiqueta (sin estado de agotamiento)
+// Agua infinita: cuerpo azul a escala del radio + glifo por tipo + etiqueta (sin agotamiento)
+// waterDisc mapea el cuerpo (puro, testeable); drawWaterField lo pinta con glifo y etiqueta.
+function waterDisc(w) {
+  return { r: w.r, color: w.kind === 'lago' ? '#1565c0' : '#42a5f5' };
+}
 function drawWaterField() {
   for (const w of state.waters || []) {
+    const body = waterDisc(w);
     ctx.save(); ctx.translate(w.x, w.y);
-    drawMedal(EMOJI_SIZE.terrain + w.r / 10, '#1565c0');
-    if (state.revealT > 0) { // ojeada/temblor: el alcance de bebida se delinea
+    ctx.fillStyle = body.color;
+    ctx.beginPath(); ctx.arc(0, 0, body.r, 0, 7); ctx.fill();
+    ctx.strokeStyle = 'rgba(13,71,161,.8)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, body.r, 0, 7); ctx.stroke();
+    if (state.revealT > 0) { // ojeada/temblor: la orilla se delinea
       ctx.strokeStyle = '#ffee58'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(0, 0, w.r, 0, 7); ctx.stroke();
+      ctx.beginPath(); ctx.arc(0, 0, body.r, 0, 7); ctx.stroke();
     }
     ctx.restore();
     drawEmoji(waterIcon(w.kind), w.x, w.y - 6, EMOJI_SIZE.terrain);
@@ -220,20 +228,11 @@ function drawMeadow(x0, y0, tile) {
 }
 
 const LEGEND_LINES = ['🐛oruga 🐸sapo 🐭ratón 🐿️ardilla', '🦔topo 🦅halcón 🦊zorro 🐺lobo', '🍒bayas 🍎manzana 🥕zanahoria', '🍄setas 🌰nuez 🍃hojas 🦗bicho', '🍖carroña 🕳️madriguera 🪵tronco', '🌵zarza 🌳roble 🪨roca 🌱brote'];
-function drawLegend() {
-  const lines = LEGEND_LINES;
-  ctx.save();
-  ctx.globalAlpha = 0.9;
-  ctx.fillStyle = 'rgba(12,14,17,.85)';
-  ctx.fillRect(canvas.width - 208, 8, 200, lines.length * 14 + 22);
-  ctx.globalAlpha = 1;
-  ctx.fillStyle = '#fff';
-  ctx.font = '11px system-ui,sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillText('LEYENDA', canvas.width - 200, 12);
-  lines.forEach((ln, i) => ctx.fillText(ln, canvas.width - 200, 28 + i * 14));
-  ctx.restore();
+// Disposición UI: la leyenda vive en el panel izquierdo HTML; en el canvas
+// solo quedan los avisos del jugador, anclados a la derecha.
+function statusAnchor() {
+  const w = (typeof canvas !== 'undefined' && canvas.width) || 960;
+  return { x: w - 12, align: 'right' };
 }
 
 function render() {
@@ -304,11 +303,16 @@ function render() {
   ctx.globalAlpha = 1;
   drawTag('TÚ ' + speciesIcon(state.speciesKey) + ' ' + state.sp.name, state.px, state.py + state.sp.radius + 14, '#1565c0');
   ctx.restore();
-  drawLegend();
+  const anchor = statusAnchor();
+  ctx.save();
+  ctx.textAlign = anchor.align;
+  ctx.textBaseline = 'top';
+  ctx.font = '12px system-ui,sans-serif';
   let y = 18;
-  if (state.lureTimer > 0) { ctx.fillStyle = '#ff5252'; ctx.fillText('¡Te expusiste! Depredadores hacia ti ' + Math.ceil(state.lureTimer) + 's', 12, y); y += 16; }
-  if (state.hidden) { ctx.fillStyle = '#9ccc65'; ctx.fillText('OCULTO (H para salir, hambre y sed siguen)', 12, y); y += 16; }
-  if (state.grounded) { ctx.fillStyle = '#ffcc80'; ctx.fillText('EN TIERRA (muévete para despegar)', 12, y); y += 16; }
-  if (camouflaged()) { ctx.fillStyle = '#4db6ac'; ctx.fillText('MIMETIZADO (inmóvil)', 12, y); y += 16; }
-  if (curled()) { ctx.fillStyle = '#9ccc65'; ctx.fillText('ENROSCADO (mitad de daño)', 12, y); }
+  if (state.lureTimer > 0) { ctx.fillStyle = '#ff5252'; ctx.fillText('¡Te expusiste! Depredadores hacia ti ' + Math.ceil(state.lureTimer) + 's', anchor.x, y); y += 16; }
+  if (state.hidden) { ctx.fillStyle = '#9ccc65'; ctx.fillText('OCULTO (H para salir, hambre y sed siguen)', anchor.x, y); y += 16; }
+  if (state.grounded) { ctx.fillStyle = '#ffcc80'; ctx.fillText('EN TIERRA (muévete para despegar)', anchor.x, y); y += 16; }
+  if (camouflaged()) { ctx.fillStyle = '#4db6ac'; ctx.fillText('MIMETIZADO (inmóvil)', anchor.x, y); y += 16; }
+  if (curled()) { ctx.fillStyle = '#9ccc65'; ctx.fillText('ENROSCADO (mitad de daño)', anchor.x, y); }
+  ctx.restore();
 }

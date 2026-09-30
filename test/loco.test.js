@@ -6,7 +6,7 @@ const { reset, key, keyUp } = require('./harness');
 function clearWorld(s) {
   s.bushes = []; s.shrubs = []; s.patches = []; s.clusters = [];
   s.clumps = []; s.oaks = []; s.seedlings = []; s.carrions = []; s.insects = [];
-  s.refuges = []; s.rocks = [];
+  s.refuges = []; s.rocks = []; s.waters = []; // sin orillas: la marcha se mide en abierto
   s.agents = s.agents.filter(a => a.role !== 'hunter' && a.role !== 'company');
 }
 

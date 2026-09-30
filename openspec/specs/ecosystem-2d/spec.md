@@ -20,11 +20,15 @@ The system SHALL confine play to a bounded 2D world larger than the 1600×1200 b
 - **THEN** reachable food of its diet lies within a bounded travel time comparable to baseline proportions, because counts scale with area
 
 ### Requirement: Keyboard controls for move, eat, shout, shop
-The system SHALL support WASD/arrows for movement, E for eat/drink/strike/Pounce/tongue/Dig/Dive (context by species and need: drink when thirstier with water in range, eat when hungrier with food in range, kill verbs first for carnivores), Q for shout, B to open/close the mid-life shop, H to hide in / exit a nearby fitting refuge, V for species-sense (Topo/Zorro), C to carry/drop/bury a nut (Ardilla), number keys 1-4 to buy shop items, and R to reincarnate from the Judgment screen.
+The system SHALL support WASD/arrows for movement, E for eat/drink/strike/Pounce/tongue/Dig/Dive (context by species and need: drink when thirstier with water in range, eat when hungrier with food in range, kill verbs first for carnivores), Q for shout, B to open/close the mid-life shop, H to hide in / exit a nearby fitting refuge, V for species-sense (Topo/Zorro), C to carry/drop/bury a nut (Ardilla), number keys 1-4 to buy shop items, and R to reincarnate from the Judgment screen. The controls hint SHALL be displayed as a list with one entry per key binding in the right panel.
 
 #### Scenario: Basic control mapping
 - **WHEN** the user presses movement, E, Q, B, H, V, C, number, or R keys in their valid contexts
 - **THEN** the corresponding move, species action, shout, shop toggle, hide toggle, sense, carry, purchase, or reincarnate action occurs
+
+#### Scenario: Controls read as a list
+- **WHEN** the player looks at the right panel
+- **THEN** each key binding appears on its own list row (key in bold plus action), not as a single run-on line
 
 #### Scenario: E drinks when thirsty
 - **WHEN** the player presses E with water in drink range and sed deficit exceeding hambre deficit
@@ -91,11 +95,15 @@ The system SHALL spawn 4 congeners that wander normally and flee from predators 
 - **THEN** congeners switch to fleeing behavior away from predators
 
 ### Requirement: HUD and cause-effect log are always visible
-The system SHALL display species/tier, Vida with max, hambre stock, sed stock, edad counter, Karma value with polarity, PA, elapsed time, shout cooldown state, hidden state with refuge prompt when near a fitting refuge, carried nut state, species-sense cooldown, and the last 5 cause-effect log entries with good/bad/info polarity.
+The page SHALL use a three-column disposition: a left panel with the emoji legend and the other-animals block, the canvas in the center, and a right panel with the player HUD and the player event feed. The system SHALL display species/tier, Vida with max, hambre stock, sed stock, edad counter, Karma value with polarity, PA, elapsed time, shout cooldown state, hidden state with refuge prompt when near a fitting refuge, carried nut state, and species-sense cooldown in the right panel. Cause-effect entries SHALL be split by subject: player entries (last 5, good/bad/info polarity) go to the right-panel feed, while AI-agent karma entries go to the left-panel other-animals feed. The left-panel other-animals block SHALL hold a single heading with the agent roster rows (icon, karma, vida, last deed) above the other-animals event feed.
 
 #### Scenario: Player reads consequences
 - **WHEN** any karma-relevant event occurs
-- **THEN** the HUD values update immediately and a new log entry appears at the top describing cause and effect
+- **THEN** the HUD values update immediately and a new log entry appears at the top of the matching feed describing cause and effect
+
+#### Scenario: AI deeds stay out of the player feed
+- **WHEN** an AI agent earns karma through its own verbs
+- **THEN** the entry appears in the left-panel other-animals feed and the right-panel player feed is unchanged
 
 #### Scenario: Refuge prompt appears
 - **WHEN** the player stands near a refuge its size fits
@@ -175,7 +183,7 @@ The system SHALL spawn per life the listed initial counts of each food — these
 - **THEN** one leaf has regrown
 
 ### Requirement: Lifelike animal rendering
-The system SHALL draw every world entity as a cohesive emoji glyph over a solid opaque color medal with a size tier by category: animals at animal size with per-species offsets (medal in species color), plants/foods at food size (medal in type color), terrain and small decor at terrain size, except landmark trees (old-oak, hollow-tree) which render larger as landscape anchors. Each form SHALL use its established species emoji, each food its food emoji, each refuge/rock/seedling its terrain emoji, rendered through shared helpers that apply category size, medal backing, shadow, and facing. Vector portrait painters SHALL NOT be the primary sprite. Info overlays SHALL remain: label pills with food counts and refuge names, HP bars with karma over agents, predator outline rings, reveal/tracking rings, vision circle, meadow, and grid. Depleted patches SHALL render a cross with a recovering tag, carrion SHALL use a per-stage icon (fresh, stale, rotten) with a freshness label, and oak-tree seedlings SHALL render as a young tree. Predator NPCs SHALL reuse their species emoji at animal size with a red outline and warning glyph. The legend and game-state warning texts are UI chrome and remain text.
+The system SHALL draw every world entity as a cohesive emoji glyph over a solid opaque color medal with a size tier by category: animals at animal size with per-species offsets (medal in species color), plants/foods at food size (medal in type color), terrain and small decor at terrain size, except landmark trees (old-oak, hollow-tree) which render larger as landscape anchors. Each form SHALL use its established species emoji, each food its food emoji, each refuge/rock/seedling its terrain emoji, rendered through shared helpers that apply category size, medal backing, shadow, and facing. Vector portrait painters SHALL NOT be the primary sprite. Info overlays SHALL remain: label pills with food counts and refuge names, HP bars with karma over agents, predator outline rings, reveal/tracking rings, vision circle, meadow, and grid. Depleted patches SHALL render a cross with a recovering tag, carrion SHALL use a per-stage icon (fresh, stale, rotten) with a freshness label, and oak-tree seedlings SHALL render as a young tree. Predator NPCs SHALL reuse their species emoji at animal size with a red outline and warning glyph. The legend SHALL live only in the left HTML panel and SHALL NOT be drawn on the canvas; the game-state warning texts (exposed, hidden, grounded, camouflaged, curled) SHALL be drawn right-aligned on the canvas as UI chrome text.
 
 #### Scenario: Silhouettes differ
 - **WHEN** all seven forms stand side by side
@@ -194,16 +202,35 @@ The system SHALL draw every world entity as a cohesive emoji glyph over a solid 
 - **THEN** the Lobo emoji renders larger than the Oruga emoji within the animal band
 
 ### Requirement: Infinite water bodies dot the map
-The system SHALL seed infinite charcos (small, scattered) and lagos (large, few) as drinkable terrain with counts scaled by world area as densities, SHALL render each with a distinct water glyph and drink radius, and SHALL persist them across reincarnation like refuges and rocks.
+The system SHALL seed infinite charcos (tiny, scattered) and lagos (large landscape anchors, few) as drinkable terrain with counts scaled by world area as densities, SHALL render each as a blue body scaled to its radius with its distinct water glyph and label kept on top, and SHALL persist them across reincarnation like refuges and rocks. Only water SHALL exist inside: all other scatters SHALL avoid water interiors.
 
 #### Scenario: Water is reachable by density
 - **WHEN** the possessed agent crosses the enlarged world at its species speed
 - **THEN** a drinkable charco or lago lies within a bounded travel time comparable to food proportions, because counts scale with area
 
+#### Scenario: Lago reads as a lake, charco as a puddle
+- **WHEN** a lago and a charco appear on screen together
+- **THEN** the lago renders as a visibly larger blue body than the charco, each keeping its water glyph and label
+
+#### Scenario: Nothing else spawns inside
+- **WHEN** the world seeds food, refuges, rocks, or agents
+- **THEN** every placed entity lands outside all water radii
+
 ### Requirement: Insects cluster at lagos
-The system SHALL bias insect respawns near lagos while keeping the existing respawn cadence (1 per 20s, max 6) and wander behavior, so lake shores visibly hold more insects for Sapo/Topo hunters.
+The system SHALL bias insect respawns to a shore ring around lagos (never inside the water) while keeping the existing respawn cadence (1 per 20s, max 6) and wander behavior, so lake shores visibly hold more insects for Sapo/Topo hunters.
 
 #### Scenario: Shore respawn bias
 - **WHEN** an insect respawns with a lago on the map
-- **THEN** it appears within lake-shore range far more often than at a uniform random point
+- **THEN** it appears in the shore ring around the lago far more often than at a uniform random point, and never inside the water
+
+### Requirement: Shoreline predation without new targeting
+The system SHALL let existing pursuit plus water solids produce shoreline hunting with no trophic change: a zorro SHALL chase a sapo to the nearest shore point and bite across it within existing contact/kill ranges; a lobo SHALL NOT begin hunts for sapo by water alone though contact damage still applies; water SHALL NOT break perception, and hiding/camping rules for H-refuges SHALL NOT apply to water.
+
+#### Scenario: Zorro works the rim
+- **WHEN** a zorro pursues a sapo that enters a lago
+- **THEN** the zorro closes to the nearest shore point and deals contact damage whenever the sapo is within the existing reach across the shore
+
+#### Scenario: No camp timer for water
+- **WHEN** a sapo sits deep inside a lago beyond contact reach
+- **THEN** the pursuer does not enter a refuge-camp state for the water; it continues by its existing wander/hunt rules
 
