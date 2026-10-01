@@ -5,7 +5,7 @@
 Split survival into explicit needs (vida, hambre, sed, edad) with a threshold-gated vida algorithm, and add infinite charco/lago water terrain with lake-anchored insects, all drinkable through the existing E button.
 ## Requirements
 ### Requirement: Split needs model with passive edad
-The system SHALL track per-agent `hambre` (0..100, 100 = full), `sed` (0..100, 100 = hydrated), and `edad` (seconds lived this life, increasing monotonically) alongside `vida` and `karma`. Hambre SHALL drain continuously at the species-paced hunger rate and refill on eating; sed SHALL drain continuously at a faster thirst rate and refill on drinking; edad SHALL increase with time and SHALL have no gameplay effect in this change (reserved hook for future speed/hunger modifiers). All three SHALL reset at the start of each life; karma carry rules are unchanged.
+The system SHALL track per-agent `hambre` (0..100, 100 = full), `sed` (0..100, 100 = hydrated), and `edad` (seconds lived this life, increasing monotonically) alongside `vida` and `karma`. Hambre SHALL drain continuously at the species-paced hunger rate and refill on eating; sed SHALL drain continuously at a faster thirst rate and refill on drinking; edad SHALL increase with time and SHALL have no gameplay effect in this change (reserved hook for future speed/hunger modifiers). All three SHALL reset at the start of each life; karma carry rules are unchanged. The HUD SHALL display edad as per-species animal-years derived from lived seconds via a per-species seconds-per-year table alongside the raw seconds count; the elapsed run-time clock SHALL remain a separately labeled readout.
 
 #### Scenario: Hunger and thirst drain while edad climbs
 - **WHEN** the player survives 10 seconds without eating or drinking
@@ -18,6 +18,10 @@ The system SHALL track per-agent `hambre` (0..100, 100 = full), `sed` (0..100, 1
 #### Scenario: Needs reset each life
 - **WHEN** the player reincarnates
 - **THEN** the new life starts with full hambre and sed stocks and edad at zero, independent of the previous life's values
+
+#### Scenario: Edad displays in animal-years
+- **WHEN** the player looks at the edad readout after surviving N seconds
+- **THEN** it shows the raw seconds plus N divided by that species seconds-per-year as animal-years
 
 ### Requirement: Threshold-gated vida regen and deficit drain
 The system SHALL regenerate vida over time only when hambre is above `H_thresh` AND sed is above `S_thresh`; otherwise it SHALL drain vida with a deficit multiplier that grows as stocks empty. Predator, poison, and verb damage SHALL always subtract from vida directly regardless of needs. All healing SHALL cap at max vida and death SHALL occur at 0 vida with the existing Judgment sequence.

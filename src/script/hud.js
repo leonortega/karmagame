@@ -40,6 +40,39 @@ function renderOtherPanel() {
     : '<div class="other">sin fauna cerca</div>';
 }
 
+// Controles por especie (hud-clarity): BASE + extras, con cuentas (Ns) estilo verbos.
+// R fuera en vida; Q solo gritones; V solo topo/zorro; C solo ardilla.
+function controlRows() {
+  const sk = state.speciesKey;
+  const rows = [];
+  rows.push({ key:'WASD/Flechas', label:'moverse', cd:0 });
+  let eCd = 0, eExtra = '';
+  if (sk === 'zorro' && state.pounceCd > 0) eCd = state.pounceCd;
+  if (sk === 'topo') {
+    if (state.digCd > 0) eCd = state.digCd;
+    eExtra = ` (${state.dug}/${TUNING.digMax})`;
+  }
+  rows.push({ key:'E', label:(CONTROLS_E[sk] || 'comer/cazar') + eExtra, cd:eCd });
+  if (CONTROLS_Q.includes(sk)) rows.push({ key:'Q', label:'gritar', cd:state.shoutCd });
+  if (CONTROLS_V[sk]) rows.push({ key:'V', label:CONTROLS_V[sk], cd:state.senseCd });
+  if (CONTROLS_C.includes(sk)) {
+    const nut = state.carriedNut ? ' (nuez en lomo: C enterrar)' : '';
+    rows.push({ key:'C', label:'llevar/enterrar' + nut, cd:0 });
+  }
+  rows.push({ key:'H', label: state.hidden ? 'salir (hambre y sed siguen)' : 'esconderse', cd:0 });
+  rows.push({ key:'B', label:'tienda (1-3 comprar)', cd:0 });
+  return rows;
+}
+
+function renderControls() {
+  const el = document.getElementById('controls');
+  if (!el) return;
+  el.innerHTML = '<ul>' + controlRows().map(r => {
+    const cd = r.cd > 0 ? ` (${Math.ceil(r.cd)}s)` : '';
+    return `<li class="ctl${cd ? ' cd' : ''}"><b>${r.key}</b> ${r.label}${cd}</li>`;
+  }).join('') + '</ul>';
+}
+
 // utils.js: fmtTime
 
 // Barra de necesidad con marca de umbral y tinte de corto (vitals-water)
@@ -60,20 +93,18 @@ function updateHud() {
   document.getElementById('hpText').textContent = Math.ceil(state.hp)+'/'+effMaxHp();
   paintNeed('hunger', state.hambre, TUNING.regenHambre);
   paintNeed('sed', state.sed, TUNING.regenSed);
-  document.getElementById('edadLabel').textContent = 'Edad ' + Math.floor(state.edad || 0) + 's';
+  document.getElementById('edadLabel').textContent =
+    `Edad ${Math.floor(state.edad || 0)}s (~${animalYears(state.speciesKey, state.edad || 0).toFixed(1)} años)`;
   document.getElementById('karmaText').textContent = state.karma;
   const kf = document.getElementById('karmaFill');
   kf.style.width = Math.abs(state.karma)/2+'%';
   kf.style.marginLeft = state.karma>=0 ? '50%' : (50+state.karma/2)+'%';
   kf.style.background = state.karma>=0 ? '#4caf50' : '#f44336';
-  document.getElementById('paLabel').textContent = 'PA: '+Math.floor(state.pa);
-  document.getElementById('timeLabel').textContent = fmtTime(state.time);
-  let extra = state.shoutCd>0?` · Q en ${Math.ceil(state.shoutCd)}s`:' · Q listo';
-  if (state.speciesKey==='zorro') extra = state.pounceCd>0?` · Zarpazo en ${Math.ceil(state.pounceCd)}s`:' · E zarpazo';
-  if (state.speciesKey==='topo') extra += state.digCd>0?` · Cavar en ${Math.ceil(state.digCd)}s`:` · E cavar (${state.dug}/${TUNING.digMax})`;
-  if (state.senseCd>0) extra += ` · Sentido en ${Math.ceil(state.senseCd)}s`;
-  if (state.carriedNut) extra += ' · nuez en lomo (C enterrar)';
-  document.getElementById('speciesLabel').textContent = `${state.sp.name} T${state.sp.tier}` + extra;
+  const paEl = document.getElementById('paLabel');
+  paEl.innerHTML = `<span class="pa-icon">✦</span> <b>${Math.floor(state.pa)} PA</b>`;
+  paEl.className = 'pa-emph';
+  document.getElementById('timeLabel').textContent = 'Tiempo ' + fmtTime(state.time);
+  document.getElementById('speciesLabel').textContent = `${state.sp.name} Tier ${state.sp.tier}`;
   // prompt de refugio
   const near = state.refuges.filter(r => Math.hypot(r.x-state.px, r.y-state.py) <= TUNING.hideRange);
   const fit = near.find(r => refugeFits(r));
@@ -82,13 +113,14 @@ function updateHud() {
   else if (fit) pr.textContent = `H esconderse (${fit.type})`;
   else if (near.length) pr.textContent = `No cabes aquí (tamaño ${effSize()})`;
   else pr.textContent = '';
-  // Barra de verbos 1-5 (karma-verbs): cd y coste a la vista
+  // Barra de verbos 1-5 (karma-verbs): lista vertical, cd y coste a la vista
   const defs = VERB_DEFS[state.speciesKey] || [];
-  document.getElementById('verbBar').innerHTML = defs.map((v, i) => {
+  document.getElementById('verbBar').innerHTML = '<ul class="verbs">' + defs.map((v, i) => {
     const cd = state.verbCds[i] > 0 ? ` (${Math.ceil(state.verbCds[i])}s)` : '';
     const poor = state.pa < v.costPa ? ' poor' : '';
-    return `<span class="verb${cd ? ' cd' : ''}${poor}">[${v.slot}] ${v.name}${cd}</span>`;
-  }).join(' ');
+    return `<li class="verb verb-row${cd ? ' cd' : ''}${poor}" title="${v.desc}">[${v.slot}] ${v.name}${cd}</li>`;
+  }).join('') + '</ul>';
+  renderControls();
   if (state.shopOpen) renderShop();
   renderOtherPanel();
 }

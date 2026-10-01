@@ -41,9 +41,13 @@ body { margin:0; background:#14161a; color:#e8e8e8; font-family:system-ui, sans-
 #fateBlocks .fate.winner { border-color:#ffd54f; color:#ffd54f; font-weight:bold; }
 #prompt { font-size:13px; color:#9ccc65; min-height:18px; margin-top:4px; }
 #verbBar { font-size:13px; margin-top:4px; min-height:18px; }
-#verbBar .verb { color:#90caf9; margin-right:8px; }
+#verbBar .verbs { list-style:none; margin:4px 0; padding:0; }
+#verbBar .verb { color:#90caf9; margin:2px 0; display:block; }
 #verbBar .verb.cd { color:#666; }
 #verbBar .verb.poor { color:#f44336; }
+#paLabel.pa-emph { color:#ffd54f; font-weight:bold; font-size:15px; }
+#paLabel .pa-icon { margin-right:4px; }
+#controls .ctl.cd { opacity:.55; }
 #jReason { margin:10px 0; font-size:14px; }
 #jNext { font-size:18px; font-weight:bold; }
 #shopItems { text-align:left; font-size:14px; }

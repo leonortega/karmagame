@@ -270,7 +270,10 @@ function addKarma(n, msg, cls='info', agent) {
   t.karma = Math.max(-100, Math.min(100, t.karma + n));
   if (!msg) return;
   record(msg, agent);
-  if (agent) logOther(msg, n>0?'good':n<0?'bad':'info'); // panel izquierdo: otros animales
+  if (agent) {
+    const icon = (agent.speciesKey && typeof speciesIcon === 'function') ? speciesIcon(agent.speciesKey) + ' ' : '';
+    logOther(icon + msg, n>0?'good':n<0?'bad':'info'); // panel izquierdo: emoji + texto
+  }
   else log(msg, n>0?'good':n<0?'bad':'info'); // panel derecho: jugador
 }
 function addPa(n, agent){ (agent || state).pa += n; }
@@ -282,10 +285,10 @@ function aiTryShout(agent) {
   if (agent.speciesKey === 'oruga' || agent.speciesKey === 'halcon' || agent.speciesKey === 'zorro') return false;
   agent.shoutCd = TUNING.shoutCooldown;
   agent.lureTimer = TUNING.aiShoutLureTime; // señuelo compartido: los pred cazan al gritón
-  addKarma(TUNING.shoutKarma, '', 'good', agent);
+  const label = (SPECIES[agent.speciesKey] || {}).name || agent.speciesKey;
+  addKarma(TUNING.shoutKarma, `Grito de ${String(label).toLowerCase()} (+${TUNING.shoutKarma} karma)`, 'good', agent);
   addPa(TUNING.shoutPa, agent);
   companyAgents().forEach(m => m.saved = true);
-  record(`Grito de ${SPECIES[agent.speciesKey].name.toLowerCase()} IA (alerta)`, agent);
   return true;
 }
 

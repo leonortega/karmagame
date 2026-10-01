@@ -88,8 +88,8 @@ describe('updateHud', () => {
     updateHud();
     assert.equal(elsById.hpText.textContent, '50/' + effMaxHp());
     assert.equal(elsById.karmaText.textContent, 20);
-    assert.equal(elsById.paLabel.textContent, 'PA: 7');
-    assert.equal(elsById.timeLabel.textContent, '1:05');
+    assert.ok(String(elsById.paLabel.innerHTML).includes('7'), 'PA con icono: ' + elsById.paLabel.innerHTML);
+    assert.ok(elsById.timeLabel.textContent.includes('1:05'), 'reloj: ' + elsById.timeLabel.textContent);
   });
   it('oculto muestra prompt de salida', () => {
     const s = reset();

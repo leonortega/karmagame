@@ -5,7 +5,7 @@
 Each species gets a 5-verb action bar on keys 1–5 drawn from real animal behavior. Verbs cost vida/PA with per-verb cooldowns, pay karma in the right context, and are cast by AI agents of the same species through the same table — the action bar is each animal's ecological role made playable.
 ## Requirements
 ### Requirement: Five species verbs on keys 1–5
-The game SHALL define `VERB_DEFS[speciesKey]` with exactly 5 verbs per species (slot 1–5), each with name, description, cooldown, and real costs (`costHp`, `costPa`). Keys 1–5 SHALL cast the matching verb; when the shop overlay is open, keys 1–4 SHALL keep buying shop items instead. E/Q/B/H/V/C behavior SHALL be unchanged.
+The game SHALL define `VERB_DEFS[speciesKey]` with exactly 5 verbs per species (slot 1–5), each with name, description, cooldown, and real costs (`costHp`, `costPa`). Keys 1–5 SHALL cast the matching verb; when the shop overlay is open, keys 1–4 SHALL keep buying shop items instead. E/Q/B/H/V/C behavior SHALL be unchanged. The verb bar SHALL render as a vertical list with one item per line showing slot, name, and remaining cooldown, keeping the existing unaffordable-dim behavior.
 
 #### Scenario: Cast a verb
 - **WHEN** the player as topo presses 1 with the shop closed and cooldown ready
@@ -18,6 +18,10 @@ The game SHALL define `VERB_DEFS[speciesKey]` with exactly 5 verbs per species (
 #### Scenario: Dead form cannot cast
 - **WHEN** the player presses any verb key while dead or while the verb is on cooldown
 - **THEN** nothing happens
+
+#### Scenario: Verbs stack vertically
+- **WHEN** the player looks at the verb bar as any species
+- **THEN** five rows appear stacked vertically, each with its slot number and name, and a row on cooldown appends remaining seconds
 
 ### Requirement: Verbs cost vida or PA and pay contextual karma
 Each verb SHALL apply its declared costs before its effect, and karma payouts SHALL be context-conditional (e.g. regurgitate requires a hungry conspecific, cull-weak pays bonus karma when the target's HP is below 30%). Costs that bring Vida to 0 SHALL trigger the normal death path. Existing verb karma values SHALL be preserved when migrating (shout +30, plant +10, aerate +3, groom +5, cede +15, strike +5/+20, prudent +2, pest +3).

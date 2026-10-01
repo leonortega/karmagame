@@ -240,3 +240,27 @@ const LOCO = {
   lobo:    { mode:'continuous' },
 };
 
+// Panel de controles por especie (hud-clarity): BASE compartida + extras por forma.
+// R queda fuera en vida (solo juicio). Q solo gritones, V solo topo/zorro, C solo ardilla.
+const CONTROLS_BASE = [
+  { key:'WASD/Flechas', label:'moverse' },
+  { key:'H', label:'esconderse' },
+  { key:'B', label:'tienda (1-3 comprar)' },
+];
+const CONTROLS_E = {
+  oruga:'comer hojas', sapo:'lengua', raton:'comer', ardilla:'comer/llevar',
+  topo:'cavar/comer', halcon:'picado/aterrizar', zorro:'zarpazo', lobo:'cazar',
+};
+const CONTROLS_Q = ['raton','ardilla','topo','sapo','lobo'];
+const CONTROLS_V = { topo:'temblor', zorro:'rastro' };
+const CONTROLS_C = ['ardilla'];
+
+// Edad en años-animales (display-only): segundos por año según longevidad de la forma.
+const SEC_PER_YEAR = {
+  oruga:15, sapo:15, raton:20, ardilla:20, topo:20, halcon:30, zorro:30, lobo:30,
+};
+// Años-animales vividos (puro, sin efecto en juego: effAgeMult sigue 1.0).
+function animalYears(speciesKey, secs) {
+  return (secs || 0) / (SEC_PER_YEAR[speciesKey] || 20);
+}
+
