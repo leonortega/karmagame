@@ -18,6 +18,33 @@ const REFUGE_SIZE := {"old-oak": 34.0, "hollow-tree": 26.0, "thorn-bush": 20.0, 
 
 const LEGEND_LINES := ["🐛oruga 🐸sapo 🐭ratón 🐿️ardilla", "🦔topo 🦅halcón 🦊zorro 🐺lobo", "🍒bayas 🍎manzana 🥕zanahoria", "🍄setas 🌰nuez 🍃hojas 🦗bicho", "🍖carroña 🕳️madriguera 🪵tronco", "🌵zarza 🌳roble 🪨roca 🌱brote"]
 
+# Visual palette (display-only; gameplay numbers stay in KarmaData.TUNING).
+const MEADOW_B := Color("#1c2620")
+const GRID_LINE := Color(1, 1, 1, 0.045)
+const SHADOW := Color(0, 0, 0, 0.30)
+const RIM := Color(0, 0, 0, 0.35)
+const PILL_BG := Color(0, 0, 0, 0.62)
+const SHORE := Color("#8d9b6a")
+const ROCK_BODY := Color("#607d8b")
+const ROCK_TOP := Color("#90a4ae")
+const INSECT_MEDAL := Color("#5d4037")
+
+const FOOD_MEDAL := {
+	"berries": Color("#c62828"), "apples": Color("#d81b60"), "carrots": Color("#ef6c00"),
+	"mushrooms": Color("#795548"), "nuts": Color("#6d4c41"), "leaves": Color("#2e7d32"),
+	"insects": Color("#f9a825"), "carrion": Color("#4e342e"),
+}
+const REFUGE_MEDAL := {
+	"burrow-S": Color("#4e342e"), "burrow-M": Color("#5d4037"), "hollow-tree": Color("#6d4c41"),
+	"thorn-bush": Color("#33691e"), "old-oak": Color("#1b5e20"), "leafroll": Color("#7cb342"),
+}
+const HP_GOOD := Color("#66bb6a")
+const HP_MID := Color("#ffca28")
+const HP_LOW := Color("#ef5350")
+
+# Display-only world dressing step (gameplay counts stay in TUNING).
+const GRID_STEP := 160.0
+
 
 static func species_icon(form: String) -> String:
 	return str(SPECIES_ICON.get(form, "❓"))
@@ -57,3 +84,29 @@ static func carrion_look(stage: String) -> Dictionary:
 
 static func water_disc(w: Dictionary) -> Dictionary:
 	return {"r": float(w["r"]), "color": Color("#1565c0") if str(w.get("kind", "")) == "lago" else Color("#42a5f5")}
+
+
+static func species_medal(form: String) -> Color:
+	return Color(str(KarmaData.SPECIES.get(form, {"color": "#ffffff"})["color"]))
+
+
+static func food_medal(kind: String) -> Color:
+	return FOOD_MEDAL.get(kind, Color("#757575"))
+
+
+static func refuge_medal(type: String) -> Color:
+	return REFUGE_MEDAL.get(type, Color("#546e7a"))
+
+
+static func hp_frac(hp: float, max_hp: float) -> float:
+	if max_hp <= 0.0:
+		return 0.0
+	return clampf(hp / max_hp, 0.0, 1.0)
+
+
+static func hp_color(frac: float) -> Color:
+	if frac >= 0.55:
+		return HP_GOOD
+	if frac >= 0.25:
+		return HP_MID
+	return HP_LOW

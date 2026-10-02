@@ -56,6 +56,23 @@ static func edad_line(state: Dictionary) -> String:
 	return "Edad %ds (~%.1f años)" % [int(state.get("edad", 0.0)), KarmaData.animal_years(str(state["speciesKey"]), float(state.get("edad", 0.0)))]
 
 
+static func bar(frac: float, width := 10) -> String:
+	var fill := int(round(clampf(frac, 0.0, 1.0) * float(width)))
+	return "■".repeat(fill) + "□".repeat(maxi(0, width - fill))
+
+
+static func hp_frac(state: Dictionary) -> float:
+	return KarmaDraw.hp_frac(float(state.get("hp", 0.0)), KarmaState.eff_max_hp(state))
+
+
+static func hunger_frac(state: Dictionary) -> float:
+	return clampf(float(state.get("hambre", 0.0)) / 100.0, 0.0, 1.0)
+
+
+static func thirst_frac(state: Dictionary) -> float:
+	return clampf(float(state.get("sed", 0.0)) / 100.0, 0.0, 1.0)
+
+
 static func prompt_line(state: Dictionary) -> String:
 	if bool(state.get("hidden", false)):
 		return "Oculto — H salir · hambre y sed siguen drenando"
