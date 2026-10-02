@@ -490,6 +490,72 @@ static func _ai_topo(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _ai_zorro(state: Dictionary, a: Dictionary, dt: float) -> void:
+	if KarmaJev.USE_JEV:
+		_ai_zorro_jev(state, a, dt)
+		return
+	_ai_zorro_ladder(state, a, dt)
+
+
+static func _ai_zorro_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
+	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
+	ai_base(state, a, dt)
+	KarmaJev.intent_tick(a, dt)
+	if ai_flee(state, a, dt):
+		return
+	if ai_thirst(state, a, dt):
+		return
+	if is_hunted(state, a) and str((a.get("jev_intent", {}) as Dictionary).get("kind", "")) != "flee":
+		a["jev_intent"] = {}
+	if _ai_zorro_steer_intent(state, a, dt):
+		return
+	if bool(a.get("jev_live", false)):
+		a["jev_intent"] = {"kind": "wander", "x": float(a["x"]), "y": float(a["y"]), "ttl": 5.0}
+		return
+	KarmaJev.mock_macro(state, a)
+
+
+static func _ai_zorro_steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
+	if not a.has("jev_intent") or (a["jev_intent"] as Dictionary).is_empty():
+		return false
+	if float((a["jev_intent"] as Dictionary).get("ttl", 0.0)) <= 0.0:
+		a["jev_intent"] = {}
+		return false
+	var intent := a["jev_intent"] as Dictionary
+	match str(intent.get("kind", "wander")):
+		"eat", "seek_carrion":
+			var c: Variant = intent.get("target", null)
+			if c != null and (state["carrions"] as Array).has(c):
+				if Vector2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) <= float(KarmaData.TUNING["eatRange"]):
+					return KarmaEat.eat_carrion(state, c, a)
+				KarmaGame.move_toward(state, a, float((c as Dictionary)["x"]), float((c as Dictionary)["y"]), 1.0, dt)
+				return true
+			var near: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
+			if near != null:
+				return KarmaEat.eat_carrion(state, near, a)
+			KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
+			return true
+		"pounce", "hunt":
+			var prey: Variant = intent.get("target", null)
+			if prey == null or not (state["agents"] as Array).has(prey) or bool((prey as Dictionary).get("hidden", false)):
+				a["jev_intent"] = {}
+				return false
+			var d := Vector2(float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
+			if d <= 20.0:
+				return ai_hunt_eat(state, a, prey, dt)
+			KarmaGame.move_toward(state, a, float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]), float(KarmaData.TUNING["chaseMult"]), dt)
+			return true
+		"drink", "flee":
+			if str(intent.get("kind", "")) == "drink" and ai_drink(state, a, float(KarmaData.TUNING["drinkRange"])):
+				return true
+			KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
+			return true
+		_:
+			a["x"] = float(a["x"]) + (randf() - 0.5) * 60.0 * dt
+			a["y"] = float(a["y"]) + (randf() - 0.5) * 60.0 * dt
+			return true
+
+
+static func _ai_zorro_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
 	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
 	ai_base(state, a, dt)
 	if ai_flee(state, a, dt):

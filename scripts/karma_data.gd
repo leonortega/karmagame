@@ -91,7 +91,7 @@ static func _build_tuning() -> Dictionary:
 		"howlKarma": 10.0, "howlTime": 10.0, "regurgKarma": 15.0, "regurgCost": 8.0,
 		"escortKarma": 12.0, "escortTime": 10.0, "cullKarma": 10.0,
 		"loboStrikeKarma": 20.0, "strikeKarma": 5.0, "strikePa": 10.0, "strikeHp": 10.0,
-		"cedeKarma": 15.0, "divePa": 10.0,
+		"cedeKarma": 15.0, "divePa": 10.0, "cacheFullHambre": 80.0,
 		"senseTremorCd": 25.0, "senseTrackCd": 30.0, "revealTime": 3.0, "trackTime": 5.0,
 		"curlCd": 20.0, "saplingCap": 3,
 		"fruitRegrow": 45.0, "seedSproutChance": 0.35, "seedlingMaturity": 75.0,

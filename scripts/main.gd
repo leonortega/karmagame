@@ -12,6 +12,13 @@ const PANEL_MARGIN := 8.0
 var state: Dictionary = {}
 var rng := RandomNumberGenerator.new()
 var _labels := {}
+var _jev_http: HTTPRequest
+var _jev_busy := false
+var _jev_agents: Array = []
+var _jev_menus := {}
+var _jev_snaps := {}
+var _jev_flushed := 0
+var _jev_flush_t := 0.0
 # HUD text changes slowly (cooldowns tick in whole seconds); rebuilding a dozen
 # Label strings + forcing container re-layout every physics tick tanks FPS.
 # Refresh at ~7Hz and skip labels whose text did not change.
@@ -23,7 +30,106 @@ func _ready() -> void:
 	rng.randomize()
 	state = KarmaState.new_run(KarmaGame.draw_start_form(rng), 0.0, 0.0, 0, rng)
 	_build_hud()
+	_jev_http = HTTPRequest.new()
+	_jev_http.timeout = 2.0
+	add_child(_jev_http)
+	_jev_http.request_completed.connect(_on_jev_done)
 	set_process_unhandled_input(true)
+
+
+func _jev_view_diag() -> float:
+	return Vector2(VIEW_W, VIEW_H).length()
+
+
+func _jev_poll() -> void:
+	if not KarmaJev.USE_JEV or _jev_busy or state.is_empty() or bool(state.get("dead", false)):
+		return
+	var now := float(state.get("time", 0.0))
+	var due: Array = []
+	for a in KarmaJev.all_jev_zorros(state):
+		if KarmaJev.should_ask(state, a, now, _jev_view_diag()):
+			due.append(a)
+	if due.is_empty():
+		return
+	var body := KarmaJev.build_http_body_for(state, due)
+	if (body["states"] as Array).is_empty():
+		return
+	_jev_agents = body["agents"]
+	_jev_menus = body["menus"]
+	_jev_snaps = {}
+	for i in _jev_agents.size():
+		_jev_snaps[str(i)] = KarmaJev.build_state(state, _jev_agents[i])
+	for a in due:
+		(a as Dictionary)["jev_live"] = true
+	_jev_busy = true
+	_jev_http.request(KarmaJev.JEV_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({"states": body["states"]}))
+
+
+func _on_jev_done(result: int, code: int, _headers: PackedStringArray, raw: PackedByteArray) -> void:
+	_jev_busy = false
+	var raw_text := raw.get_string_from_utf8()
+	if result != HTTPRequest.RESULT_SUCCESS or code != 200:
+		push_error(KarmaJev.format_jev_error(code, raw_text))
+		if not state.is_empty():
+			state["jev_last_error"] = {"code": code, "body": raw_text.left(300)}
+		_clear_jev_flight()
+		return
+	var parsed: Variant = JSON.parse_string(raw_text)
+	if parsed == null or not (parsed as Dictionary).has("states"):
+		push_error(KarmaJev.format_jev_error(code, raw_text))
+		_clear_jev_flight()
+		return
+	var valid := KarmaJev.parse_answers(parsed, _jev_menus)
+	for rid in valid:
+		var answer: Dictionary = valid[rid]
+		if not rid.is_valid_int():
+			continue
+		var idx: int = rid.to_int()
+		if idx < 0 or idx >= _jev_agents.size():
+			continue
+		var a: Dictionary = _jev_agents[idx]
+		if not (state["agents"] as Array).has(a):
+			continue
+		var menu: Array = _jev_menus.get(rid, [])
+		var snapshot: Dictionary = _jev_snaps.get(rid, KarmaJev.build_state(state, a))
+		var applied := KarmaJev.apply_answer(state, a, menu, answer)
+		KarmaJev.log_decision(state, snapshot, menu, answer, applied)
+		KarmaJev.mark_asked(state, a, _jev_view_diag())
+		a["jev_live"] = false
+	_jev_agents = []
+	_jev_menus = {}
+	_jev_snaps = {}
+
+
+func _jev_flush_log() -> void:
+	if state.is_empty() or not state.has("jev_log"):
+		return
+	var entries: Array = state["jev_log"] as Array
+	if _jev_flushed >= entries.size():
+		return
+	if not KarmaJev.ensure_log_ready(KarmaJev.JEV_LOG_PATH):
+		push_error("JEV log open failed: " + KarmaJev.JEV_LOG_PATH)
+		return
+	var file := FileAccess.open(KarmaJev.JEV_LOG_PATH, FileAccess.READ_WRITE)
+	if file == null:
+		push_error("JEV log open failed: " + KarmaJev.JEV_LOG_PATH)
+		return
+	file.seek_end()
+	while _jev_flushed < entries.size():
+		file.store_line(JSON.stringify(entries[_jev_flushed]))
+		_jev_flushed += 1
+	file.close()
+
+
+func _clear_jev_flight() -> void:
+	if not state.is_empty():
+		for a in _jev_agents:
+			if (state["agents"] as Array).has(a):
+				(a as Dictionary)["jev_live"] = false
+				KarmaJev.mark_asked(state, a, _jev_view_diag())
+	_jev_agents = []
+	_jev_menus = {}
+	_jev_snaps = {}
 
 
 func _panel_style(accent: Color) -> StyleBoxFlat:
@@ -157,6 +263,11 @@ func _physics_process(delta: float) -> void:
 		var solids := KarmaUtils.collect_solids(state)
 		KarmaGame.move_player(state, ix, iy, dt, solids)
 		KarmaGame.update(state, dt, rng, solids)
+		_jev_poll()
+		_jev_flush_t += dt
+		if _jev_flush_t >= 0.5:
+			_jev_flush_t = 0.0
+			_jev_flush_log()
 		state["cam"] = {"x": clampf(float(state["px"]) - VIEW_W / 2.0, 0.0, float(KarmaData.WORLD["w"]) - VIEW_W),
 			"y": clampf(float(state["py"]) - VIEW_H / 2.0, 0.0, float(KarmaData.WORLD["h"]) - VIEW_H)}
 	queue_redraw()

@@ -392,6 +392,9 @@ static func eat_carrion(state: Dictionary, c: Variant, for_agent: Variant) -> bo
 	if stage == "fresh":
 		heal_eater(state, for_agent, float(KarmaData.TUNING["carrionFreshHp"]))
 		refill_hambre(state, for_agent, float(KarmaData.TUNING["carrionFreshHp"]))
+		if for_agent != null and int((for_agent as Dictionary).get("stash", 0)) > 0:
+			(for_agent as Dictionary)["stash"] = int((for_agent as Dictionary)["stash"]) - 1
+			KarmaState.add_pa(state, for_agent, float(KarmaData.TUNING["pouncePa"]))
 		if for_agent == null:
 			KarmaState.add_pa(state, null, float(KarmaData.TUNING["carrionFreshPa"]))
 			if int(state.get("stash", 0)) > 0:
