@@ -97,3 +97,19 @@ func test_draw_lookups() -> void:
 	assert_str(KarmaDraw.food_icon("berries")).is_equal("🍒")
 	assert_float(KarmaDraw.animal_emoji_size("lobo")).is_equal(34.0)
 	assert_str(KarmaDraw.carrion_look("rotten")["label"]).is_equal("¡podrida: -25!")
+
+
+func test_seek_water_treks_beyond_scout_range() -> void:
+	var s := _fresh("raton")
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	s["waters"] = [{"x": 2000.0, "y": 500.0, "r": 20.0, "kind": "charco"}]
+	var x0 := float(a["x"])
+	assert_bool(KarmaAI.ai_seek_water(s, a, 0.1)).is_true()
+	assert_bool(float(a["x"]) > x0).is_true()
+
+
+func test_seek_water_fails_with_no_water() -> void:
+	var s := _fresh("raton")
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	s["waters"] = []
+	assert_bool(KarmaAI.ai_seek_water(s, a, 0.1)).is_false()
