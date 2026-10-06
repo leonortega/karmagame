@@ -113,3 +113,171 @@ func test_seek_water_fails_with_no_water() -> void:
 	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
 	s["waters"] = []
 	assert_bool(KarmaAI.ai_seek_water(s, a, 0.1)).is_false()
+
+
+func test_agents_cannot_leave_world() -> void:
+	var s := _fresh("raton")
+	var a := KarmaState.spawn_fauna(s, "raton", -50.0, -30.0)
+	var h := KarmaPredators.mk_predator(s, "zorro", float(KarmaData.WORLD["w"]) + 100.0, float(KarmaData.WORLD["h"]) + 100.0, 1)
+	(s["agents"] as Array).append(h)
+	KarmaGame.update(s, 0.1, _rng)
+	assert_bool(float(a["x"]) >= 20.0).is_true()
+	assert_bool(float(a["y"]) >= 20.0).is_true()
+	assert_bool(float(h["x"]) <= float(KarmaData.WORLD["w"]) - 20.0).is_true()
+	assert_bool(float(h["y"]) <= float(KarmaData.WORLD["h"]) - 20.0).is_true()
+
+
+func _poi_world() -> Dictionary:
+	var s := _fresh("raton")
+	for list in ["bushes", "shrubs", "patches", "clusters", "clumps", "oaks"]:
+		s[list] = []
+	s["waters"] = []
+	s["refuges"] = []
+	s["agents"] = (s["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "company")
+	return s
+
+
+func test_wander_poi_prefers_food_over_water() -> void:
+	var s := _poi_world()
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	(s["bushes"] as Array).append(KarmaUtils.mk_patch("berries", 800.0, 500.0, 3))
+	(s["waters"] as Array).append({"x": 510.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	var poi: Variant = KarmaGame.wander_poi(s, a)
+	assert_bool(poi != null).is_true()
+	assert_float(float((poi as Dictionary)["x"])).is_equal(800.0)
+	assert_float(float((poi as Dictionary)["y"])).is_equal(500.0)
+
+
+func test_wander_poi_falls_back_to_water() -> void:
+	var s := _poi_world()
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	(s["waters"] as Array).append({"x": 600.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	var poi: Variant = KarmaGame.wander_poi(s, a)
+	assert_bool(poi != null).is_true()
+	assert_float(float((poi as Dictionary)["x"])).is_equal(600.0)
+
+
+func test_wander_poi_falls_back_to_cover() -> void:
+	var s := _poi_world()
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": 550.0, "y": 500.0, "dug": false})
+	var poi: Variant = KarmaGame.wander_poi(s, a)
+	assert_bool(poi != null).is_true()
+	assert_float(float((poi as Dictionary)["x"])).is_equal(550.0)
+
+
+func test_wander_poi_falls_back_to_company() -> void:
+	var s := _poi_world()
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	(s["agents"] as Array).append(KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 520.0, "y": 500.0}))
+	var poi: Variant = KarmaGame.wander_poi(s, a)
+	assert_bool(poi != null).is_true()
+	assert_float(float((poi as Dictionary)["x"])).is_equal(520.0)
+
+
+func test_wander_poi_null_when_world_empty() -> void:
+	var s := _poi_world()
+	s["agents"] = []
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	s["agents"] = (s["agents"] as Array).filter(func(o): return o == a)
+	assert_bool(KarmaGame.wander_poi(s, a) == null).is_true()
+
+
+func test_wander_poi_carnivore_seeks_carrion() -> void:
+	var s := _poi_world()
+	var a := KarmaState.spawn_fauna(s, "zorro", 500.0, 500.0)
+	KarmaEat.add_carrion(s, 700.0, 500.0)
+	var c: Dictionary = (s["carrions"] as Array)[0]
+	var poi: Variant = KarmaGame.wander_poi(s, a)
+	assert_bool(poi != null).is_true()
+	assert_float(float((poi as Dictionary)["x"])).is_equal(float(c["x"]))
+
+
+func _bare_world(species := "raton") -> Dictionary:
+	var s := _fresh(species)
+	for list in ["bushes", "shrubs", "patches", "clusters", "clumps", "oaks"]:
+		s[list] = []
+	s["waters"] = []
+	s["refuges"] = []
+	s["insects"] = []
+	s["agents"] = []
+	return s
+
+
+func _trek_distance(s: Dictionary, a: Dictionary, tx: float, ty: float) -> float:
+	return Vector2(float(a["x"]), float(a["y"])).distance_to(Vector2(tx, ty))
+
+
+func test_raton_wander_travels_to_distant_patch() -> void:
+	var s := _bare_world("raton")
+	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	(s["bushes"] as Array).append(KarmaUtils.mk_patch("berries", 800.0, 500.0, 3))
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
+	var d0 := _trek_distance(s, a, 800.0, 500.0)
+	for i in 10:
+		KarmaAI._ai_raton(s, a, 0.1)
+	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
+
+
+func test_zorro_wander_travels_to_water() -> void:
+	var s := _bare_world("zorro")
+	var a := KarmaState.spawn_fauna(s, "zorro", 500.0, 500.0)
+	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	a["pounceCd"] = 0.0
+	a["strikeCd"] = 0.0
+	(s["waters"] as Array).append({"x": 800.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
+	var d0 := _trek_distance(s, a, 800.0, 500.0)
+	for i in 10:
+		KarmaAI._ai_zorro(s, a, 0.1)
+	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
+
+
+func test_halcon_wander_travels_to_water() -> void:
+	var s := _bare_world("halcon")
+	var a := KarmaState.spawn_fauna(s, "halcon", 500.0, 500.0)
+	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	a["strikeCd"] = 0.0
+	a["grounded"] = false
+	a["landT"] = 0.0
+	(s["waters"] as Array).append({"x": 800.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
+	var d0 := _trek_distance(s, a, 800.0, 500.0)
+	for i in 10:
+		KarmaAI._ai_halcon(s, a, 0.1)
+	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
+
+
+func test_ardilla_wander_travels_to_distant_patch() -> void:
+	var s := _bare_world("ardilla")
+	var a := KarmaState.spawn_fauna(s, "ardilla", 500.0, 500.0)
+	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	(s["bushes"] as Array).append(KarmaUtils.mk_patch("berries", 800.0, 500.0, 3))
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
+	var d0 := _trek_distance(s, a, 800.0, 500.0)
+	for i in 10:
+		KarmaAI._ai_ardilla(s, a, 0.1)
+	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
+
+
+func test_topo_ladder_wander_travels_to_distant_patch() -> void:
+	var s := _bare_world("topo")
+	var a := KarmaState.spawn_fauna(s, "topo", 500.0, 500.0)
+	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	a["digCd"] = float(KarmaData.TUNING["digCd"])
+	(s["patches"] as Array).append(KarmaUtils.mk_patch("carrots", 800.0, 500.0, 3))
+	var d0 := _trek_distance(s, a, 800.0, 500.0)
+	for i in 10:
+		KarmaAI._ai_topo(s, a, 0.1)
+	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
+
+
+func test_mates_drift_toward_player() -> void:
+	var s := _bare_world("raton")
+	var m := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 500.0, "y": 500.0})
+	(s["agents"] as Array).append(m)
+	var d0 := Vector2(500.0, 500.0).distance_to(Vector2(float(s["px"]), float(s["py"])))
+	for i in 10:
+		KarmaGame.wander_mates(s, 0.1, _rng)
+	var d1 := Vector2(float(m["x"]), float(m["y"])).distance_to(Vector2(float(s["px"]), float(s["py"])))
+	assert_bool(d0 - d1 > 50.0).is_true()

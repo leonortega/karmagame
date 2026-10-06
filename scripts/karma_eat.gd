@@ -216,6 +216,39 @@ static func nearest_edible_patch_for(state: Dictionary, a: Dictionary, max_d: fl
 	return best
 
 
+static func nearest_oak_with_nuts_for(state: Dictionary, a: Dictionary, max_d: float) -> Variant:
+	var ax := float(a.get("x", (state as Dictionary).get("px", 0.0)))
+	var ay := float(a.get("y", (state as Dictionary).get("py", 0.0)))
+	var best: Variant = null
+	var bd := max_d
+	for o in state.get("oaks", []):
+		if not bool(o.get("alive", false)) or int(o.get("amount", 0)) <= 0:
+			continue
+		var d := Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(ax, ay))
+		if d < bd:
+			bd = d
+			best = o
+	return best
+
+
+static func nearest_spare_flora_for(state: Dictionary, a: Dictionary, max_d: float) -> Variant:
+	var ax := float(a.get("x", (state as Dictionary).get("px", 0.0)))
+	var ay := float(a.get("y", (state as Dictionary).get("py", 0.0)))
+	var all: Array = (state.get("bushes", []) as Array) + (state.get("shrubs", []) as Array) + (state.get("patches", []) as Array) + (state.get("clusters", []) as Array) + (state.get("oaks", []) as Array)
+	var best: Variant = null
+	var bd := max_d
+	for p in all:
+		if not bool(p.get("alive", false)) or int(p.get("amount", 0)) <= 1:
+			continue
+		if not (KarmaData.DIET[str(a["speciesKey"])] as Array).has(str(p["kind"])):
+			continue
+		var d := Vector2(float(p["x"]), float(p["y"])).distance_to(Vector2(ax, ay))
+		if d < bd:
+			bd = d
+			best = p
+	return best
+
+
 static func pounce_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> bool:
 	add_carrion(state, float(m["x"]), float(m["y"]))
 	if for_agent != null:

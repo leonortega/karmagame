@@ -15,7 +15,7 @@ const POP := {
 const SPECIES := {
 	"oruga": {"name": "Oruga", "tier": 0, "speed": 80.0, "vision": 130.0, "maxHp": 60.0, "radius": 8.0, "size": 1, "hungerMult": 1.5, "color": "#9ccc65", "desc": "Castigo: lenta, todos te cazan"},
 	"sapo": {"name": "Sapo", "tier": 1, "speed": 110.0, "vision": 170.0, "maxHp": 80.0, "radius": 9.0, "size": 1, "hungerMult": 1.25, "color": "#4db6ac", "desc": "Lengua a 90px, cabe en madrigueras-S"},
-	"raton": {"name": "Ratón", "tier": 1, "speed": 150.0, "vision": 190.0, "maxHp": 100.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "color": "#90caf9", "desc": "Base: equilibrado, puede gritar (Q)"},
+	"raton": {"name": "Ratón", "tier": 1, "speed": 190.0, "vision": 190.0, "maxHp": 100.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "color": "#90caf9", "desc": "Base: equilibrado, puede gritar (Q)"},
 	"ardilla": {"name": "Ardilla", "tier": 1, "speed": 175.0, "vision": 210.0, "maxHp": 90.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "climb": true, "color": "#ffcc80", "desc": "Lateral: rápida, trepa al árbol hueco"},
 	"topo": {"name": "Topo", "tier": 1, "speed": 135.0, "vision": 150.0, "maxHp": 95.0, "radius": 10.0, "size": 2, "hungerMult": 1.1, "color": "#a1887f", "desc": "Cava madrigueras con E, puede gritar"},
 	"halcon": {"name": "Halcón", "tier": 2, "speed": 215.0, "vision": 340.0, "maxHp": 140.0, "radius": 12.0, "size": 3, "hungerMult": 0.8, "color": "#ce93d8", "desc": "Premio: veloz, gran visión, debe aterrizar para comer"},
@@ -73,7 +73,7 @@ static func _build_tuning() -> Dictionary:
 		"campTime": 3.0, "hideRange": 40.0,
 		"carrionFreshHp": 20.0, "carrionStaleHp": 8.0, "carrionRottenHp": -25.0,
 		"carrionFreshT": 30.0, "carrionRottenT": 60.0, "carrionCap": 5, "carrionFreshPa": 5.0,
-		"aiBuyEvery": 10.0, "aiKarmaGood": 30.0, "aiKarmaBad": -30.0, "aiPredPerceptMod": 0.2, "aiShoutLureTime": 5.0,
+		"aiBuyEvery": 10.0, "jevReaskBackoff": 0.5, "aiKarmaGood": 30.0, "aiKarmaBad": -30.0, "aiPredPerceptMod": 0.2, "aiShoutLureTime": 5.0,
 		"mimicHp": -20.0, "satedTime": 25.0,
 		"wastefulHpFrac": 0.8, "wastefulKarma": -10.0, "strikeCd": 4.0,
 		"mateRespawn": 45.0, "mateMax": 4,
@@ -102,7 +102,7 @@ static func _build_tuning() -> Dictionary:
 		"charcoCount": 6, "lagoCount": 2, "charcoR": 20.0, "lagoR": 95.0,
 		"lakeInsectBias": 0.6, "lakeShore": 120.0,
 		"forageRangeMult": 0.5, "hungerPriority": 0.4, "aiHideMax": 5.0, "aiCoverRange": 250.0, "lowHpPercept": 1.4,
-		"aiFearRange": 200.0,
+		"aiFearRange": 200.0, "wanderSeekRange": 1000.0,
 		"hopImpulse": 0.5, "hopRest": 0.6, "wormStretch": 1.3, "wormBurst": 0.35, "tunnelSpeed": 0.8,
 		"groomSocialKarma": 2.0,
 	}

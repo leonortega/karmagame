@@ -437,39 +437,11 @@ static func _ai_sapo(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _ai_raton(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if ai_hide_tick(state, a, dt):
-		return
-	if is_hunted(state, a) and ai_try_hide(state, a):
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
-		return
-	if ai_forage(state, a, dt):
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	a["x"] = float(a["x"]) + (randf() - 0.5) * 40.0 * dt
-	a["y"] = float(a["y"]) + (randf() - 0.5) * 40.0 * dt
+	KarmaAIRaton.step(state, a, dt)
 
 
 static func _ai_ardilla(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if ai_hide_tick(state, a, dt):
-		return
-	if is_hunted(state, a) and ai_try_hide(state, a):
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	if ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
-		return
-	a["x"] = float(a["x"]) + (randf() - 0.5) * 40.0 * dt
-	a["y"] = float(a["y"]) + (randf() - 0.5) * 40.0 * dt
+	KarmaAIArdilla.step(state, a, dt)
 
 
 static func _ai_topo(state: Dictionary, a: Dictionary, dt: float) -> void:
@@ -487,97 +459,28 @@ static func _ai_topo(state: Dictionary, a: Dictionary, dt: float) -> void:
 		return
 	if ai_maybe_verb(state, a, dt):
 		return
-	a["x"] = float(a["x"]) + (randf() - 0.5) * 40.0 * dt
-	a["y"] = float(a["y"]) + (randf() - 0.5) * 40.0 * dt
+	var poi: Variant = KarmaGame.wander_poi(state, a)
+	if poi != null:
+		KarmaGame.move_toward(state, a, float((poi as Dictionary)["x"]), float((poi as Dictionary)["y"]), 1.0, dt)
+	else:
+		a["x"] = float(a["x"]) + (randf() - 0.5) * 40.0 * dt
+		a["y"] = float(a["y"]) + (randf() - 0.5) * 40.0 * dt
 
 
 static func _ai_zorro(state: Dictionary, a: Dictionary, dt: float) -> void:
-	if KarmaJev.USE_JEV:
-		_ai_zorro_jev(state, a, dt)
-		return
-	_ai_zorro_ladder(state, a, dt)
+	KarmaAIZorro.step(state, a, dt)
 
 
 static func _ai_zorro_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	KarmaJev.intent_tick(a, dt)
-	if ai_flee(state, a, dt):
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if is_hunted(state, a) and str((a.get("jev_intent", {}) as Dictionary).get("kind", "")) != "flee":
-		a["jev_intent"] = {}
-	if _ai_zorro_steer_intent(state, a, dt):
-		return
-	if bool(a.get("jev_live", false)):
-		a["jev_intent"] = {"kind": "wander", "x": float(a["x"]), "y": float(a["y"]), "ttl": 5.0}
-		return
-	KarmaJev.mock_macro(state, a)
+	KarmaAIZorro.step_jev(state, a, dt)
 
 
 static func _ai_zorro_steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if not a.has("jev_intent") or (a["jev_intent"] as Dictionary).is_empty():
-		return false
-	if float((a["jev_intent"] as Dictionary).get("ttl", 0.0)) <= 0.0:
-		a["jev_intent"] = {}
-		return false
-	var intent := a["jev_intent"] as Dictionary
-	match str(intent.get("kind", "wander")):
-		"eat", "seek_carrion":
-			var c: Variant = intent.get("target", null)
-			if c != null and (state["carrions"] as Array).has(c):
-				if Vector2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) <= float(KarmaData.TUNING["eatRange"]):
-					return KarmaEat.eat_carrion(state, c, a)
-				KarmaGame.move_toward(state, a, float((c as Dictionary)["x"]), float((c as Dictionary)["y"]), 1.0, dt)
-				return true
-			var near: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-			if near != null:
-				return KarmaEat.eat_carrion(state, near, a)
-			KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
-			return true
-		"pounce", "hunt":
-			var prey: Variant = intent.get("target", null)
-			if prey == null or not (state["agents"] as Array).has(prey) or bool((prey as Dictionary).get("hidden", false)):
-				a["jev_intent"] = {}
-				return false
-			var d := Vector2(float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
-			if d <= 20.0:
-				return ai_hunt_eat(state, a, prey, dt)
-			KarmaGame.move_toward(state, a, float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]), float(KarmaData.TUNING["chaseMult"]), dt)
-			return true
-		"drink", "flee":
-			if str(intent.get("kind", "")) == "drink" and ai_drink(state, a, float(KarmaData.TUNING["drinkRange"])):
-				return true
-			KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
-			return true
-		_:
-			a["x"] = float(a["x"]) + (randf() - 0.5) * 60.0 * dt
-			a["y"] = float(a["y"]) + (randf() - 0.5) * 60.0 * dt
-			return true
+	return KarmaAIZorro.steer_intent(state, a, dt)
 
 
 static func _ai_zorro_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if ai_flee(state, a, dt):
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	if is_hungry(a) and ai_seek_carrion(state, a, dt):
-		return
-	var prey: Variant = nearest_ai_prey(state, a, float(ai_pred_row(a)["perception"]))
-	if prey != null:
-		ai_hunt_eat(state, a, prey, dt)
-		return
-	var c: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-	if c != null:
-		KarmaEat.eat_carrion(state, c, a)
-	elif not ai_forage(state, a, dt):
-		a["x"] = float(a["x"]) + (randf() - 0.5) * 60.0 * dt
-		a["y"] = float(a["y"]) + (randf() - 0.5) * 60.0 * dt
+	KarmaAIZorro.step_ladder(state, a, dt)
 
 
 static func _ai_lobo(state: Dictionary, a: Dictionary, dt: float) -> void:
@@ -605,118 +508,16 @@ static func _ai_lobo(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _ai_halcon(state: Dictionary, a: Dictionary, dt: float) -> void:
-	if KarmaJev.USE_JEV_HALCON:
-		_ai_halcon_jev(state, a, dt)
-		return
-	_ai_halcon_ladder(state, a, dt)
+	KarmaAIHalcon.step(state, a, dt)
 
 
 static func _ai_halcon_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	KarmaJev.intent_tick(a, dt)
-	if not bool(a.get("grounded", false)) and float(a.get("strikeCd", 0.0)) <= 0.0:
-		var p: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-			(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
-		if p != null:
-			ai_strike(state, a, p)
-			return
-	if ai_thirst(state, a, dt):
-		return
-	if bool(a.get("grounded", false)):
-		var c: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-		if c != null and float(a.get("landT", 0.0)) <= 0.0 and KarmaEat.eat_carrion(state, c, a):
-			a["grounded"] = false
-			return
-		if float(a.get("landT", 0.0)) <= 0.0:
-			a["grounded"] = false
-			return
-		return
-	if _ai_halcon_steer_intent(state, a, dt):
-		return
-	if bool(a.get("jev_live", false)):
-		a["jev_intent"] = {"kind": "wander", "x": float(a["x"]), "y": float(a["y"]), "ttl": 5.0}
-		return
-	KarmaJev.mock_halcon_macro(state, a)
+	KarmaAIHalcon.step_jev(state, a, dt)
 
 
 static func _ai_halcon_steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if not a.has("jev_intent") or (a["jev_intent"] as Dictionary).is_empty():
-		return false
-	if float((a["jev_intent"] as Dictionary).get("ttl", 0.0)) <= 0.0:
-		a["jev_intent"] = {}
-		return false
-	var intent := a["jev_intent"] as Dictionary
-	match str(intent.get("kind", "wander")):
-		"eat", "seek_carrion":
-			var c: Variant = intent.get("target", null)
-			if c != null and (state["carrions"] as Array).has(c):
-				if Vector2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) <= float(KarmaData.TUNING["eatRange"]):
-					if KarmaEat.eat_carrion(state, c, a):
-						a["grounded"] = false
-					return true
-				KarmaGame.move_toward(state, a, float((c as Dictionary)["x"]), float((c as Dictionary)["y"]), 1.0, dt)
-				return true
-			var near: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-			if near != null:
-				if KarmaEat.eat_carrion(state, near, a):
-					a["grounded"] = false
-				return true
-			KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
-			return true
-		"dive":
-			var prey: Variant = intent.get("target", null)
-			if prey == null or not (state["agents"] as Array).has(prey) or bool((prey as Dictionary).get("hidden", false)):
-				a["jev_intent"] = {}
-				return false
-			var d := Vector2(float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
-			if d <= 60.0:
-				if ai_hunt_eat(state, a, prey, dt):
-					a["grounded"] = true
-					a["landT"] = float(KarmaData.TUNING["landTime"])
-				return true
-			KarmaGame.move_toward(state, a, float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]), float(KarmaData.TUNING["chaseMult"]), dt)
-			return true
-		"drink", "flee":
-			if str(intent.get("kind", "")) == "drink" and ai_drink(state, a, float(KarmaData.TUNING["drinkRange"])):
-				return true
-			KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
-			return true
-		_:
-			a["x"] = float(a["x"]) + (randf() - 0.5) * 80.0 * dt
-			a["y"] = float(a["y"]) + (randf() - 0.5) * 80.0 * dt
-			return true
+	return KarmaAIHalcon.steer_intent(state, a, dt)
 
 
 static func _ai_halcon_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if not bool(a.get("grounded", false)) and float(a.get("strikeCd", 0.0)) <= 0.0:
-		var p: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-			(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
-		if p != null:
-			ai_strike(state, a, p)
-			return
-	if ai_thirst(state, a, dt):
-		return
-	if bool(a.get("grounded", false)):
-		var c: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-		if c != null and float(a.get("landT", 0.0)) <= 0.0 and KarmaEat.eat_carrion(state, c, a):
-			a["grounded"] = false
-			return
-		if float(a.get("landT", 0.0)) <= 0.0:
-			a["grounded"] = false
-		return
-	var prey: Variant = nearest_ai_prey(state, a, 200.0)
-	if prey != null:
-		if ai_hunt_eat(state, a, prey, dt):
-			a["grounded"] = true
-			a["landT"] = float(KarmaData.TUNING["landTime"])
-		return
-	var c2: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-	if c2 != null:
-		a["grounded"] = true
-		a["landT"] = float(KarmaData.TUNING["landTime"])
-		return
-	a["x"] = float(a["x"]) + (randf() - 0.5) * 80.0 * dt
-	a["y"] = float(a["y"]) + (randf() - 0.5) * 80.0 * dt
+	KarmaAIHalcon.step_ladder(state, a, dt)

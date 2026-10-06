@@ -4,7 +4,7 @@
 Every species on the map has a full AI behavior engine that matches the player's capabilities. Grazers eat, dig, curl, camouflage, carry nuts, groom, and perform species-specific actions. Predators hunt, pounce, dive, strike, and cede kills. No AI animal is static.
 ## Requirements
 ### Requirement: All 8 species have species-specific AI behavior
-The `updateAgents(dt)` function SHALL call a per-species AI function for every agent: `aiOruga`, `aiSapo`, `aiRaton`, `aiArdilla`, `aiTopo`, `aiZorro`, `aiLobo`, `aiHalcon`. Six species implement the full behavioral kit inline (contact eating, food seeking beyond contact range, hunger-priority gating of secondary behaviors, refuge hiding when hunted, flee-toward-cover, and the species deeds below per `ai-survival`). An agent is hungry whenever its `hambre` is below 100, for every species: any food deficit outranks secondary behaviors. The zorro function SHALL split into micro steering every physics tick plus macro intent from NanoJev ranking per `ai-jev-zorro`, using the same kill, carrion, and karma values as the player. The halcon function SHALL split into micro steering every physics tick (dive-kill, grounded/land cycle, drink, needs/cooldowns) plus macro intent from NanoJev ranking per `ai-jev-halcon`, using the same dive, carrion, and karma values as the player.
+The `updateAgents(dt)` function SHALL call a per-species AI function for every agent: `aiOruga`, `aiSapo`, `aiRaton`, `aiArdilla`, `aiTopo`, `aiZorro`, `aiLobo`, `aiHalcon`. Four species implement the full behavioral kit inline (contact eating, food seeking beyond contact range, hunger-priority gating of secondary behaviors, refuge hiding when hunted, flee-toward-cover, and the species deeds below per `ai-survival`). An agent is hungry whenever its `hambre` is below 100, for every species: any food deficit outranks secondary behaviors. The zorro function SHALL split into micro steering every physics tick plus macro intent from NanoJev ranking per `ai-jev-zorro`, using the same kill, carrion, and karma values as the player. The halcon function SHALL split into micro steering every physics tick (dive-kill, grounded/land cycle, drink, needs/cooldowns) plus macro intent from NanoJev ranking per `ai-jev-halcon`, using the same dive, carrion, and karma values as the player. The raton function SHALL split into micro steering every physics tick (contact eat, forage-seek, drink, hide/flee, needs/cooldowns, social-verb fallthrough) plus macro intent from NanoJev ranking per `ai-jev-raton`, using the same patch-eat, drink, and karma values as the player. The ardilla function SHALL split into micro steering every physics tick (contact eat, forage-seek, drink, hide/flee, needs/cooldowns, social-verb fallthrough) plus macro intent from NanoJev ranking per `ai-jev-ardilla`, using the same patch-eat, nut carry/bury, drink, and karma values as the player.
 
 #### Scenario: AI Topo digs burrows
 - **WHEN** an AI Topo agent's `digCd` is 0, `dug` < 3, and it is not hungry
@@ -52,6 +52,16 @@ The `updateAgents(dt)` function SHALL call a per-species AI function for every a
 
 - **WHEN** an AI Halcon agent needs macro intent
 - **THEN** its intent is the ranked winner of its code-built legal candidate menu via one batched NanoJev request, applied through the same eat/verb functions as the player, while micro steering (including the grounded/land cycle) continues every tick
+
+#### Scenario: AI Raton intent comes from JEV ranking
+
+- **WHEN** an AI Raton agent needs macro intent
+- **THEN** its intent is the ranked winner of its code-built legal candidate menu via one batched NanoJev request, applied through the same eat/drink/social functions as the player, while micro steering continues every tick
+
+#### Scenario: AI Ardilla intent comes from JEV ranking
+
+- **WHEN** an AI Ardilla agent needs macro intent
+- **THEN** its intent is the ranked winner of its code-built legal candidate menu via one batched NanoJev request, applied through the same eat/carry/bury/drink/social functions as the player, while micro steering continues every tick
 
 #### Scenario: AI is hungry on any food deficit
 
@@ -106,4 +116,27 @@ Every AI agent loses HP at `TUNING.hungerPerSec * dt` per tick. AI agents eat on
 #### Scenario: AI carnivore hunts AI fauna
 - **WHEN** an AI carnivore perceives an AI agent of any brain that is edible per the trophic table
 - **THEN** it pursues and strikes on contact, killing the victim and spawning carrion
+
+### Requirement: Wander travel is purposeful
+Whenever an agent (AI fauna, company mate, or hunter acting without a hunt target) has no other intent, deed, or reflex to execute, it SHALL steer toward the nearest point of interest instead of random-walking: nearest edible food first, else nearest water, else nearest fitting cover, else nearest company, else a short random step only when nothing qualifies. This changes movement targets only: no karma, cost, cooldown, or gait changes. The possessed (player-controlled) agent is exempt and keeps free control. Oruga and sapo are exempt at the terminal wander tail: their stillness-gated defenses (curl, camouflage per `ai-species-behavior`) require motionlessness, so they keep accumulating stillness instead of traveling — the defense counts as the deed.
+
+#### Scenario: Idle grazer heads for food
+- **WHEN** a raton with wander intent has no contact food but an edible patch lies within the TUNING wander-seek range
+- **THEN** it moves toward that patch each tick instead of drifting randomly
+
+#### Scenario: Thirsty wanderer heads for water
+- **WHEN** a wandering agent has no edible food in range but water is the nearest point of interest
+- **THEN** it moves toward that water each tick
+
+#### Scenario: Nothing nearby, small step
+- **WHEN** a wandering agent has no food, water, cover, or company anywhere in range
+- **THEN** it takes a short random step (bounded jitter, same as today) rather than freezing
+
+#### Scenario: Player control untouched
+- **WHEN** the possessed agent holds no direction
+- **THEN** it stays put exactly as today; purposeful travel never moves the player
+
+#### Scenario: Stillness defenses keep their stillness
+- **WHEN** an oruga or sapo with wander intent has no food, water, or other trigger
+- **THEN** it keeps accumulating stillness (curl/camouflage path) instead of traveling
 

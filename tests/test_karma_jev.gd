@@ -341,15 +341,19 @@ func test_log_path_for_species() -> void:
 
 func test_log_flags_default_on() -> void:
 	assert_bool(KarmaJev.log_enabled("zorro")).is_false()
-	assert_bool(KarmaJev.log_enabled("halcon")).is_true()
+	assert_bool(KarmaJev.log_enabled("halcon")).is_false()
+	assert_bool(KarmaJev.log_enabled("raton")).is_false()
+	assert_bool(KarmaJev.log_enabled("ardilla")).is_true()
 
 
 func test_log_decision_writes_per_species_buffer() -> void:
 	var s := _fresh_zorro_state()
+	KarmaJev.LOG_JEV_HALCON = true
 	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0], "emocion": ""}, true, "halcon")
 	assert_int(((s.get("jev_log_halcon", []) as Array)).size()).is_equal(1)
 	assert_str(str((((s["jev_log_halcon"] as Array)[0] as Dictionary))["schema"])).is_equal("jev-halcon/v1")
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
+	KarmaJev.LOG_JEV_HALCON = false
 
 
 func test_log_decision_zorro_keeps_legacy_alias() -> void:
@@ -571,11 +575,18 @@ func test_jev_halcon_live_flag_skips_mock_and_wanders() -> void:
 func test_log_isolation_flag_off_drops() -> void:
 	var s := _fresh_zorro_state()
 	assert_bool(KarmaJev.log_enabled("zorro")).is_false()
+	assert_bool(KarmaJev.log_enabled("halcon")).is_false()
 	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "zorro")
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
 	assert_int((s.get("jev_log_zorro", []) as Array).size()).is_equal(0)
 	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "halcon")
-	assert_int(((s.get("jev_log_halcon", []) as Array)).size()).is_equal(1)
+	assert_int(((s.get("jev_log_halcon", []) as Array)).size()).is_equal(0)
+	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
+	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "raton")
+	assert_int(((s.get("jev_log_raton", []) as Array)).size()).is_equal(0)
+	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
+	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "ardilla")
+	assert_int(((s.get("jev_log_ardilla", []) as Array)).size()).is_equal(1)
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
 
 
@@ -618,3 +629,77 @@ func test_pick_batch_species_alternates_when_both_due() -> void:
 	assert_str(KarmaJev.pick_batch_species(true, false, "halcon")).is_equal("zorro")
 	assert_str(KarmaJev.pick_batch_species(false, true, "zorro")).is_equal("halcon")
 	assert_str(KarmaJev.pick_batch_species(false, false, "zorro")).is_equal("")
+
+
+func _strip_to(state: Dictionary, keep: Dictionary) -> void:
+	state["agents"] = (state["agents"] as Array).filter(func(o): return o == keep)
+
+
+func test_zorro_wander_fallthrough_cedes_when_sated() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	_strip_to(s, a)
+	KarmaEat.add_carrion(s, 505.0, 500.0)
+	a["hp"] = float(KarmaData.SPECIES["zorro"]["maxHp"])
+	a["satedT"] = 5.0
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
+	var k0 := float(a["karma"])
+	KarmaAI._ai_zorro(s, a, 0.1)
+	assert_int((s["carrions"] as Array).size()).is_equal(1)
+	assert_bool(bool((s["carrions"] as Array)[0].get("ceded", false))).is_true()
+	assert_float(float(a["karma"])).is_equal(k0 + float(KarmaData.TUNING["cedeKarma"]))
+
+
+func test_zorro_wander_fallthrough_hunts_opportunistically() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	_strip_to(s, a)
+	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	a["hambre"] = 50.0
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
+	var carrion_n := (s["carrions"] as Array).size()
+	KarmaAI._ai_zorro(s, a, 0.1)
+	assert_bool((s["agents"] as Array).has(prey)).is_false()
+	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
+
+
+func test_zorro_wander_fallthrough_eats_contact_carrion() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	_strip_to(s, a)
+	KarmaEat.add_carrion(s, 505.0, 500.0)
+	a["hp"] = 50.0
+	a["hambre"] = 100.0
+	a["satedT"] = 0.0
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
+	var hp0 := float(a["hp"])
+	KarmaAI._ai_zorro(s, a, 0.1)
+	assert_bool(float(a["hp"]) > hp0).is_true()
+	assert_int((s["carrions"] as Array).size()).is_equal(0)
+
+
+func test_halcon_wander_fallthrough_hunts_opportunistically() -> void:
+	var s := _fresh_halcon_state()
+	var a := _ai_halcon(s, 500.0, 500.0)
+	_strip_to(s, a)
+	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var carrion_n := (s["carrions"] as Array).size()
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
+	KarmaAI._ai_halcon(s, a, 0.1)
+	assert_bool((s["agents"] as Array).has(prey)).is_false()
+	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
+	assert_bool(bool(a.get("grounded", false))).is_true()
+
+
+func test_halcon_wander_fallthrough_lands_on_carrion() -> void:
+	var s := _fresh_halcon_state()
+	var a := _ai_halcon(s, 500.0, 500.0)
+	_strip_to(s, a)
+	KarmaEat.add_carrion(s, 505.0, 500.0)
+	a["grounded"] = false
+	a["landT"] = 0.0
+	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
+	KarmaAI._ai_halcon(s, a, 0.1)
+	assert_bool(bool(a.get("grounded", false))).is_true()
+	assert_float(float(a.get("landT", 0.0))).is_equal(float(KarmaData.TUNING["landTime"]))
+	assert_int((s["carrions"] as Array).size()).is_equal(1)

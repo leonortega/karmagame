@@ -45,3 +45,18 @@ func test_verb_defs_five_per_species() -> void:
 func test_animal_years() -> void:
 	assert_bool(abs(KarmaData.animal_years("raton", 40.0) - 2.0) < 0.01).is_true()
 	assert_bool(abs(KarmaData.animal_years("lobo", 30.0) - 1.0) < 0.01).is_true()
+
+
+func test_raton_outruns_zorro_base() -> void:
+	assert_bool(float(KarmaData.SPECIES["raton"]["speed"]) > float(KarmaData.SPECIES["zorro"]["speed"])).is_true()
+	assert_bool(float(KarmaData.SPECIES["halcon"]["speed"]) > float(KarmaData.SPECIES["raton"]["speed"])).is_true()
+
+
+func test_wander_seek_range_knob() -> void:
+	assert_float(float(KarmaData.TUNING["wanderSeekRange"])).is_equal(1000.0)
+
+
+func test_predator_chase_still_closes_on_raton() -> void:
+	var raton: float = KarmaData.SPECIES["raton"]["speed"]
+	assert_bool(float(KarmaData.SPECIES["zorro"]["speed"]) * float(KarmaData.TUNING["chaseMult"]) > raton).is_true()
+	assert_bool(float(KarmaData.SPECIES["lobo"]["speed"]) * float(KarmaData.TUNING["loboChaseMult"]) > raton).is_true()

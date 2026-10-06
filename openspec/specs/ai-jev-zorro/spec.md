@@ -41,7 +41,7 @@ The system SHALL steer every AI zorro every physics tick toward its current inte
 
 ### Requirement: Macro cadence is staggered timer plus events with data-LOD
 
-The system SHALL re-ask macro intent for each AI zorro on a staggered 1s timer, and SHALL re-ask immediately on events: lobo entering fear range, HP falling below the hunger-priority threshold, fresh carrion entering perception, a kill resolving, or the current intent reaching its target or expiring. Zorros far from the player camera SHALL use a 3s timer instead of 1s.
+The system SHALL re-ask macro intent for each AI zorro on a staggered 1s timer, and SHALL re-ask on events — lobo entering fear range, HP falling below the hunger-priority threshold, fresh carrion entering perception, a kill resolving, or the current intent reaching its target or expiring — at most once per agent per `jevReaskBackoff` window (0.5s). Zorros far from the player camera SHALL use a 3s timer instead of 1s.
 
 #### Scenario: Staggered timer
 
@@ -51,7 +51,7 @@ The system SHALL re-ask macro intent for each AI zorro on a staggered 1s timer, 
 #### Scenario: Event re-ask on threat
 
 - **WHEN** a lobo enters a zorro's fear range outside its timer slot
-- **THEN** the system re-asks macro intent for that zorro immediately with a flee/refuge menu
+- **THEN** the system re-asks macro intent for that zorro within the backoff window with a flee/refuge menu
 
 #### Scenario: Data-LOD slowdown
 

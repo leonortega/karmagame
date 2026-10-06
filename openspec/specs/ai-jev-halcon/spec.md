@@ -41,7 +41,7 @@ The system SHALL steer every AI halcon every physics tick toward its current int
 
 ### Requirement: Macro cadence is staggered timer plus events with data-LOD
 
-The system SHALL re-ask macro intent for each AI halcon on a staggered 1s timer, and SHALL re-ask immediately on events: predator pressure entering range, HP falling below the hunger-priority threshold, fresh carrion entering perception, a kill resolving, landing/grounded state changing, or the current intent reaching its target or expiring. Halcons far from the player camera SHALL use a 3s timer instead of 1s.
+The system SHALL re-ask macro intent for each AI halcon on a staggered 1s timer, and SHALL re-ask on events — predator pressure entering range, HP falling below the hunger-priority threshold, fresh carrion entering perception, a kill resolving, landing/grounded state changing, or the current intent reaching its target or expiring — at most once per agent per `jevReaskBackoff` window (0.5s). Halcons far from the player camera SHALL use a 3s timer instead of 1s.
 
 #### Scenario: Staggered timer
 
@@ -51,7 +51,7 @@ The system SHALL re-ask macro intent for each AI halcon on a staggered 1s timer,
 #### Scenario: Event re-ask on grounded carrion
 
 - **WHEN** a halcon lands on carrion outside its timer slot
-- **THEN** the system re-asks macro intent for that halcon immediately with an eat/courtesy menu
+- **THEN** the system re-asks macro intent for that halcon within the backoff window with an eat/courtesy menu
 
 #### Scenario: Data-LOD slowdown
 
