@@ -91,7 +91,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
 	if threat != null and float(a.get("strikeCd", 0.0)) <= 0.0 and _verb_ready(a, 5):
 		menu.append({"kind": "strike", "label": "Strike predator", "x": float((threat as Dictionary)["x"]), "y": float((threat as Dictionary)["y"]), "target": threat})
-	if float(a.get("sed", 100.0)) < float(KarmaData.TUNING["regenSed"]):
+	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var forage := float(KarmaData.SPECIES["zorro"]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
 		if water != null:

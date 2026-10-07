@@ -85,8 +85,7 @@ static func seed_food(state: Dictionary, carry_saplings: int, rng: RandomNumberG
 	for pt in KarmaUtils.scatter_dry(state, flora_cap("nuts"), rng):
 		(state["oaks"] as Array).append(KarmaUtils.mk_patch("nuts", pt["x"], pt["y"], 3))
 	state["insects"] = []
-	for k in KarmaUtils.scaled_count(6):
-		(state["insects"] as Array).append(KarmaGame.spawn_insect_pt(state, rng))
+	KarmaGame.seed_insect_minimums(state, rng)
 	state["seedlings"] = []
 	state["rocks"] = []
 	for pt in KarmaUtils.scatter_dry(state, KarmaUtils.scaled_count(int(KarmaData.TUNING["rockCount"])), rng):
@@ -107,6 +106,10 @@ static func mk_agent(a: Dictionary) -> Dictionary:
 		"larder": 0, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": [], "verbCds": [0.0, 0.0, 0.0, 0.0, 0.0]}
 	for k in a:
 		base[k] = a[k]
+	if not base.has("caution_food"):
+		base["caution_food"] = randf()
+	if not base.has("caution_water"):
+		base["caution_water"] = randf()
 	return base
 
 

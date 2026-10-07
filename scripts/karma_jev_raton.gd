@@ -30,7 +30,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		var far_patch: Variant = KarmaEat.nearest_edible_patch_for(state, a, forage)
 		if far_patch != null:
 			menu.append({"kind": "seek_food", "label": "Seek food", "x": float((far_patch as Dictionary)["x"]), "y": float((far_patch as Dictionary)["y"]), "target": far_patch})
-	if float(a.get("sed", 100.0)) < float(KarmaData.TUNING["regenSed"]):
+	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})

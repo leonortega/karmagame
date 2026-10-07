@@ -12,10 +12,12 @@ const USE_JEV := true
 const USE_JEV_HALCON := true
 const USE_JEV_RATON := true
 const USE_JEV_ARDILLA := true
+const USE_JEV_SAPO := true
 static var LOG_JEV_ZORRO := false
 static var LOG_JEV_HALCON := false
 static var LOG_JEV_RATON := false
 static var LOG_JEV_ARDILLA := true
+static var LOG_JEV_SAPO := true
 const JEV_URL := "http://192.168.100.80:8766/api/evaluate"
 const JEV_LOG_CAP := 200
 const JEV_LOG_PATH := "user://logs/jev_zorro.log"
@@ -41,6 +43,8 @@ static func log_enabled(species: String) -> bool:
 			return LOG_JEV_RATON
 		"ardilla":
 			return LOG_JEV_ARDILLA
+		"sapo":
+			return LOG_JEV_SAPO
 	return false
 
 
@@ -70,9 +74,23 @@ static func mark_served(state: Dictionary, species: String) -> void:
 	(state["jev_last_served"] as Dictionary)[species] = float(state.get("time", 0.0))
 
 
+static func census(state: Dictionary) -> Dictionary:
+	var agents := {}
+	for a in state.get("agents", []):
+		var key := str((a as Dictionary).get("speciesKey", "?"))
+		agents[key] = int(agents.get(key, 0)) + 1
+	return {
+		"insects": (state.get("insects", []) as Array).size(),
+		"carrions": (state.get("carrions", []) as Array).size(),
+		"agents": agents,
+	}
+
+
 static func appraise_emocion(snapshot: Dictionary, kind: String) -> String:
-	if bool(snapshot.get("threatened", false)):
+	if bool(snapshot.get("threatened", false)) or bool(snapshot.get("pressure_near", false)):
 		return "Miedo"
+	if float(snapshot.get("hambre", 100.0)) <= float(KarmaData.TUNING["regenHambre"]):
+		return "Urgencia"
 	if kind in ["bury_nut", "carry_nut"] or bool(snapshot.get("carriedNut", false)):
 		return "Esperanza"
 	if bool(snapshot.get("hungry", false)):
@@ -155,9 +173,7 @@ static func pick_batch_species_3(zorro_due: bool, halcon_due: bool, raton_due: b
 	return ""
 
 
-static func pick_batch_species_4(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, last: String, served: Dictionary = {}) -> String:
-	var order := ["zorro", "halcon", "raton", "ardilla"]
-	var due := {"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due}
+static func _pick_best(order: Array, due: Dictionary, last: String, served: Dictionary) -> String:
 	var start := (order.find(last) + 1) % order.size() if order.has(last) else 0
 	var best := ""
 	var best_t := 1e18
@@ -167,6 +183,16 @@ static func pick_batch_species_4(zorro_due: bool, halcon_due: bool, raton_due: b
 			best = species
 			best_t = float(served.get(species, -1e9))
 	return best
+
+
+static func pick_batch_species_4(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, last: String, served: Dictionary = {}) -> String:
+	return _pick_best(["zorro", "halcon", "raton", "ardilla"],
+		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due}, last, served)
+
+
+static func pick_batch_species_5(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, last: String, served: Dictionary = {}) -> String:
+	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo"],
+		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due}, last, served)
 
 
 static func log_decision(state: Dictionary, snapshot: Dictionary, menu: Array, answer: Dictionary, applied: bool, species: String = "zorro", agent_id: String = "") -> void:
@@ -397,3 +423,45 @@ static func mock_ardilla_macro(state: Dictionary, a: Dictionary) -> bool:
 
 static func apply_ardilla_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
 	return KarmaJevArdilla.apply_answer(state, a, menu, answer)
+
+
+# --- Sapo delegates ---
+
+static func sapo_definition() -> Dictionary:
+	return KarmaJevSapo.sapo_definition()
+
+
+static func build_sapo_menu(state: Dictionary, a: Dictionary) -> Array:
+	return KarmaJevSapo.build_menu(state, a)
+
+
+static func build_sapo_state(state: Dictionary, a: Dictionary) -> Dictionary:
+	return KarmaJevSapo.build_state(state, a)
+
+
+static func all_jev_sapos(state: Dictionary) -> Array:
+	return KarmaJevSapo.all_jev_sapos(state)
+
+
+static func sapo_state_text(state: Dictionary, a: Dictionary) -> String:
+	return KarmaJevSapo.state_text(state, a)
+
+
+static func build_sapo_http_body(state: Dictionary) -> Dictionary:
+	return KarmaJevSapo.build_http_body(state)
+
+
+static func build_sapo_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
+	return KarmaJevSapo.build_http_body_for(state, agents)
+
+
+static func sapo_mock_choice(menu: Array) -> int:
+	return KarmaJevSapo.mock_choice(menu)
+
+
+static func mock_sapo_macro(state: Dictionary, a: Dictionary) -> bool:
+	return KarmaJevSapo.mock_macro(state, a)
+
+
+static func apply_sapo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
+	return KarmaJevSapo.apply_answer(state, a, menu, answer)

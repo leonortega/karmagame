@@ -23,6 +23,8 @@ static func _step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
 		return
 	if KarmaAI.ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
 		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
+		return
 	if KarmaAI.ai_forage(state, a, dt):
 		return
 	if KarmaAI.ai_maybe_verb(state, a, dt):
@@ -44,6 +46,8 @@ static func _step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if KarmaAI.is_hunted(state, a) and KarmaAI.ai_try_hide(state, a):
 		return
 	if KarmaAI.ai_thirst(state, a, dt):
+		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
 		return
 	if _steer_intent(state, a, dt):
 		return

@@ -33,6 +33,8 @@ static func step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
 			a["grounded"] = false
 			return
 		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
+		return
 	if steer_intent(state, a, dt):
 		return
 	if bool(a.get("jev_live", false)):
@@ -122,6 +124,8 @@ static func step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
 			return
 		if float(a.get("landT", 0.0)) <= 0.0:
 			a["grounded"] = false
+			return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
 		return
 	var prey: Variant = KarmaAI.nearest_ai_prey(state, a, 200.0)
 	if prey != null:

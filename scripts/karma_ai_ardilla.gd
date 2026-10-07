@@ -25,6 +25,8 @@ static func step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
 		return
 	if KarmaAI.ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
 		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
+		return
 	var poi: Variant = KarmaGame.wander_poi(state, a)
 	if poi != null:
 		KarmaGame.move_toward(state, a, float((poi as Dictionary)["x"]), float((poi as Dictionary)["y"]), 1.0, dt)
@@ -42,6 +44,8 @@ static func step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if KarmaAI.is_hunted(state, a) and KarmaAI.ai_try_hide(state, a):
 		return
 	if KarmaAI.ai_thirst(state, a, dt):
+		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
 		return
 	if bool(a.get("carriedNut", false)) and KarmaAI.is_hungry(a):
 		a["carriedNut"] = false

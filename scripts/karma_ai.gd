@@ -179,11 +179,21 @@ static func ai_max_hp(a: Dictionary) -> float:
 	return float(KarmaData.SPECIES[str(a["speciesKey"])]["maxHp"]) + (25.0 if KarmaShop.has_adapt(a, "stomach") else 0.0)
 
 
+static func food_threshold(a: Dictionary) -> float:
+	return 30.0 + 70.0 * float(a.get("caution_food", 1.0))
+
+
+static func water_threshold(a: Dictionary) -> float:
+	return 30.0 + 70.0 * float(a.get("caution_water", 1.0))
+
+
 static func is_hungry(a: Dictionary) -> bool:
-	return float(a.get("hambre", 100.0)) < 100.0
+	return float(a.get("hambre", 100.0)) < food_threshold(a)
 
 
 static func ai_forage(state: Dictionary, a: Dictionary, dt: float) -> bool:
+	if not is_hungry(a):
+		return false
 	var rnge: float = float(KarmaData.SPECIES[str(a["speciesKey"])]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
 	var target: Variant = null
 	var bd := rnge
@@ -198,6 +208,27 @@ static func ai_forage(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	if target == null:
 		return false
 	KarmaGame.move_toward(state, a, float((target as Dictionary)["x"]), float((target as Dictionary)["y"]), 1.0, dt)
+	return true
+
+
+static func ai_urgent_seek(state: Dictionary, a: Dictionary, dt: float) -> bool:
+	if float(a.get("hambre", 100.0)) > float(KarmaData.TUNING["regenHambre"]):
+		return false
+	var diet: Array = KarmaData.DIET.get(str(a.get("speciesKey", "raton")), [])
+	var seek := float(KarmaData.TUNING["wanderSeekRange"])
+	var ax := float(a["x"])
+	var ay := float(a["y"])
+	var target: Variant = null
+	if diet.has("carrion"):
+		target = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), seek)
+	if target == null and diet.has("insects"):
+		target = KarmaUtils.nearest_from(ax, ay, state.get("insects", []), seek)
+	if target == null:
+		target = KarmaEat.nearest_edible_patch_for(state, a, seek)
+	if target == null:
+		return false
+	KarmaGame.move_toward(state, a, float((target as Dictionary)["x"]), float((target as Dictionary)["y"]), 1.0, dt)
+	a["stillT"] = 0.0
 	return true
 
 
@@ -229,7 +260,7 @@ static func ai_seek_water(state: Dictionary, a: Dictionary, dt: float) -> bool:
 
 
 static func ai_thirst(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if float(a.get("sed", 100.0)) >= float(KarmaData.TUNING["regenSed"]):
+	if float(a.get("sed", 100.0)) >= water_threshold(a):
 		return false
 	if not seeks_water(a):
 		return false
@@ -288,6 +319,8 @@ static func ai_maybe_verb(state: Dictionary, a: Dictionary, dt: float) -> bool:
 			return true
 		"sapo":
 			if KarmaGame.cast_verb_for(state, a, 4):
+				return true
+			if KarmaGame.cast_verb_for(state, a, 2):
 				return true
 			var pressure: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
 				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"]))
@@ -405,6 +438,8 @@ static func _ai_oruga(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
 		a["stillT"] = 0.0
 		return
+	if ai_urgent_seek(state, a, dt):
+		return
 	if ai_forage(state, a, dt):
 		a["stillT"] = 0.0
 		return
@@ -414,26 +449,7 @@ static func _ai_oruga(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _ai_sapo(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if ai_hide_tick(state, a, dt):
-		return
-	if is_hunted(state, a) and ai_try_hide(state, a):
-		return
-	if ai_flee(state, a, dt):
-		a["stillT"] = 0.0
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if ai_grazer_eat(state, a, float(KarmaData.TUNING["tongueRange"]) + (40.0 if KarmaShop.has_adapt(a, "tonguePlus") else 0.0)):
-		a["stillT"] = 0.0
-		return
-	if ai_forage(state, a, dt):
-		a["stillT"] = 0.0
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	a["stillT"] = float(a.get("stillT", 0.0)) + dt
+	KarmaAISapo.step(state, a, dt)
 
 
 static func _ai_raton(state: Dictionary, a: Dictionary, dt: float) -> void:
@@ -454,6 +470,8 @@ static func _ai_topo(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if ai_thirst(state, a, dt):
 		return
 	if ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
+		return
+	if ai_urgent_seek(state, a, dt):
 		return
 	if ai_forage(state, a, dt):
 		return
@@ -495,6 +513,8 @@ static func _ai_lobo(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if ai_thirst(state, a, dt):
 		return
 	if is_hungry(a) and ai_seek_carrion(state, a, dt):
+		return
+	if ai_urgent_seek(state, a, dt):
 		return
 	if ai_maybe_verb(state, a, dt):
 		return

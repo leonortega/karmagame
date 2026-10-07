@@ -71,15 +71,50 @@ static func escort_tick(state: Dictionary, dt: float) -> void:
 	KarmaState.add_karma(state, null, float(KarmaData.TUNING["escortKarma"]), "Escolta cumplida: tu protegido sobrevive (+karma)")
 
 
+static func insect_zone_counts(state: Dictionary) -> Dictionary:
+	var charco := 0
+	var lago := 0
+	for i in state.get("insects", []):
+		var p := i as Dictionary
+		for w in state.get("waters", []) as Array:
+			var d := Vector2(float(p["x"]), float(p["y"])).distance_to(Vector2(float((w as Dictionary)["x"]), float((w as Dictionary)["y"])))
+			if str((w as Dictionary).get("kind", "")) == "charco" and d <= float((w as Dictionary)["r"]) * 4.0:
+				charco += 1
+			elif str((w as Dictionary).get("kind", "")) == "lago" and d <= float((w as Dictionary)["r"]) + float(KarmaData.TUNING["lakeShore"]):
+				lago += 1
+	return {"charco": charco, "lago": lago}
+
+
+static func seed_insect_minimums(state: Dictionary, rng: RandomNumberGenerator) -> void:
+	var charcos := (state.get("waters", []) as Array).filter(func(w): return str(w.get("kind", "")) == "charco")
+	if not charcos.is_empty():
+		for i in int(KarmaData.TUNING["insectCharcoMin"]):
+			var c: Dictionary = charcos[i % charcos.size()]
+			(state["insects"] as Array).append(_spawn_water_ring(state, rng, float(c["x"]), float(c["y"]), float(c["r"]) + 8.0, float(c["r"]) * 4.0))
+	var lagos := (state.get("waters", []) as Array).filter(func(w): return str(w.get("kind", "")) == "lago")
+	if not lagos.is_empty():
+		for i in int(KarmaData.TUNING["insectLagoMin"]):
+			var l: Dictionary = lagos[i % lagos.size()]
+			(state["insects"] as Array).append(_spawn_water_ring(state, rng, float(l["x"]), float(l["y"]), float(l["r"]) + 8.0, float(l["r"]) + float(KarmaData.TUNING["lakeShore"])))
+
+
+static func _spawn_water_ring(state: Dictionary, rng: RandomNumberGenerator, cx: float, cy: float, inner: float, outer: float) -> Dictionary:
+	var ang := rng.randf() * 7.0
+	var r: float = inner + rng.randf() * (outer - inner)
+	var pt := {"x": clampf(cx + cos(ang) * r, 20.0, float(KarmaData.WORLD["w"]) - 20.0),
+		"y": clampf(cy + sin(ang) * r, 20.0, float(KarmaData.WORLD["h"]) - 20.0)}
+	return KarmaUtils.nudge_dry(state, pt)
+
+
 static func spawn_insect_pt(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
 	var lagos := (state.get("waters", []) as Array).filter(func(w): return str(w.get("kind", "")) == "lago")
 	if not lagos.is_empty() and rng.randf() < float(KarmaData.TUNING["lakeInsectBias"]):
 		var l: Dictionary = lagos[rng.randi() % lagos.size()]
-		var ang := rng.randf() * 7.0
-		var r: float = float(l["r"]) + 8.0 + rng.randf() * float(KarmaData.TUNING["lakeShore"])
-		var pt := {"x": clampf(float(l["x"]) + cos(ang) * r, 20.0, float(KarmaData.WORLD["w"]) - 20.0),
-			"y": clampf(float(l["y"]) + sin(ang) * r, 20.0, float(KarmaData.WORLD["h"]) - 20.0)}
-		return KarmaUtils.nudge_dry(state, pt)
+		return _spawn_water_ring(state, rng, float(l["x"]), float(l["y"]), float(l["r"]) + 8.0, float(l["r"]) + float(KarmaData.TUNING["lakeShore"]))
+	var charcos := (state.get("waters", []) as Array).filter(func(w): return str(w.get("kind", "")) == "charco")
+	if not charcos.is_empty() and rng.randf() < float(KarmaData.TUNING["charcoInsectBias"]):
+		var c: Dictionary = charcos[rng.randi() % charcos.size()]
+		return _spawn_water_ring(state, rng, float(c["x"]), float(c["y"]), float(c["r"]) + 8.0, float(c["r"]) * 4.0)
 	var dry := KarmaUtils.scatter_dry(state, 1, rng)
 	if dry.is_empty():
 		var fallback: Dictionary = KarmaUtils.scatter(1, rng)[0]
@@ -161,9 +196,21 @@ static func age_world(state: Dictionary, dt: float, rng: RandomNumberGenerator) 
 		ins["x"] = float(ins["x"]) + (rng.randf() - 0.5) * 60.0 * dt
 		ins["y"] = float(ins["y"]) + (rng.randf() - 0.5) * 60.0 * dt
 	state["insectT"] = float(state.get("insectT", 0.0)) + dt
-	if float(state["insectT"]) >= float(KarmaData.TUNING["insectRespawn"]) and (state["insects"] as Array).size() < int(KarmaData.TUNING["insectMax"]):
-		state["insectT"] = 0.0
-		(state["insects"] as Array).append(spawn_insect_pt(state, rng))
+	if float(state["insectT"]) >= float(KarmaData.TUNING["insectRespawn"]):
+		var zones := insect_zone_counts(state)
+		var charcos := (state.get("waters", []) as Array).filter(func(w): return str(w.get("kind", "")) == "charco")
+		var lagos := (state.get("waters", []) as Array).filter(func(w): return str(w.get("kind", "")) == "lago")
+		if int(zones["charco"]) < int(KarmaData.TUNING["insectCharcoMin"]) and not charcos.is_empty():
+			var c: Dictionary = charcos[rng.randi() % charcos.size()]
+			(state["insects"] as Array).append(_spawn_water_ring(state, rng, float(c["x"]), float(c["y"]), float(c["r"]) + 8.0, float(c["r"]) * 4.0))
+			state["insectT"] = 0.0
+		elif int(zones["lago"]) < int(KarmaData.TUNING["insectLagoMin"]) and not lagos.is_empty():
+			var l: Dictionary = lagos[rng.randi() % lagos.size()]
+			(state["insects"] as Array).append(_spawn_water_ring(state, rng, float(l["x"]), float(l["y"]), float(l["r"]) + 8.0, float(l["r"]) + float(KarmaData.TUNING["lakeShore"])))
+			state["insectT"] = 0.0
+		elif (state["insects"] as Array).size() < int(KarmaData.TUNING["insectMax"]):
+			state["insectT"] = 0.0
+			(state["insects"] as Array).append(spawn_insect_pt(state, rng))
 	state["mateT"] = float(state.get("mateT", 0.0)) + dt
 	if float(state["mateT"]) >= float(KarmaData.TUNING["mateRespawn"]) and KarmaState.company_agents(state).size() < int(KarmaData.TUNING["mateMax"]):
 		state["mateT"] = 0.0
@@ -321,7 +368,7 @@ static func call_verb(state: Dictionary, a: Variant, verb_id: String) -> bool:
 		"alarm":
 			return KarmaState.ai_try_shout(state, a) if a != null else (KarmaState.try_shout(state) or true)
 		"pest":
-			return KarmaEat.eat_as_sapo(state) if a == null else false
+			return KarmaEat.eat_as_sapo(state) if a == null else _verb_pest(state, a)
 		"croak":
 			return KarmaState.ai_try_shout(state, a) if a != null else (KarmaState.try_shout(state) or true)
 		"burrowin":
@@ -458,6 +505,14 @@ static func _verb_nestdig(state: Dictionary, a: Variant) -> bool:
 	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": state["px"], "y": state["py"], "dug": true})
 	KarmaState.add_log(state, null, "Excavas un nido extra (cuesta vida)")
 	return true
+
+
+static func _verb_pest(state: Dictionary, a: Variant) -> bool:
+	var reach := float(KarmaData.TUNING["tongueRange"]) + (40.0 if KarmaShop.has_adapt(a, "tonguePlus") else 0.0)
+	var bug: Variant = KarmaUtils.nearest_from(float((a as Dictionary)["x"]), float((a as Dictionary)["y"]), state.get("insects", []), reach)
+	if bug == null:
+		return false
+	return KarmaEat.eat_insect(state, bug, a)
 
 
 static func _verb_burrowin(state: Dictionary, a: Variant) -> bool:

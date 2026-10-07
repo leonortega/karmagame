@@ -20,6 +20,8 @@ static func step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
 		return
 	if KarmaAI.ai_thirst(state, a, dt):
 		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
+		return
 	if KarmaAI.is_hunted(state, a) and str((a.get("jev_intent", {}) as Dictionary).get("kind", "")) != "flee":
 		a["jev_intent"] = {}
 	if steer_intent(state, a, dt):
@@ -92,6 +94,8 @@ static func step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if KarmaAI.ai_flee(state, a, dt):
 		return
 	if KarmaAI.ai_thirst(state, a, dt):
+		return
+	if KarmaAI.ai_urgent_seek(state, a, dt):
 		return
 	if KarmaAI.ai_maybe_verb(state, a, dt):
 		return

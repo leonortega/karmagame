@@ -4,7 +4,7 @@
 Every species on the map has a full AI behavior engine that matches the player's capabilities. Grazers eat, dig, curl, camouflage, carry nuts, groom, and perform species-specific actions. Predators hunt, pounce, dive, strike, and cede kills. No AI animal is static.
 ## Requirements
 ### Requirement: All 8 species have species-specific AI behavior
-The `updateAgents(dt)` function SHALL call a per-species AI function for every agent: `aiOruga`, `aiSapo`, `aiRaton`, `aiArdilla`, `aiTopo`, `aiZorro`, `aiLobo`, `aiHalcon`. Four species implement the full behavioral kit inline (contact eating, food seeking beyond contact range, hunger-priority gating of secondary behaviors, refuge hiding when hunted, flee-toward-cover, and the species deeds below per `ai-survival`). An agent is hungry whenever its `hambre` is below 100, for every species: any food deficit outranks secondary behaviors. The zorro function SHALL split into micro steering every physics tick plus macro intent from NanoJev ranking per `ai-jev-zorro`, using the same kill, carrion, and karma values as the player. The halcon function SHALL split into micro steering every physics tick (dive-kill, grounded/land cycle, drink, needs/cooldowns) plus macro intent from NanoJev ranking per `ai-jev-halcon`, using the same dive, carrion, and karma values as the player. The raton function SHALL split into micro steering every physics tick (contact eat, forage-seek, drink, hide/flee, needs/cooldowns, social-verb fallthrough) plus macro intent from NanoJev ranking per `ai-jev-raton`, using the same patch-eat, drink, and karma values as the player. The ardilla function SHALL split into micro steering every physics tick (contact eat, forage-seek, drink, hide/flee, needs/cooldowns, social-verb fallthrough) plus macro intent from NanoJev ranking per `ai-jev-ardilla`, using the same patch-eat, nut carry/bury, drink, and karma values as the player.
+The `updateAgents(dt)` function SHALL call a per-species AI function for every agent: `aiOruga`, `aiSapo`, `aiRaton`, `aiArdilla`, `aiTopo`, `aiZorro`, `aiLobo`, `aiHalcon`. Four species implement the full behavioral kit inline (contact eating, food seeking beyond contact range, hunger-priority gating of secondary behaviors, refuge hiding when hunted, flee-toward-cover, and the species deeds below per `ai-survival`). An agent is hungry whenever its `hambre` sits below its own food threshold (`30 + 70 × caution_food`): any food deficit below that personal line outranks secondary behaviors. Every agent SHALL roll `caution_food` and `caution_water` (each uniform 0..1) at spawn and reroll them each life; agents missing the keys SHALL behave with both set to 1.0 (legacy always-seeking). The zorro function SHALL split into micro steering every physics tick plus macro intent from NanoJev ranking per `ai-jev-zorro`, using the same kill, carrion, and karma values as the player. The halcon function SHALL split into micro steering every physics tick (dive-kill, grounded/land cycle, drink, needs/cooldowns) plus macro intent from NanoJev ranking per `ai-jev-halcon`, using the same dive, carrion, and karma values as the player. The raton function SHALL split into micro steering every physics tick (contact eat, forage-seek, drink, hide/flee, needs/cooldowns, social-verb fallthrough) plus macro intent from NanoJev ranking per `ai-jev-raton`, using the same patch-eat, drink, and karma values as the player. The ardilla function SHALL split into micro steering every physics tick (contact eat, forage-seek, drink, hide/flee, needs/cooldowns, social-verb fallthrough) plus macro intent from NanoJev ranking per `ai-jev-ardilla`, using the same patch-eat, nut carry/bury, drink, and karma values as the player. The sapo function SHALL split into micro steering every physics tick (contact tongue-eat, insect-seek, drink, hide/flee, needs/cooldowns, stillness accumulation) plus macro intent from NanoJev ranking per `ai-jev-sapo`, using the same insect-eat, drink, verb, and karma values as the player.
 
 #### Scenario: AI Topo digs burrows
 - **WHEN** an AI Topo agent's `digCd` is 0, `dug` < 3, and it is not hungry
@@ -63,10 +63,19 @@ The `updateAgents(dt)` function SHALL call a per-species AI function for every a
 - **WHEN** an AI Ardilla agent needs macro intent
 - **THEN** its intent is the ranked winner of its code-built legal candidate menu via one batched NanoJev request, applied through the same eat/carry/bury/drink/social functions as the player, while micro steering continues every tick
 
+#### Scenario: AI Sapo intent comes from JEV ranking
+
+- **WHEN** an AI Sapo agent needs macro intent
+- **THEN** its intent is the ranked winner of its code-built legal candidate menu via one batched NanoJev request, applied through the same insect-eat/drink/verb functions as the player, while micro steering (including stillness accumulation for camouflage) continues every tick
+
 #### Scenario: AI is hungry on any food deficit
 
-- **WHEN** any AI agent's `hambre` drops below 100
-- **THEN** it counts as hungry: distant-food seeking activates and secondary behaviors defer to eating until `hambre` is full again
+- **WHEN** any AI agent's `hambre` drops below its own food threshold (`30 + 70 × caution_food`)
+- **THEN** it counts as hungry: distant-food seeking activates and secondary behaviors defer to eating until `hambre` climbs back above that line
+
+#### Scenario: Cautious and bold agents differ
+- **WHEN** two AI agents of the same species hold `hambre` 80, one with `caution_food` 1.0 and one with 0.0
+- **THEN** the first counts as hungry and seeks food while the second does not until its `hambre` drops below 30
 
 #### Scenario: Thirsty AI treks to distant water
 

@@ -77,7 +77,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	if danger != null and _verb_ready(a, 1):
 		var tf_label := "Tail flick (hunted!)" if hunted else "Tail flick"
 		menu.append({"kind": "tailflick", "label": tf_label, "x": float((danger as Dictionary)["x"]), "y": float((danger as Dictionary)["y"]), "target": danger})
-	if float(a.get("sed", 100.0)) < float(KarmaData.TUNING["regenSed"]):
+	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})

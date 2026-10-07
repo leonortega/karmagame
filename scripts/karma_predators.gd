@@ -12,7 +12,8 @@ static func mk_predator(state: Dictionary, type: String, x: float, y: float, pla
 		"hp": float(KarmaData.SPECIES[key]["maxHp"]), "hambre": 100.0, "sed": 100.0, "edad": 0.0,
 		"x": x, "y": y, "wx": x, "wy": y, "speed": speed,
 		"mode": "wander", "campT": 0.0, "huntT": 0.0, "restT": 0.0, "satedT": 0.0,
-		"fleeLatch": false, "huntingPlayer": false, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": []}
+		"fleeLatch": false, "huntingPlayer": false, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": [],
+		"caution_food": randf(), "caution_water": randf()}
 
 
 static func edible_for(hunter_type: String, victim_key: String, dist: float) -> bool:

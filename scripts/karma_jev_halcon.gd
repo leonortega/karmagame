@@ -79,7 +79,7 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 		menu.append({"kind": "bone", "label": "Drop bone", "x": ax, "y": ay})
 	if _verb_ready(a, 2) and float(a.get("thermalT", 0.0)) <= 0.0 and float(a.get("pa", 0.0)) >= float((KarmaData.VERB_DEFS["halcon"] as Array)[1]["costPa"]):
 		menu.append({"kind": "thermal", "label": "Ride thermal (-%d PA)" % int(float((KarmaData.VERB_DEFS["halcon"] as Array)[1]["costPa"])), "x": ax, "y": ay})
-	if float(a.get("sed", 100.0)) < float(KarmaData.TUNING["regenSed"]):
+	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var forage := float(KarmaData.SPECIES["halcon"]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
 		if water != null:
