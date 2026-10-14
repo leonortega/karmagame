@@ -294,7 +294,7 @@ func test_should_ask_on_fresh_carrion() -> void:
 	KarmaJev.mark_asked(s, a, 2000.0)
 	assert_bool(KarmaJev.should_ask(s, a, 10.0, 2000.0)).is_false()
 	KarmaEat.add_carrion(s, 600.0, 500.0)
-	assert_bool(KarmaJev.should_ask(s, a, 10.0, 2000.0)).is_true()
+	assert_bool(KarmaJev.should_ask(s, a, 11.0, 2000.0)).is_true()
 
 
 func test_cached_carrion_pays_pa_on_fresh_eat() -> void:
@@ -343,7 +343,11 @@ func test_log_flags_default_on() -> void:
 	assert_bool(KarmaJev.log_enabled("zorro")).is_false()
 	assert_bool(KarmaJev.log_enabled("halcon")).is_false()
 	assert_bool(KarmaJev.log_enabled("raton")).is_false()
-	assert_bool(KarmaJev.log_enabled("ardilla")).is_true()
+	assert_bool(KarmaJev.log_enabled("ardilla")).is_false()
+	assert_bool(KarmaJev.log_enabled("sapo")).is_false()
+	assert_bool(KarmaJev.log_enabled("topo")).is_false()
+	assert_bool(KarmaJev.log_enabled("lobo")).is_false()
+	assert_bool(KarmaJev.log_enabled("oruga")).is_false()
 
 
 func test_log_decision_writes_per_species_buffer() -> void:
@@ -399,6 +403,7 @@ func test_halcon_menu_always_has_wander() -> void:
 func test_is_hungry_flags_any_deficit() -> void:
 	var s := _fresh_zorro_state()
 	var a := _ai_zorro(s, 500.0, 500.0)
+	a["caution_food"] = 1.0
 	a["hambre"] = 100.0
 	assert_bool(KarmaAI.is_hungry(a)).is_false()
 	a["hambre"] = 99.9
@@ -585,8 +590,8 @@ func test_log_isolation_flag_off_drops() -> void:
 	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "raton")
 	assert_int(((s.get("jev_log_raton", []) as Array)).size()).is_equal(0)
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
-	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "ardilla")
-	assert_int(((s.get("jev_log_ardilla", []) as Array)).size()).is_equal(1)
+	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true, "oruga")
+	assert_bool(s.has("jev_log_oruga")).is_false()
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
 
 
@@ -613,14 +618,15 @@ func test_halcon_eat_label_hints_hunger_when_needy() -> void:
 func test_hunger_event_fires_once_on_edge() -> void:
 	var s := _fresh_zorro_state()
 	var a := _ai_zorro(s, 500.0, 500.0)
+	a["caution_food"] = 1.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	s["time"] = 10.0
 	KarmaJev.mark_asked(s, a, 2000.0)
 	assert_bool(KarmaJev.should_ask(s, a, 10.0, 2000.0)).is_false()
 	a["hambre"] = 90.0
-	assert_bool(KarmaJev.should_ask(s, a, 10.0, 2000.0)).is_true()
+	assert_bool(KarmaJev.should_ask(s, a, 10.6, 2000.0)).is_true()
 	KarmaJev.mark_asked(s, a, 2000.0)
-	assert_bool(KarmaJev.should_ask(s, a, 10.0, 2000.0)).is_false()
+	assert_bool(KarmaJev.should_ask(s, a, 10.6, 2000.0)).is_false()
 
 
 func test_pick_batch_species_alternates_when_both_due() -> void:

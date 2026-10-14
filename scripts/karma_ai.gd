@@ -427,25 +427,7 @@ static func ai_step(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _ai_oruga(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if ai_hide_tick(state, a, dt):
-		return
-	if is_hunted(state, a) and ai_try_hide(state, a):
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
-		a["stillT"] = 0.0
-		return
-	if ai_urgent_seek(state, a, dt):
-		return
-	if ai_forage(state, a, dt):
-		a["stillT"] = 0.0
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	a["stillT"] = float(a.get("stillT", 0.0)) + dt
+	KarmaAIOruga.step(state, a, dt)
 
 
 static func _ai_sapo(state: Dictionary, a: Dictionary, dt: float) -> void:

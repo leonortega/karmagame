@@ -15,13 +15,15 @@ const USE_JEV_ARDILLA := true
 const USE_JEV_SAPO := true
 const USE_JEV_TOPO := true
 const USE_JEV_LOBO := true
+const USE_JEV_ORUGA := true
 static var LOG_JEV_ZORRO := false
 static var LOG_JEV_HALCON := false
 static var LOG_JEV_RATON := false
 static var LOG_JEV_ARDILLA := false
 static var LOG_JEV_SAPO := false
 static var LOG_JEV_TOPO := false
-static var LOG_JEV_LOBO := true
+static var LOG_JEV_LOBO := false
+static var LOG_JEV_ORUGA := false
 const JEV_URL := "http://192.168.100.80:8766/api/evaluate"
 const JEV_LOG_CAP := 200
 const JEV_LOG_PATH := "user://logs/jev_zorro.log"
@@ -53,6 +55,8 @@ static func log_enabled(species: String) -> bool:
 			return LOG_JEV_TOPO
 		"lobo":
 			return LOG_JEV_LOBO
+		"oruga":
+			return LOG_JEV_ORUGA
 	return false
 
 
@@ -211,6 +215,11 @@ static func pick_batch_species_6(zorro_due: bool, halcon_due: bool, raton_due: b
 static func pick_batch_species_7(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, lobo_due: bool, last: String, served: Dictionary = {}) -> String:
 	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo", "topo", "lobo"],
 		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due, "topo": topo_due, "lobo": lobo_due}, last, served)
+
+
+static func pick_batch_species_8(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, lobo_due: bool, oruga_due: bool, last: String, served: Dictionary = {}) -> String:
+	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo", "topo", "lobo", "oruga"],
+		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due, "topo": topo_due, "lobo": lobo_due, "oruga": oruga_due}, last, served)
 
 
 static func log_decision(state: Dictionary, snapshot: Dictionary, menu: Array, answer: Dictionary, applied: bool, species: String = "zorro", agent_id: String = "") -> void:
@@ -571,3 +580,45 @@ static func mock_lobo_macro(state: Dictionary, a: Dictionary) -> bool:
 
 static func apply_lobo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
 	return KarmaJevLobo.apply_answer(state, a, menu, answer)
+
+
+# --- Oruga delegates ---
+
+static func oruga_definition() -> Dictionary:
+	return KarmaJevOruga.oruga_definition()
+
+
+static func build_oruga_menu(state: Dictionary, a: Dictionary) -> Array:
+	return KarmaJevOruga.build_menu(state, a)
+
+
+static func build_oruga_state(state: Dictionary, a: Dictionary) -> Dictionary:
+	return KarmaJevOruga.build_state(state, a)
+
+
+static func all_jev_orugas(state: Dictionary) -> Array:
+	return KarmaJevOruga.all_jev_orugas(state)
+
+
+static func oruga_state_text(state: Dictionary, a: Dictionary) -> String:
+	return KarmaJevOruga.state_text(state, a)
+
+
+static func build_oruga_http_body(state: Dictionary) -> Dictionary:
+	return KarmaJevOruga.build_http_body(state)
+
+
+static func build_oruga_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
+	return KarmaJevOruga.build_http_body_for(state, agents)
+
+
+static func oruga_mock_choice(menu: Array) -> int:
+	return KarmaJevOruga.mock_choice(menu)
+
+
+static func mock_oruga_macro(state: Dictionary, a: Dictionary) -> bool:
+	return KarmaJevOruga.mock_macro(state, a)
+
+
+static func apply_oruga_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
+	return KarmaJevOruga.apply_answer(state, a, menu, answer)

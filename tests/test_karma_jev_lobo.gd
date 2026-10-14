@@ -274,7 +274,7 @@ func test_red_flag_match_bumps_counter() -> void:
 	assert_int(_red_flag_count(s)).is_equal(1)
 	_red_flag_log_call(s, true, ["eat", "wander"], 1)
 	assert_int(_red_flag_count(s)).is_equal(2)
-	KarmaJev.LOG_JEV_LOBO = true
+	KarmaJev.LOG_JEV_LOBO = false
 
 
 func test_red_flag_non_match_leaves_counter() -> void:
@@ -284,7 +284,7 @@ func test_red_flag_non_match_leaves_counter() -> void:
 	_red_flag_log_call(s, true, ["wander"], 0)
 	_red_flag_log_call(s, true, ["eat", "wander"], 0)
 	assert_int(_red_flag_count(s)).is_equal(0)
-	KarmaJev.LOG_JEV_LOBO = true
+	KarmaJev.LOG_JEV_LOBO = false
 
 
 func test_red_flag_disabled_counts_nothing() -> void:
@@ -292,7 +292,7 @@ func test_red_flag_disabled_counts_nothing() -> void:
 	KarmaJev.LOG_JEV_LOBO = false
 	_red_flag_log_call(s, true, ["eat", "wander"], 1)
 	assert_bool(s.has("jev_red_flags")).is_false()
-	KarmaJev.LOG_JEV_LOBO = true
+	KarmaJev.LOG_JEV_LOBO = false
 
 
 func test_red_flag_mock_path_counts_nothing() -> void:
@@ -303,7 +303,7 @@ func test_red_flag_mock_path_counts_nothing() -> void:
 	s["carrions"] = [{"x": 520.0, "y": 500.0, "age": 0.0}]
 	assert_bool(KarmaJevLobo.mock_macro(s, a)).is_true()
 	assert_bool(s.has("jev_red_flags")).is_false()
-	KarmaJev.LOG_JEV_LOBO = true
+	KarmaJev.LOG_JEV_LOBO = false
 
 
 func test_mock_choice_prefers_eat() -> void:
@@ -603,9 +603,11 @@ func test_facade_lobo_delegates() -> void:
 
 
 func test_log_triple_schema_path_and_flag() -> void:
+	KarmaJev.LOG_JEV_LOBO = true
 	assert_bool(KarmaJev.log_enabled("lobo")).is_true()
 	assert_str(KarmaJev.schema_for("lobo")).is_equal("jev-lobo/v1")
 	assert_str(KarmaJev.jev_log_path_for("lobo")).is_equal("user://logs/jev_lobo.log")
+	KarmaJev.LOG_JEV_LOBO = false
 
 
 func test_disabled_log_buffers_nothing() -> void:

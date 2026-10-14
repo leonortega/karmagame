@@ -242,9 +242,11 @@ func test_ardilla_parse_answers_passes_emocion_through() -> void:
 
 
 func test_log_triple_schema_path_and_flag() -> void:
+	KarmaJev.LOG_JEV_ARDILLA = true
 	assert_str(KarmaJev.schema_for("ardilla")).is_equal("jev-ardilla/v1")
 	assert_str(KarmaJev.jev_log_path_for("ardilla")).is_equal("user://logs/jev_ardilla.log")
 	assert_bool(KarmaJev.log_enabled("ardilla")).is_true()
+	KarmaJev.LOG_JEV_ARDILLA = false
 
 
 func test_log_decision_writes_ardilla_buffer_only() -> void:
@@ -255,7 +257,7 @@ func test_log_decision_writes_ardilla_buffer_only() -> void:
 	assert_str(str((((s["jev_log_ardilla"] as Array)[0] as Dictionary))["schema"])).is_equal("jev-ardilla/v1")
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
 	assert_int((s.get("jev_log_raton", []) as Array).size()).is_equal(0)
-	KarmaJev.LOG_JEV_ARDILLA = true
+	KarmaJev.LOG_JEV_ARDILLA = false
 
 
 func test_log_decision_stores_agent_id() -> void:
@@ -263,7 +265,7 @@ func test_log_decision_stores_agent_id() -> void:
 	KarmaJev.LOG_JEV_ARDILLA = true
 	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "eat"}, {"kind": "wander"}], {"choice": 0, "probs": [1.0], "emocion": ""}, true, "ardilla", "ardilla-7")
 	assert_str(str((((s["jev_log_ardilla"] as Array)[0] as Dictionary))["agent"])).is_equal("ardilla-7")
-	KarmaJev.LOG_JEV_ARDILLA = true
+	KarmaJev.LOG_JEV_ARDILLA = false
 
 
 func test_mock_macro_never_logs() -> void:
@@ -500,7 +502,7 @@ func test_log_decision_stores_menu_labels() -> void:
 	var entry: Dictionary = (s["jev_log_ardilla"] as Array)[0]
 	assert_str(",".join(entry["labels"])).is_equal("Eat food,Wander")
 	assert_str(",".join(entry["intent_keys"])).is_equal("choice,value")
-	KarmaJev.LOG_JEV_ARDILLA = true
+	KarmaJev.LOG_JEV_ARDILLA = false
 
 
 func test_parse_answers_records_intent_keys() -> void:
@@ -527,6 +529,7 @@ func test_apply_fills_empty_emocion_from_appraisal() -> void:
 	var s := _fresh_ardilla_state()
 	var a := _ai_ardilla(s, 500.0, 500.0)
 	_clear_flora(s)
+	a["caution_food"] = 1.0
 	a["hp"] = 10.0
 	a["hambre"] = 50.0
 	(s["bushes"] as Array).append(KarmaUtils.mk_patch("berries", 505.0, 500.0, 3))
@@ -569,6 +572,6 @@ func test_log_decision_copies_emocion_source() -> void:
 	KarmaJev.log_decision(s, {"t": 1.0, "hp_frac": 1.0}, [{"kind": "eat", "label": "Eat food"}],
 		{"choice": 0, "probs": [1.0], "emocion": "Hambre", "emocion_source": "local"}, true, "ardilla")
 	assert_str(str(((s["jev_log_ardilla"] as Array)[0] as Dictionary)["emocion_source"])).is_equal("local")
-	KarmaJev.LOG_JEV_ARDILLA = true
+	KarmaJev.LOG_JEV_ARDILLA = false
 	assert_str(KarmaJev.pick_batch_species_4(false, true, false, false, "zorro")).is_equal("halcon")
 	assert_str(KarmaJev.pick_batch_species_4(false, false, false, false, "zorro")).is_equal("")
