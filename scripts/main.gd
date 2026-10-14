@@ -29,7 +29,13 @@ var _jev_a_snaps := {}
 var _jev_s_agents: Array = []
 var _jev_s_menus := {}
 var _jev_s_snaps := {}
-var _jev_flushed := {"zorro": 0, "halcon": 0, "raton": 0, "ardilla": 0, "sapo": 0}
+var _jev_t_agents: Array = []
+var _jev_t_menus := {}
+var _jev_t_snaps := {}
+var _jev_l_agents: Array = []
+var _jev_l_menus := {}
+var _jev_l_snaps := {}
+var _jev_flushed := {"zorro": 0, "halcon": 0, "raton": 0, "ardilla": 0, "sapo": 0, "topo": 0, "lobo": 0}
 var _jev_last_species := "halcon"
 var _jev_flush_t := 0.0
 # HUD text changes slowly (cooldowns tick in whole seconds); rebuilding a dozen
@@ -87,7 +93,17 @@ func _jev_poll() -> void:
 		for a in KarmaJev.all_jev_sapos(state):
 			if KarmaJev.should_ask(state, a, now, _jev_view_diag()):
 				s_due.append(a)
-	match KarmaJev.pick_batch_species_5(not due.is_empty(), not h_due.is_empty(), not r_due.is_empty(), not a_due.is_empty(), not s_due.is_empty(), _jev_last_species, state.get("jev_last_served", {})):
+	var t_due: Array = []
+	if KarmaJev.USE_JEV_TOPO:
+		for a in KarmaJev.all_jev_topos(state):
+			if KarmaJev.should_ask(state, a, now, _jev_view_diag()):
+				t_due.append(a)
+	var l_due: Array = []
+	if KarmaJev.USE_JEV_LOBO:
+		for a in KarmaJev.all_jev_lobos(state):
+			if KarmaJev.should_ask(state, a, now, _jev_view_diag()):
+				l_due.append(a)
+	match KarmaJev.pick_batch_species_7(not due.is_empty(), not h_due.is_empty(), not r_due.is_empty(), not a_due.is_empty(), not s_due.is_empty(), not t_due.is_empty(), not l_due.is_empty(), _jev_last_species, state.get("jev_last_served", {})):
 		"zorro":
 			_send_zorro_batch(due)
 		"halcon":
@@ -98,6 +114,10 @@ func _jev_poll() -> void:
 			_send_ardilla_batch(a_due)
 		"sapo":
 			_send_sapo_batch(s_due)
+		"topo":
+			_send_topo_batch(t_due)
+		"lobo":
+			_send_lobo_batch(l_due)
 
 
 func _send_zorro_batch(due: Array) -> void:
@@ -190,6 +210,42 @@ func _send_sapo_batch(s_due: Array) -> void:
 	_jev_http.request(KarmaJev.JEV_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({"states": s_body["states"]}))
 
 
+func _send_topo_batch(t_due: Array) -> void:
+	var t_body := KarmaJev.build_topo_http_body_for(state, t_due)
+	if (t_body["states"] as Array).is_empty():
+		return
+	_jev_t_agents = t_body["agents"]
+	_jev_t_menus = t_body["menus"]
+	_jev_t_snaps = {}
+	for i in _jev_t_agents.size():
+		_jev_t_snaps[str(i)] = KarmaJev.build_topo_state(state, _jev_t_agents[i])
+	for a in t_due:
+		(a as Dictionary)["jev_live"] = true
+	_jev_busy = true
+	_jev_last_species = "topo"
+	KarmaJev.poll_note(state, "sent", "topo")
+	KarmaJev.mark_served(state, "topo")
+	_jev_http.request(KarmaJev.JEV_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({"states": t_body["states"]}))
+ 
+ 
+func _send_lobo_batch(l_due: Array) -> void:
+	var l_body := KarmaJev.build_lobo_http_body_for(state, l_due)
+	if (l_body["states"] as Array).is_empty():
+		return
+	_jev_l_agents = l_body["agents"]
+	_jev_l_menus = l_body["menus"]
+	_jev_l_snaps = {}
+	for i in _jev_l_agents.size():
+		_jev_l_snaps[str(i)] = KarmaJev.build_lobo_state(state, _jev_l_agents[i])
+	for a in l_due:
+		(a as Dictionary)["jev_live"] = true
+	_jev_busy = true
+	_jev_last_species = "lobo"
+	KarmaJev.poll_note(state, "sent", "lobo")
+	KarmaJev.mark_served(state, "lobo")
+	_jev_http.request(KarmaJev.JEV_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({"states": l_body["states"]}))
+
+
 func _on_jev_done(result: int, code: int, _headers: PackedStringArray, raw: PackedByteArray) -> void:
 	_jev_busy = false
 	var raw_text := raw.get_string_from_utf8()
@@ -207,12 +263,14 @@ func _on_jev_done(result: int, code: int, _headers: PackedStringArray, raw: Pack
 			KarmaJev.poll_note(state, "error")
 		_clear_jev_flight()
 		return
-	var valid := KarmaJev.parse_answers(parsed, _jev_menus if not _jev_agents.is_empty() else (_jev_h_menus if not _jev_h_agents.is_empty() else (_jev_r_menus if not _jev_r_agents.is_empty() else (_jev_a_menus if not _jev_a_agents.is_empty() else _jev_s_menus))))
+	var valid := KarmaJev.parse_answers(parsed, _jev_l_menus if not _jev_l_agents.is_empty() else (_jev_menus if not _jev_agents.is_empty() else (_jev_h_menus if not _jev_h_agents.is_empty() else (_jev_r_menus if not _jev_r_agents.is_empty() else (_jev_a_menus if not _jev_a_agents.is_empty() else (_jev_s_menus if not _jev_s_agents.is_empty() else _jev_t_menus))))))
 	var is_halcon := _jev_agents.is_empty() and not _jev_h_agents.is_empty()
 	var is_raton := _jev_agents.is_empty() and _jev_h_agents.is_empty() and not _jev_r_agents.is_empty()
 	var is_ardilla := _jev_agents.is_empty() and _jev_h_agents.is_empty() and _jev_r_agents.is_empty() and not _jev_a_agents.is_empty()
 	var is_sapo := _jev_agents.is_empty() and _jev_h_agents.is_empty() and _jev_r_agents.is_empty() and _jev_a_agents.is_empty() and not _jev_s_agents.is_empty()
-	var flight_agents := _jev_s_agents if is_sapo else (_jev_a_agents if is_ardilla else (_jev_r_agents if is_raton else (_jev_h_agents if is_halcon else _jev_agents)))
+	var is_topo := _jev_agents.is_empty() and _jev_h_agents.is_empty() and _jev_r_agents.is_empty() and _jev_a_agents.is_empty() and _jev_s_agents.is_empty() and not _jev_t_agents.is_empty()
+	var is_lobo := _jev_agents.is_empty() and _jev_h_agents.is_empty() and _jev_r_agents.is_empty() and _jev_a_agents.is_empty() and _jev_s_agents.is_empty() and _jev_t_agents.is_empty() and not _jev_l_agents.is_empty()
+	var flight_agents := _jev_l_agents if is_lobo else (_jev_t_agents if is_topo else (_jev_s_agents if is_sapo else (_jev_a_agents if is_ardilla else (_jev_r_agents if is_raton else (_jev_h_agents if is_halcon else _jev_agents)))))
 	for rid in valid:
 		var answer: Dictionary = valid[rid]
 		if not rid.is_valid_int():
@@ -223,7 +281,17 @@ func _on_jev_done(result: int, code: int, _headers: PackedStringArray, raw: Pack
 		var a: Dictionary = flight_agents[idx]
 		if not (state["agents"] as Array).has(a):
 			continue
-		if is_sapo:
+		if is_lobo:
+			var l_menu: Array = _jev_l_menus.get(rid, [])
+			var l_snapshot: Dictionary = _jev_l_snaps.get(rid, KarmaJev.build_lobo_state(state, a))
+			var l_applied := KarmaJev.apply_lobo_answer(state, a, l_menu, answer)
+			KarmaJev.log_decision(state, l_snapshot, l_menu, answer, l_applied, "lobo", "lobo#%d" % (state["agents"] as Array).find(a))
+		elif is_topo:
+			var t_menu: Array = _jev_t_menus.get(rid, [])
+			var t_snapshot: Dictionary = _jev_t_snaps.get(rid, KarmaJev.build_topo_state(state, a))
+			var t_applied := KarmaJev.apply_topo_answer(state, a, t_menu, answer)
+			KarmaJev.log_decision(state, t_snapshot, t_menu, answer, t_applied, "topo", "topo#%d" % (state["agents"] as Array).find(a))
+		elif is_sapo:
 			var s_menu: Array = _jev_s_menus.get(rid, [])
 			var s_snapshot: Dictionary = _jev_s_snaps.get(rid, KarmaJev.build_sapo_state(state, a))
 			var s_applied := KarmaJev.apply_sapo_answer(state, a, s_menu, answer)
@@ -265,12 +333,18 @@ func _on_jev_done(result: int, code: int, _headers: PackedStringArray, raw: Pack
 	_jev_s_agents = []
 	_jev_s_menus = {}
 	_jev_s_snaps = {}
+	_jev_t_agents = []
+	_jev_t_menus = {}
+	_jev_t_snaps = {}
+	_jev_l_agents = []
+	_jev_l_menus = {}
+	_jev_l_snaps = {}
 
 
 func _jev_flush_log() -> void:
 	if state.is_empty():
 		return
-	for species in ["zorro", "halcon", "raton", "ardilla", "sapo"]:
+	for species in ["zorro", "halcon", "raton", "ardilla", "sapo", "topo", "lobo"]:
 		if not KarmaJev.log_enabled(species):
 			continue
 		var key := KarmaJev.log_key_for(species)
@@ -295,13 +369,13 @@ func _jev_flush_log() -> void:
 	if state.has("jev_poll"):
 		var pf := FileAccess.open(KarmaJev.JEV_POLL_PATH, FileAccess.WRITE)
 		if pf != null:
-			pf.store_line(JSON.stringify({"t": float(state.get("time", 0.0)), "poll": state["jev_poll"], "census": KarmaJev.census(state)}))
+			pf.store_line(JSON.stringify({"t": float(state.get("time", 0.0)), "poll": state["jev_poll"], "census": KarmaJev.census(state), "red_flags": state.get("jev_red_flags", {})}))
 			pf.close()
 
 
 func _clear_jev_flight() -> void:
 	if not state.is_empty():
-		for a in _jev_agents + _jev_h_agents + _jev_r_agents + _jev_a_agents + _jev_s_agents:
+		for a in _jev_agents + _jev_h_agents + _jev_r_agents + _jev_a_agents + _jev_s_agents + _jev_t_agents + _jev_l_agents:
 			if (state["agents"] as Array).has(a):
 				(a as Dictionary)["jev_live"] = false
 				KarmaJev.mark_asked(state, a, _jev_view_diag())
@@ -320,6 +394,12 @@ func _clear_jev_flight() -> void:
 	_jev_s_agents = []
 	_jev_s_menus = {}
 	_jev_s_snaps = {}
+	_jev_t_agents = []
+	_jev_t_menus = {}
+	_jev_t_snaps = {}
+	_jev_l_agents = []
+	_jev_l_menus = {}
+	_jev_l_snaps = {}
 
 
 func _panel_style(accent: Color) -> StyleBoxFlat:

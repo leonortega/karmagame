@@ -461,28 +461,7 @@ static func _ai_ardilla(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _ai_topo(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if ai_hide_tick(state, a, dt):
-		return
-	if is_hunted(state, a) and ai_try_hide(state, a):
-		return
-	if ai_thirst(state, a, dt):
-		return
-	if ai_grazer_eat(state, a, float(KarmaData.TUNING["eatRange"])):
-		return
-	if ai_urgent_seek(state, a, dt):
-		return
-	if ai_forage(state, a, dt):
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	var poi: Variant = KarmaGame.wander_poi(state, a)
-	if poi != null:
-		KarmaGame.move_toward(state, a, float((poi as Dictionary)["x"]), float((poi as Dictionary)["y"]), 1.0, dt)
-	else:
-		a["x"] = float(a["x"]) + (randf() - 0.5) * 40.0 * dt
-		a["y"] = float(a["y"]) + (randf() - 0.5) * 40.0 * dt
+	KarmaAITopo.step(state, a, dt)
 
 
 static func _ai_zorro(state: Dictionary, a: Dictionary, dt: float) -> void:
@@ -502,29 +481,7 @@ static func _ai_zorro_ladder(state: Dictionary, a: Dictionary, dt: float) -> voi
 
 
 static func _ai_lobo(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, ai_max_hp(a), dt)
-	ai_base(state, a, dt)
-	if float(a.get("strikeCd", 0.0)) <= 0.0:
-		var p: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-			(state["agents"] as Array).filter(func(o): return o != a and str(o.get("role", "")) == "hunter" and str(o.get("type", "")) != str(a.get("speciesKey", ""))), 60.0)
-		if p != null:
-			ai_strike(state, a, p)
-			return
-	if ai_thirst(state, a, dt):
-		return
-	if is_hungry(a) and ai_seek_carrion(state, a, dt):
-		return
-	if ai_urgent_seek(state, a, dt):
-		return
-	if ai_maybe_verb(state, a, dt):
-		return
-	var prey: Variant = nearest_ai_prey(state, a, float(ai_pred_row(a)["perception"]))
-	if prey != null:
-		ai_hunt_eat(state, a, prey, dt)
-		return
-	var c: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
-	if c != null:
-		KarmaEat.eat_carrion(state, c, a)
+	KarmaAILobo.step(state, a, dt)
 
 
 static func _ai_halcon(state: Dictionary, a: Dictionary, dt: float) -> void:

@@ -9,7 +9,7 @@ const BASE_AREA := 1600 * 1200
 
 const POP := {
 	"company": 4,
-	"faunaFloor": {"oruga": 2, "sapo": 2, "raton": 3, "ardilla": 3, "topo": 2, "halcon": 1, "zorro": 2, "lobo": 1},
+	"faunaFloor": {"oruga": 2, "sapo": 2, "raton": 3, "ardilla": 3, "topo": 2, "halcon": 1, "zorro": 2, "lobo": 2},
 }
 
 const SPECIES := {

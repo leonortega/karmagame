@@ -13,11 +13,15 @@ const USE_JEV_HALCON := true
 const USE_JEV_RATON := true
 const USE_JEV_ARDILLA := true
 const USE_JEV_SAPO := true
+const USE_JEV_TOPO := true
+const USE_JEV_LOBO := true
 static var LOG_JEV_ZORRO := false
 static var LOG_JEV_HALCON := false
 static var LOG_JEV_RATON := false
-static var LOG_JEV_ARDILLA := true
-static var LOG_JEV_SAPO := true
+static var LOG_JEV_ARDILLA := false
+static var LOG_JEV_SAPO := false
+static var LOG_JEV_TOPO := false
+static var LOG_JEV_LOBO := true
 const JEV_URL := "http://192.168.100.80:8766/api/evaluate"
 const JEV_LOG_CAP := 200
 const JEV_LOG_PATH := "user://logs/jev_zorro.log"
@@ -45,6 +49,10 @@ static func log_enabled(species: String) -> bool:
 			return LOG_JEV_ARDILLA
 		"sapo":
 			return LOG_JEV_SAPO
+		"topo":
+			return LOG_JEV_TOPO
+		"lobo":
+			return LOG_JEV_LOBO
 	return false
 
 
@@ -195,9 +203,23 @@ static func pick_batch_species_5(zorro_due: bool, halcon_due: bool, raton_due: b
 		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due}, last, served)
 
 
+static func pick_batch_species_6(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, last: String, served: Dictionary = {}) -> String:
+	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo", "topo"],
+		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due, "topo": topo_due}, last, served)
+
+
+static func pick_batch_species_7(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, lobo_due: bool, last: String, served: Dictionary = {}) -> String:
+	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo", "topo", "lobo"],
+		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due, "topo": topo_due, "lobo": lobo_due}, last, served)
+
+
 static func log_decision(state: Dictionary, snapshot: Dictionary, menu: Array, answer: Dictionary, applied: bool, species: String = "zorro", agent_id: String = "") -> void:
 	if not log_enabled(species):
 		return
+	if species == "lobo" and KarmaJevLobo.is_red_flag(snapshot, menu, answer):
+		if not state.has("jev_red_flags"):
+			state["jev_red_flags"] = {}
+		(state["jev_red_flags"] as Dictionary)[species] = int((state["jev_red_flags"] as Dictionary).get(species, 0)) + 1
 	var key := log_key_for(species)
 	if not state.has(key):
 		state[key] = []
@@ -465,3 +487,87 @@ static func mock_sapo_macro(state: Dictionary, a: Dictionary) -> bool:
 
 static func apply_sapo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
 	return KarmaJevSapo.apply_answer(state, a, menu, answer)
+
+
+# --- Topo delegates ---
+
+static func topo_definition() -> Dictionary:
+	return KarmaJevTopo.topo_definition()
+
+
+static func build_topo_menu(state: Dictionary, a: Dictionary) -> Array:
+	return KarmaJevTopo.build_menu(state, a)
+
+
+static func build_topo_state(state: Dictionary, a: Dictionary) -> Dictionary:
+	return KarmaJevTopo.build_state(state, a)
+
+
+static func all_jev_topos(state: Dictionary) -> Array:
+	return KarmaJevTopo.all_jev_topos(state)
+
+
+static func topo_state_text(state: Dictionary, a: Dictionary) -> String:
+	return KarmaJevTopo.state_text(state, a)
+
+
+static func build_topo_http_body(state: Dictionary) -> Dictionary:
+	return KarmaJevTopo.build_http_body(state)
+
+
+static func build_topo_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
+	return KarmaJevTopo.build_http_body_for(state, agents)
+
+
+static func topo_mock_choice(menu: Array) -> int:
+	return KarmaJevTopo.mock_choice(menu)
+
+
+static func mock_topo_macro(state: Dictionary, a: Dictionary) -> bool:
+	return KarmaJevTopo.mock_macro(state, a)
+
+
+static func apply_topo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
+	return KarmaJevTopo.apply_answer(state, a, menu, answer)
+
+
+# --- Lobo delegates ---
+
+static func lobo_definition() -> Dictionary:
+	return KarmaJevLobo.lobo_definition()
+
+
+static func build_lobo_menu(state: Dictionary, a: Dictionary) -> Array:
+	return KarmaJevLobo.build_menu(state, a)
+
+
+static func build_lobo_state(state: Dictionary, a: Dictionary) -> Dictionary:
+	return KarmaJevLobo.build_state(state, a)
+
+
+static func all_jev_lobos(state: Dictionary) -> Array:
+	return KarmaJevLobo.all_jev_lobos(state)
+
+
+static func lobo_state_text(state: Dictionary, a: Dictionary) -> String:
+	return KarmaJevLobo.state_text(state, a)
+
+
+static func build_lobo_http_body(state: Dictionary) -> Dictionary:
+	return KarmaJevLobo.build_http_body(state)
+
+
+static func build_lobo_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
+	return KarmaJevLobo.build_http_body_for(state, agents)
+
+
+static func lobo_mock_choice(menu: Array) -> int:
+	return KarmaJevLobo.mock_choice(menu)
+
+
+static func mock_lobo_macro(state: Dictionary, a: Dictionary) -> bool:
+	return KarmaJevLobo.mock_macro(state, a)
+
+
+static func apply_lobo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
+	return KarmaJevLobo.apply_answer(state, a, menu, answer)

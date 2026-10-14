@@ -691,8 +691,11 @@ static func _verb_regurg(state: Dictionary, a: Variant) -> bool:
 	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
 	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
 	var t: Dictionary = a if a != null else state
-	var mates := KarmaState.company_agents(state).filter(func(o):
-		return (str(o.get("speciesKey", "")) == str((a as Dictionary).get("speciesKey", "")) if a != null else true) and float(o.get("hambre", 100.0)) < float(KarmaData.TUNING["regenHambre"]))
+	var pool: Array = KarmaState.company_agents(state)
+	if a != null:
+		pool = pool + (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "fauna")
+	var mates := pool.filter(func(o):
+		return o != a and (str(o.get("speciesKey", "")) == str((a as Dictionary).get("speciesKey", "")) if a != null else true) and float(o.get("hambre", 100.0)) < float(KarmaData.TUNING["regenHambre"]))
 	var m: Variant = KarmaUtils.nearest_from(px, py, mates, float(KarmaData.TUNING["groomRange"]))
 	var cost := float(KarmaData.TUNING["regurgCost"])
 	if m == null or float(t.get("hp", 0.0)) <= cost:

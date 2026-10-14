@@ -43,7 +43,7 @@ The system SHALL represent every animal on the map (player and CPU alike) as an 
 - **THEN** it carries hambre, sed, and edad values with the same ranges and reset rules as the player, discarded on death like the rest of its ledger
 
 ### Requirement: Mixed-species population composition by density
-The system SHALL seed and maintain a mixed-species population scaled to world area: at least one agent of every playable grazer kind (oruga, sapo, raton, ardilla, topo), at least one airborne halcon and at least two carnivores (zorro and lobo) whenever the world area supports them, with per-species target counts defined as densities (agents per unit area).
+The system SHALL seed and maintain a mixed-species population scaled to world area: at least one agent of every playable grazer kind (oruga, sapo, raton, ardilla, topo), at least one airborne halcon and at least two carnivores (zorro and lobo) whenever the world area supports them, with per-species target counts defined as densities (agents per unit area). Lobos SHALL be maintained as a pack of at least two: initial seeding and the respawn top-up SHALL keep no fewer than two fauna lobos so pack verbs stay reachable in every run.
 
 #### Scenario: All playable grazers present
 - **WHEN** a life starts
@@ -56,6 +56,10 @@ The system SHALL seed and maintain a mixed-species population scaled to world ar
 #### Scenario: Densities scale with area
 - **WHEN** the world area increases versus baseline
 - **THEN** agent counts scale proportionally so per-agent food availability stays comparable
+
+#### Scenario: Lobo pack floor
+- **WHEN** a life starts or the respawn window elapses with fewer than two fauna lobos alive
+- **THEN** the roster is topped up to at least two fauna lobos, so AI regurg and pack hunting stay reachable
 
 ### Requirement: Shared hunger-eat-die loop for all agents
 Every agent on the map (player or AI) SHALL drain hambre and sed continuously at the same species rates, regenerate vida over time only when hambre AND sed are both above threshold, otherwise drain vida with the same deficit multiplier, drink from charcos and lagos with the same sed and sip-vida gains, eat only its DIET table entries with the same Vida gains (no karma, no PA for AI), and die at 0 Vida leaving a fresh carrion. AI kills obey the same contact and kill verbs as player kills. Role-hunter NPC predators (zorro, lobo, saponpc pressure roles) SHALL drain hambre/sed/edad and drink like other agents, but their Vida SHALL be unaffected by needs and they SHALL NOT die of hunger or thirst: their stamina is a pressure-role constant, and combat and feast gains still apply.
