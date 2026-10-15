@@ -63,12 +63,26 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
 		if hunter != null:
 			menu.append({"kind": "alarm", "label": "Alarm call", "x": float((hunter as Dictionary)["x"]), "y": float((hunter as Dictionary)["y"]), "target": hunter})
+	if _verb_ready(a, 4):
+		var den2: Array = KarmaState.company_agents(state) + (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "fauna")
+		var guarded: Variant = null
+		for m in den2:
+			if m == a or str(m.get("speciesKey", "")) != "lobo":
+				continue
+			for o in state["agents"]:
+				if str(o.get("role", "")) == "hunter" and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(float(m["x"]), float(m["y"]))) <= 150.0:
+					guarded = m
+					break
+			if guarded != null:
+				break
+		if guarded != null:
+			menu.append({"kind": "escort", "label": "Escort packmate", "x": float((guarded as Dictionary)["x"]), "y": float((guarded as Dictionary)["y"]), "target": guarded})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
 	return menu
 
 
 static func mock_choice(menu: Array) -> int:
-	var order := ["eat", "strike", "regurg", "hunt", "alarm", "drink", "seek_carrion", "wander"]
+	var order := ["eat", "strike", "regurg", "escort", "hunt", "alarm", "drink", "seek_carrion", "wander"]
 	for want in order:
 		for i in menu.size():
 			if str((menu[i] as Dictionary)["kind"]) == want:
@@ -126,6 +140,9 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 		"regurg":
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 2)
+		"escort":
+			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			return KarmaGame.cast_verb_for(state, a, 4)
 		"alarm":
 			var hunter: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
 				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))

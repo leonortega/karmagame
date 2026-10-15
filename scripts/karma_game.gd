@@ -3,7 +3,7 @@ extends RefCounted
 
 # Port of src/script/game.js simulation (DOM/input/render live in main.gd).
 
-const FRUIT_CAP := {"berries": 3, "apples": 3, "carrots": 3, "mushrooms": 2, "nuts": 3}
+const FRUIT_CAP := {"berries": 3, "apples": 2, "carrots": 3, "mushrooms": 2, "nuts": 3}
 
 
 static func draw_start_form(rng: RandomNumberGenerator) -> String:
@@ -140,7 +140,7 @@ static func mature_seedlings(state: Dictionary, dt: float, rng: RandomNumberGene
 	for i in range((state["seedlings"] as Array).size() - 1, -1, -1):
 		var s: Dictionary = (state["seedlings"] as Array)[i]
 		s["age"] = float(s.get("age", 0.0)) + dt
-		if float(s["age"]) < float(KarmaData.TUNING["seedlingMaturity"]):
+		if float(s["age"]) < seedling_maturity_for(str(s.get("kind", ""))):
 			continue
 		if KarmaUtils.inside_water(state, float(s["x"]), float(s["y"])):
 			continue
@@ -163,9 +163,19 @@ static func mature_seedlings(state: Dictionary, dt: float, rng: RandomNumberGene
 		(state["seedlings"] as Array).remove_at(i)
 
 
-static func regrow_fruit(list: Array, cap: int, dt: float, rate := -1.0) -> void:
-	var cycle: float = rate if rate >= 0.0 else float(KarmaData.TUNING["fruitRegrow"])
+static func regrow_rate_for(kind: String) -> float:
+	var table: Dictionary = KarmaData.TUNING.get("fruitRegrowByKind", {})
+	return float(table.get(kind, 45.0))
+
+
+static func seedling_maturity_for(kind: String) -> float:
+	var key := "nuts" if kind == "oak-tree" else kind
+	return regrow_rate_for(key) * float(KarmaData.TUNING.get("seedlingMult", 2.0))
+
+
+static func regrow_fruit(list: Array, cap: int, dt: float) -> void:
 	for p in list:
+		var cycle := regrow_rate_for(str(p.get("kind", "")))
 		if int(p.get("amount", 0)) >= cap:
 			p["regrowT"] = 0.0
 			continue
@@ -190,7 +200,7 @@ static func age_world(state: Dictionary, dt: float, rng: RandomNumberGenerator) 
 	regrow_fruit(state.get("patches", []), int(FRUIT_CAP["carrots"]), dt)
 	regrow_fruit(state.get("clusters", []), int(FRUIT_CAP["mushrooms"]), dt)
 	regrow_fruit(state.get("oaks", []), int(FRUIT_CAP["nuts"]), dt)
-	regrow_fruit(state.get("clumps", []), 3, dt, float(KarmaData.TUNING["leafRegrow"]))
+	regrow_fruit(state.get("clumps", []), 3, dt)
 	mature_seedlings(state, dt, rng)
 	for ins in state.get("insects", []):
 		ins["x"] = float(ins["x"]) + (rng.randf() - 0.5) * 60.0 * dt
@@ -378,7 +388,7 @@ static func call_verb(state: Dictionary, a: Variant, verb_id: String) -> bool:
 		"chorus":
 			return _verb_chorus(state, a)
 		"prudent":
-			return KarmaEat.eat_as_grazer(state) if a == null else false
+			return KarmaEat.eat_as_grazer(state) if a == null else _verb_prudent(state, a)
 		"groom":
 			return _verb_groom(state, a)
 		"seedcache":
@@ -398,7 +408,7 @@ static func call_verb(state: Dictionary, a: Variant, verb_id: String) -> bool:
 		"cede":
 			return _verb_cede(state, a)
 		"pounce":
-			return KarmaEat.eat_as_zorro(state) if a == null else false
+			return KarmaEat.eat_as_zorro(state) if a == null else _verb_pounce(state, a)
 		"howl":
 			return _verb_howl(state, a)
 		"regurg":
@@ -412,7 +422,7 @@ static func call_verb(state: Dictionary, a: Variant, verb_id: String) -> bool:
 		"dendig":
 			return _verb_dendig(state, a)
 		"dive":
-			return KarmaEat.eat_as_halcon(state) if a == null else false
+			return KarmaEat.eat_as_halcon(state) if a == null else _verb_dive(state, a)
 		"thermal":
 			return _verb_thermal(state, a)
 		"courtesy":
@@ -437,11 +447,13 @@ static func call_verb(state: Dictionary, a: Variant, verb_id: String) -> bool:
 static func _verb_tunneline(state: Dictionary, a: Variant) -> bool:
 	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
 	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
-	var r: Variant = KarmaUtils.nearest_from(px, py,
-		(state["refuges"] as Array).filter(func(o): return bool(o.get("dug", false))), float(KarmaData.TUNING["eatRange"]))
-	if r == null:
+	var dug := (state["refuges"] as Array).filter(func(o): return bool(o.get("dug", false)) and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(px, py)) <= float(KarmaData.TUNING["eatRange"]))
+	if dug.size() < 2:
 		return false
-	(r as Dictionary)["firm"] = true
+	dug.sort_custom(func(p, q): return Vector2(float(p["x"]), float(p["y"])).distance_to(Vector2(px, py)) < Vector2(float(q["x"]), float(q["y"])).distance_to(Vector2(px, py)))
+	var net := "net-%d" % int(float(state.get("time", 0.0)) * 10.0)
+	(dug[0] as Dictionary)["net"] = net
+	(dug[1] as Dictionary)["net"] = net
 	if a != null:
 		KarmaState.add_karma(state, a, float(KarmaData.TUNING["aerateKarma"]), "Túnel reforzado (+karma)")
 	else:
@@ -454,16 +466,19 @@ static func _verb_worm(state: Dictionary, a: Variant) -> bool:
 	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
 	var r: Variant = KarmaUtils.nearest_from(px, py,
 		(state["refuges"] as Array).filter(func(o): return bool(o.get("dug", false))), float(KarmaData.TUNING["eatRange"]))
-	if r == null:
+	if r == null or int((r as Dictionary).get("charge", 1)) <= 0:
 		return false
+	if (state["insects"] as Array).size() >= int(KarmaData.TUNING["insectMax"]):
+		return false
+	(r as Dictionary)["charge"] = int((r as Dictionary).get("charge", 1)) - 1
 	var t: Dictionary = a if a != null else state
-	var wh: float = float(KarmaData.TUNING["wormHp"]) + (8.0 if KarmaShop.has_adapt(t, "wormPlus") else 0.0)
-	KarmaEat.heal_eater(state, a, wh)
-	KarmaEat.refill_hambre(state, a, wh)
+	var fat := KarmaShop.has_adapt(t, "wormPlus")
+	(state["insects"] as Array).append({"x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "fat": fat})
 	if a != null:
+		KarmaState.add_log(state, a, "Remueves la tierra (hay lombriz)")
 		return true
 	KarmaState.add_pa(state, null, float(KarmaData.TUNING["wormPa"]))
-	KarmaState.add_log(state, null, "Rescatas una lombriz (+vida)")
+	KarmaState.add_log(state, null, "Remueves la tierra (hay lombriz)")
 	return true
 
 
@@ -497,13 +512,14 @@ static func _verb_larder(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_nestdig(state: Dictionary, a: Variant) -> bool:
-	if a != null:
+	var t: Dictionary = a if a != null else state
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	if float(t.get("digCd", 0.0)) > 0.0:
 		return false
-	if float(state.get("digCd", 0.0)) > 0.0:
-		return false
-	state["digCd"] = float(KarmaData.TUNING["digCd"])
-	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": state["px"], "y": state["py"], "dug": true})
-	KarmaState.add_log(state, null, "Excavas un nido extra (cuesta vida)")
+	t["digCd"] = float(KarmaData.TUNING["digCd"])
+	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": px, "y": py, "dug": true, "charge": 1})
+	KarmaState.add_log(state, a, "Excavas un nido extra (cuesta vida)")
 	return true
 
 
@@ -516,18 +532,29 @@ static func _verb_pest(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_burrowin(state: Dictionary, a: Variant) -> bool:
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
 	if a != null:
 		if bool((a as Dictionary).get("hidden", false)):
 			return false
 		(a as Dictionary)["hidden"] = true
 		(a as Dictionary)["hideRef"] = null
 		(a as Dictionary)["hideT"] = float(KarmaData.TUNING["aiHideMax"])
-		return true
-	if bool(state.get("hidden", false)):
-		return false
-	state["hidden"] = true
-	state["hideRef"] = null
-	KarmaState.add_log(state, null, "Te entierras en tierra blanda (H para salir)")
+	else:
+		if bool(state.get("hidden", false)):
+			return false
+		state["hidden"] = true
+		state["hideRef"] = null
+	# The pit stays behind: mud to sip, hard ground for hunters to cross.
+	(state["refuges"] as Array).append({"type": "wallow", "maxSize": 0, "x": px, "y": py, "dug": false,
+		"ttl": float(KarmaData.TUNING["leafrollTtl"])})
+	if a == null:
+		state["sed"] = minf(100.0, float(state.get("sed", 100.0)) + float(KarmaData.TUNING["sipSed"]))
+	for o in KarmaState.company_agents(state) + (state["agents"] as Array).filter(func(x): return str(x.get("speciesKey", "")) == "sapo"):
+		if Vector2(float((o as Dictionary)["x"]), float((o as Dictionary)["y"])).distance_to(Vector2(px, py)) <= float(KarmaData.TUNING["groomRange"]):
+			(o as Dictionary)["sed"] = minf(100.0, float((o as Dictionary).get("sed", 100.0)) + float(KarmaData.TUNING["sipSed"]))
+	if a == null:
+		KarmaState.add_log(state, null, "Te entierras en tierra blanda (H para salir)")
 	return true
 
 
@@ -557,19 +584,69 @@ static func _verb_chorus(state: Dictionary, a: Variant) -> bool:
 	)
 	if choir.is_empty():
 		return false
+	# The song moves bodies: singers gather toward the caller's water.
+	var water: Variant = KarmaUtils.nearest_water_for(state, px, py, float(KarmaData.TUNING["wanderSeekRange"]))
+	var gx := float((water as Dictionary)["x"]) if water != null else px
+	var gy := float((water as Dictionary)["y"]) if water != null else py
+	for o in choir:
+		var d := Vector2(float((o as Dictionary)["x"]), float((o as Dictionary)["y"])).distance_to(Vector2(gx, gy))
+		if d == 0.0:
+			continue
+		var step: float = minf(50.0, d)
+		(o as Dictionary)["x"] = clampf(float((o as Dictionary)["x"]) + (gx - float((o as Dictionary)["x"])) / d * step, 20.0, float(KarmaData.WORLD["w"]) - 20.0)
+		(o as Dictionary)["y"] = clampf(float((o as Dictionary)["y"]) + (gy - float((o as Dictionary)["y"])) / d * step, 20.0, float(KarmaData.WORLD["h"]) - 20.0)
 	var t: Dictionary = a if a != null else state
 	var k: float = float(KarmaData.TUNING["chorusKarma"]) * float(1 + choir.size()) * (2.0 if KarmaShop.has_adapt(t, "chorusPlus") else 1.0)
 	KarmaState.add_karma(state, a, k, "Coro de croac con %d cantores (+%d karma)" % [1 + choir.size(), int(k)])
 	return true
 
 
-static func _verb_groom(state: Dictionary, a: Variant) -> bool:
-	if a != null:
+static func _verb_prudent(state: Dictionary, a: Variant) -> bool:
+	# Prudent bite: like E but refuses the last fruit, so the +2 karma is earned, never gambled.
+	var patch: Variant = KarmaEat.nearest_edible_patch_for(state, a, float(KarmaData.TUNING["eatRange"]))
+	if patch == null or int((patch as Dictionary).get("amount", 0)) <= 1:
 		return false
-	var m: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), KarmaState.company_agents(state), float(KarmaData.TUNING["groomRange"]))
+	return KarmaEat.eat_patch(state, patch, a)
+
+
+static func _verb_pounce(state: Dictionary, a: Variant) -> bool:
+	var prey: Variant = KarmaUtils.nearest_from(float((a as Dictionary)["x"]), float((a as Dictionary)["y"]),
+		KarmaState.company_agents(state), float(KarmaData.TUNING["pounceRange"]))
+	if prey == null:
+		return KarmaEat.eat_carrion(state, KarmaUtils.nearest_from(float((a as Dictionary)["x"]),
+			float((a as Dictionary)["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])), a)
+	KarmaState.remove_agent(state, prey)
+	KarmaEat.add_carrion(state, float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]))
+	(a as Dictionary)["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
+	KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
+	return true
+
+
+static func _verb_dive(state: Dictionary, a: Variant) -> bool:
+	var prey: Variant = KarmaUtils.nearest_from(float((a as Dictionary)["x"]), float((a as Dictionary)["y"]),
+		KarmaState.company_agents(state), 60.0)
+	if prey == null:
+		return false
+	(a as Dictionary)["x"] = float((prey as Dictionary)["x"])
+	(a as Dictionary)["y"] = float((prey as Dictionary)["y"])
+	KarmaState.remove_agent(state, prey)
+	KarmaEat.add_carrion(state, float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]))
+	KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
+	return true
+
+
+static func _verb_groom(state: Dictionary, a: Variant) -> bool:
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var m: Variant = KarmaUtils.nearest_from(px, py, KarmaState.company_agents(state), float(KarmaData.TUNING["groomRange"]))
 	if m == null:
 		return false
-	KarmaState.add_karma(state, null, float(KarmaData.TUNING["groomSocialKarma"]), "Acicalas a un congénere (+karma)")
+	for foul in ["mimicEaten", "toxicEaten"]:
+		(m as Dictionary)[foul] = false
+	var soothe := float(KarmaData.TUNING["sipHp"])
+	(m as Dictionary)["hp"] = minf(float(KarmaData.SPECIES[str((m as Dictionary)["speciesKey"])]["maxHp"]), float((m as Dictionary).get("hp", 0.0)) + soothe)
+	(m as Dictionary)["hambre"] = minf(100.0, float((m as Dictionary).get("hambre", 100.0)) + soothe)
+	KarmaState.add_karma(state, a, float(KarmaData.TUNING["groomSocialKarma"]), "Acicalas a un congénere (+karma)")
 	return true
 
 
@@ -590,10 +667,16 @@ static func _verb_seedcache(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_scout(state: Dictionary, a: Variant) -> bool:
-	if a != null:
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var t: Dictionary = a if a != null else state
+	# Solo radar is not a deed: the scent post must have someone to warn.
+	if KarmaUtils.nearest_from(px, py, KarmaState.company_agents(state), float(KarmaData.TUNING["aiCoverRange"])) == null:
 		return false
-	state["revealT"] = float(KarmaData.TUNING["revealTime"]) * (2.0 if KarmaShop.has_adapt(state, "scoutPlus") else 1.0)
-	KarmaState.add_karma(state, null, float(KarmaData.TUNING["prudentKarma"]), "Ojeas madrigueras (+karma)")
+	t["revealT"] = float(KarmaData.TUNING["revealTime"]) * (2.0 if KarmaShop.has_adapt(t, "scoutPlus") else 1.0)
+	(state["refuges"] as Array).append({"type": "scent-post", "maxSize": 0, "x": px, "y": py, "dug": false,
+		"ttl": float(KarmaData.TUNING["revealTime"]) * (2.0 if KarmaShop.has_adapt(t, "scoutPlus") else 1.0)})
+	KarmaState.add_karma(state, a, float(KarmaData.TUNING["prudentKarma"]), "Ojeas madrigueras (+karma)")
 	return true
 
 
@@ -649,8 +732,13 @@ static func _verb_bark(state: Dictionary, a: Variant) -> bool:
 	var t: Dictionary = a if a != null else state
 	var who: Dictionary = a if a != null else {"speciesKey": state["speciesKey"], "x": px, "y": py}
 	var oak: Variant = KarmaEat.nearest_oak_with_nuts_for(state, who, float(KarmaData.TUNING["eatRange"]))
-	if oak == null:
+	if oak == null or int((oak as Dictionary).get("amount", 0)) <= 0:
 		return false
+	(oak as Dictionary)["amount"] = int((oak as Dictionary)["amount"]) - 1
+	if int((oak as Dictionary)["amount"]) <= 0:
+		(oak as Dictionary)["alive"] = false
+	(oak as Dictionary)["stripped"] = true
+	(oak as Dictionary)["stripT"] = regrow_rate_for("nuts")
 	var bp: float = float(KarmaData.TUNING["barkPa"]) * (2.0 if KarmaShop.has_adapt(t, "barkPlus") else 1.0)
 	var bk: float = float(KarmaData.TUNING["barkKarma"]) * (2.0 if KarmaShop.has_adapt(t, "barkPlus") else 1.0)
 	if a != null:
@@ -676,14 +764,16 @@ static func _verb_cede(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_howl(state: Dictionary, a: Variant) -> bool:
+	var t: Dictionary = a if a != null else state
+	var pool: Array = KarmaState.company_agents(state)
 	if a != null:
+		pool = pool + (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "fauna" and str(o.get("speciesKey", "")) == "lobo")
+	if pool.is_empty():
 		return false
-	if KarmaState.company_agents(state).is_empty():
-		return false
-	var ht: float = float(KarmaData.TUNING["howlTime"]) * (2.0 if KarmaShop.has_adapt(state, "howlPlus") else 1.0)
-	for m in KarmaState.company_agents(state):
-		m["rallyT"] = ht
-	KarmaState.add_karma(state, null, float(KarmaData.TUNING["howlKarma"]), "Aúllas: la manada se anima (+karma)")
+	var ht: float = float(KarmaData.TUNING["howlTime"]) * (2.0 if KarmaShop.has_adapt(t, "howlPlus") else 1.0)
+	for m in pool:
+		(m as Dictionary)["rallyT"] = ht
+	KarmaState.add_karma(state, a, float(KarmaData.TUNING["howlKarma"]), "Aúllas: la manada se anima (+karma)")
 	return true
 
 
@@ -711,10 +801,13 @@ static func _verb_regurg(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_escort(state: Dictionary, a: Variant) -> bool:
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var pool: Array = KarmaState.company_agents(state)
 	if a != null:
-		return false
+		pool = pool + (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "fauna" and str(o.get("speciesKey", "")) == str((a as Dictionary).get("speciesKey", "")))
 	var threatened: Variant = null
-	for m in KarmaState.company_agents(state):
+	for m in pool:
 		for o in state["agents"]:
 			if str(o.get("role", "")) == "hunter" and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(float(m["x"]), float(m["y"]))) <= 150.0:
 				threatened = m
@@ -723,12 +816,39 @@ static func _verb_escort(state: Dictionary, a: Variant) -> bool:
 			break
 	if threatened == null:
 		return false
-	var d := Vector2(float((threatened as Dictionary)["x"]), float((threatened as Dictionary)["y"])).distance_to(Vector2(float(state["px"]), float(state["py"])))
-	if d == 0.0:
-		d = 1.0
-	var step: float = minf(50.0, d)
-	state["px"] = clampf(float(state["px"]) + (float((threatened as Dictionary)["x"]) - float(state["px"])) / d * step, 20.0, float(KarmaData.WORLD["w"]) - 20.0)
-	state["py"] = clampf(float(state["py"]) + (float((threatened as Dictionary)["y"]) - float(state["py"])) / d * step, 20.0, float(KarmaData.WORLD["h"]) - 20.0)
+	# Shepherd the mate toward cover (or away from the hunter), then deter the hunters.
+	var hunter: Variant = KarmaUtils.nearest_from(float((threatened as Dictionary)["x"]), float((threatened as Dictionary)["y"]),
+		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), 9999.0)
+	var cover: Variant = null
+	var best := 1e9
+	for r in state.get("refuges", []):
+		if KarmaAI.refuge_fits_size(KarmaData.SPECIES[str((threatened as Dictionary).get("speciesKey", "raton"))], r, str((threatened as Dictionary).get("speciesKey", "raton"))):
+			var cd := Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float((threatened as Dictionary)["x"]), float((threatened as Dictionary)["y"])))
+			if cd < best:
+				best = cd
+				cover = r
+	var tx := float((threatened as Dictionary)["x"])
+	var ty := float((threatened as Dictionary)["y"])
+	if cover != null:
+		tx = float((cover as Dictionary)["x"])
+		ty = float((cover as Dictionary)["y"])
+	elif hunter != null:
+		var hd := Vector2(tx, ty).distance_to(Vector2(float((hunter as Dictionary)["x"]), float((hunter as Dictionary)["y"])))
+		if hd == 0.0:
+			hd = 1.0
+		tx = tx + (tx - float((hunter as Dictionary)["x"])) / hd * 50.0
+		ty = ty + (ty - float((hunter as Dictionary)["y"])) / hd * 50.0
+	var md := Vector2(float((threatened as Dictionary)["x"]), float((threatened as Dictionary)["y"])).distance_to(Vector2(tx, ty))
+	if md > 0.0:
+		var step: float = minf(50.0, md)
+		(threatened as Dictionary)["x"] = clampf(float((threatened as Dictionary)["x"]) + (tx - float((threatened as Dictionary)["x"])) / md * step, 20.0, float(KarmaData.WORLD["w"]) - 20.0)
+		(threatened as Dictionary)["y"] = clampf(float((threatened as Dictionary)["y"]) + (ty - float((threatened as Dictionary)["y"])) / md * step, 20.0, float(KarmaData.WORLD["h"]) - 20.0)
+	for p in (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(float((threatened as Dictionary)["x"]), float((threatened as Dictionary)["y"]))) <= 90.0):
+		(p as Dictionary)["restT"] = float(KarmaData.TUNING["restTime"])
+	if a != null:
+		# Agents have no escort tick: same value now instead of later.
+		KarmaState.add_karma(state, a, float(KarmaData.TUNING["escortKarma"]), "Escoltas a un congénere (+karma)")
+		return true
 	state["escortT"] = float(KarmaData.TUNING["escortTime"])
 	state["escortTarget"] = threatened
 	KarmaState.add_log(state, null, "Escoltas a un congénere amenazado (sobrevive y hay karma)")
@@ -736,8 +856,9 @@ static func _verb_escort(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_cull(state: Dictionary, a: Variant) -> bool:
-	if a != null:
-		return false
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var t: Dictionary = a if a != null else state
 	var sick: Variant = null
 	var sick_frac := 2.0
 	for o in state["agents"]:
@@ -745,7 +866,7 @@ static func _verb_cull(state: Dictionary, a: Variant) -> bool:
 			continue
 		if not KarmaPredators.edible_agent_for(state, "lobo", o, 1e9):
 			continue
-		if Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) > float(KarmaData.TUNING["pounceRange"]):
+		if Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(px, py)) > float(KarmaData.TUNING["pounceRange"]):
 			continue
 		var frac: float = float(o.get("hp", 0.0)) / float(KarmaData.SPECIES[str(o.get("speciesKey", "raton"))]["maxHp"])
 		if frac < sick_frac:
@@ -753,56 +874,76 @@ static func _verb_cull(state: Dictionary, a: Variant) -> bool:
 			sick = o
 	if sick == null:
 		return false
-	var weak: bool = sick_frac < (0.5 if KarmaShop.has_adapt(state, "cullPlus") else 0.3)
-	if not KarmaEat.pounce_kill(state, sick, null):
-		return false
+	var weak: bool = sick_frac < (0.5 if KarmaShop.has_adapt(t, "cullPlus") else 0.3)
+	if a == null:
+		if not KarmaEat.pounce_kill(state, sick, null):
+			return false
+	else:
+		KarmaState.remove_agent(state, sick)
+		KarmaEat.add_carrion(state, float((sick as Dictionary)["x"]), float((sick as Dictionary)["y"]))
+		KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
 	if weak:
-		KarmaState.add_karma(state, null, float(KarmaData.TUNING["cullKarma"]), "Caza al débil, selección natural (+karma)")
+		KarmaState.add_karma(state, a, float(KarmaData.TUNING["cullKarma"]), "Caza al débil, selección natural (+karma)")
 	return true
 
 
 static func _verb_cachecarrion(state: Dictionary, a: Variant) -> bool:
-	if a != null:
+	var t: Dictionary = a if a != null else state
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	if int(t.get("stash", 0)) > 0:
 		return false
-	if int(state.get("stash", 0)) > 0:
-		return false
-	var c: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]),
+	var c: Variant = KarmaUtils.nearest_from(px, py,
 		(state.get("carrions", []) as Array).filter(func(k): return KarmaEat.carrion_stage(k) != "rotten"), float(KarmaData.TUNING["eatRange"]))
 	if c == null:
 		return false
 	(state["carrions"] as Array).erase(c)
-	state["stash"] = 1
-	KarmaState.add_log(state, null, "Entierras carroña para después (+PA en la próxima)")
+	t["stash"] = 1
+	KarmaState.add_log(state, a, "Entierras carroña para después (+PA en la próxima)")
 	return true
 
 
 static func _verb_dendig(state: Dictionary, a: Variant) -> bool:
-	if a != null:
-		return false
-	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": state["px"], "y": state["py"], "dug": true})
-	KarmaState.add_log(state, null, "Excavas una guarida (cuesta vida)")
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": px, "y": py, "dug": true, "charge": 1})
+	KarmaState.add_log(state, a, "Excavas una guarida (cuesta vida)")
 	return true
 
 
 static func _verb_thermal(state: Dictionary, a: Variant) -> bool:
-	if a != null:
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var t: Dictionary = a if a != null else state
+	if float(t.get("thermalT", 0.0)) > 0.0:
 		return false
-	if float(state.get("thermalT", 0.0)) > 0.0:
+	# Solo soaring is not a deed: the shadow must have prey to scatter.
+	var prey: Variant = KarmaUtils.nearest_from(px, py,
+		(state["agents"] as Array).filter(func(o): return o != a and str(o.get("role", "")) == "fauna" and int(KarmaData.SPECIES[str(o.get("speciesKey", "raton"))]["size"]) <= 2), 150.0)
+	if prey == null:
 		return false
-	state["thermalT"] = float(KarmaData.TUNING["thermalTime"]) * (2.0 if KarmaShop.has_adapt(state, "thermalPlus") else 1.0)
-	KarmaState.add_log(state, null, "Térmica: ojo de águila (visión extra unos segundos)")
+	t["thermalT"] = float(KarmaData.TUNING["thermalTime"]) * (2.0 if KarmaShop.has_adapt(t, "thermalPlus") else 1.0)
+	(state["refuges"] as Array).append({"type": "shadow-disc", "maxSize": 0, "x": float((prey as Dictionary)["x"]), "y": float((prey as Dictionary)["y"]), "dug": false,
+		"ttl": float(KarmaData.TUNING["thermalTime"])})
+	for v in (state["agents"] as Array).filter(func(o): return o != a and str(o.get("role", "")) == "fauna" and int(KarmaData.SPECIES[str(o.get("speciesKey", "raton"))]["size"]) <= 2 and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(px, py)) <= 150.0):
+		var d := Vector2(float((v as Dictionary)["x"]), float((v as Dictionary)["y"])).distance_to(Vector2(px, py))
+		if d == 0.0:
+			d = 1.0
+		(v as Dictionary)["x"] = clampf(float((v as Dictionary)["x"]) + (float((v as Dictionary)["x"]) - px) / d * 60.0, 20.0, float(KarmaData.WORLD["w"]) - 20.0)
+		(v as Dictionary)["y"] = clampf(float((v as Dictionary)["y"]) + (float((v as Dictionary)["y"]) - py) / d * 60.0, 20.0, float(KarmaData.WORLD["h"]) - 20.0)
+	KarmaState.add_log(state, a, "Sombra en círculo: las presas se dispersan")
 	return true
 
 
 static func _verb_courtesy(state: Dictionary, a: Variant) -> bool:
-	if a != null:
-		return false
-	var c: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]),
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var c: Variant = KarmaUtils.nearest_from(px, py,
 		(state.get("carrions", []) as Array).filter(func(k): return KarmaEat.carrion_stage(k) == "fresh"), float(KarmaData.TUNING["eatRange"]))
 	if c == null or bool((c as Dictionary).get("ceded", false)):
 		return false
 	(c as Dictionary)["ceded"] = true
-	KarmaState.add_karma(state, null, float(KarmaData.TUNING["cedeKarma"]), "Carroña compartida (+karma, la dejas)")
+	KarmaState.add_karma(state, a, float(KarmaData.TUNING["cedeKarma"]), "Carroña compartida (+karma, la dejas)")
 	return true
 
 
@@ -861,8 +1002,14 @@ static func silk_drop(state: Dictionary, a: Variant) -> bool:
 	if d == 0.0:
 		d = 1.0
 	var dist := 80.0 if KarmaShop.has_adapt(t, "silkPlus") else 40.0
+	var ox := px
+	var oy := py
 	var nx := clampf(px + (px - float((h as Dictionary)["x"])) / d * dist, 20.0, float(KarmaData.WORLD["w"]) - 20.0)
 	var ny := clampf(py + (py - float((h as Dictionary)["y"])) / d * dist, 20.0, float(KarmaData.WORLD["h"]) - 20.0)
+	# The thread stays behind: whoever crosses the old spot stalls.
+	(state["refuges"] as Array).append({"type": "silk-thread", "maxSize": 0, "x": ox, "y": oy, "dug": false,
+		"ttl": float(KarmaData.TUNING["leafrollTtl"])})
+	(h as Dictionary)["restT"] = float(KarmaData.TUNING["restTime"])
 	if a != null:
 		(a as Dictionary)["x"] = nx
 		(a as Dictionary)["y"] = ny
@@ -906,10 +1053,17 @@ static func _verb_leafroll(state: Dictionary, a: Variant) -> bool:
 
 
 static func _verb_bristle(state: Dictionary, a: Variant) -> bool:
-	if a != null:
+	var px := float((a as Dictionary)["x"]) if a != null else float(state["px"])
+	var py := float((a as Dictionary)["y"]) if a != null else float(state["py"])
+	var t: Dictionary = a if a != null else state
+	# Spines sting now: the hunter in reach stalls, and the coat stays up for the next bite.
+	var h: Variant = KarmaUtils.nearest_from(px, py,
+		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), 60.0)
+	if h == null:
 		return false
-	state["bristled"] = true
-	KarmaState.add_log(state, null, "Erizas espinas (el próximo zarpazo se revierte)")
+	(h as Dictionary)["restT"] = float(KarmaData.TUNING["restTime"])
+	t["bristled"] = true
+	KarmaState.add_log(state, a, "Erizas espinas (el depredador se frena)")
 	return true
 
 

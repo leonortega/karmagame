@@ -35,6 +35,15 @@ static func _nectar_costs() -> Array:
 	return [float(def["costHp"]), float(def["costPa"])]
 
 
+static func _bristle_cost() -> float:
+	return float((KarmaData.VERB_DEFS["oruga"] as Array)[4]["costHp"])
+
+
+static func _bristle_hunter(state: Dictionary, a: Dictionary) -> Variant:
+	return KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
+		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), 60.0)
+
+
 static func _hunter_near(state: Dictionary, a: Dictionary) -> Variant:
 	return KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
 		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), HUNTER_RANGE)
@@ -124,6 +133,9 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var clump: Variant = _clump_near(state, a)
 	if clump != null and _verb_ready(a, 4):
 		menu.append({"kind": "leafroll", "label": "Roll leaf shelter", "x": float((clump as Dictionary)["x"]), "y": float((clump as Dictionary)["y"]), "target": clump})
+	var spine: Variant = _bristle_hunter(state, a)
+	if spine != null and _verb_ready(a, 5) and float(a.get("hp", 0.0)) > _bristle_cost():
+		menu.append({"kind": "bristle", "label": "Bristle spines", "x": float((spine as Dictionary)["x"]), "y": float((spine as Dictionary)["y"]), "target": spine})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
 	return menu
 
@@ -162,7 +174,7 @@ static func state_text(state: Dictionary, a: Dictionary) -> String:
 
 
 static func mock_choice(menu: Array) -> int:
-	var order := ["eat", "drink", "flee", "silk", "leafroll", "nectar", "seek_food", "wander"]
+	var order := ["eat", "drink", "flee", "silk", "bristle", "leafroll", "nectar", "seek_food", "wander"]
 	for want in order:
 		for i in menu.size():
 			if str((menu[i] as Dictionary)["kind"]) == want:
@@ -221,6 +233,12 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 				return true
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 4)
+		"bristle":
+			if _bristle_hunter(state, a) == null or float(a.get("hp", 0.0)) <= _bristle_cost():
+				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				return true
+			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			return KarmaGame.cast_verb_for(state, a, 5)
 		_:
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true

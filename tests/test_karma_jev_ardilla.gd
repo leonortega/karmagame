@@ -352,7 +352,7 @@ func test_wander_fallthrough_keeps_ladder_verbs() -> void:
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	var k0 := float(a["karma"])
 	KarmaAI._ai_ardilla(s, a, 0.1)
-	assert_float(float(a["karma"])).is_equal(k0 + float(KarmaData.TUNING["shoutKarma"]) + float(KarmaData.TUNING["falseCacheKarma"]))
+	assert_float(float(a["karma"])).is_equal(k0 + float(KarmaData.TUNING["shoutKarma"]) + float(KarmaData.TUNING["tailflickKarma"])) # danger + shout on cooldown: silent tailflick, not falsecache
 
 
 func test_pick_batch_4_rotates_when_all_due() -> void:

@@ -196,10 +196,16 @@ func test_wander_fallthrough_keeps_social_verbs() -> void:
 	var s := _fresh_raton_state()
 	var a := _ai_raton(s, 500.0, 500.0)
 	_hunter_free(s, a)
-	(s["agents"] as Array).append(KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 510.0, "y": 500.0}))
+	var mate := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 510.0, "y": 500.0})
+	(s["agents"] as Array).append(mate)
 	a["hambre"] = 100.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
 	for i in 40:
+		# Staying near the mate: proximity is the premise groom needs.
+		a["x"] = 500.0
+		a["y"] = 500.0
+		mate["x"] = 510.0
+		mate["y"] = 500.0
 		KarmaAI._ai_raton(s, a, 0.1)
 	assert_float(float(a["karma"])).is_equal(float(KarmaData.TUNING["groomKarma"]))
 	assert_bool(float(a.get("groomCd", 0.0)) > 0.0).is_true()

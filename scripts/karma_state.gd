@@ -45,12 +45,22 @@ static func blank_state(species_key: String, karma: float, pa: float) -> Diction
 static func new_run(species_key: String, carry_karma := 0.0, carry_pa := 0.0, carry_saplings := 0, rng: RandomNumberGenerator = null) -> Dictionary:
 	var r := rng if rng != null else KarmaUtils.rng()
 	var state := blank_state(species_key, carry_karma, carry_pa)
+	var roll := KarmaCensus.roll(r, species_key)
+	state["census"] = roll
 	seed_food(state, carry_saplings, r)
+	seed_fauna(state, r)
+	possess_member(state)
 	seed_foes(state, state["sp"], r)
-	seed_company(state, r)
+	seed_refuges(state, r)
 	state["carrions"] = []
 	add_log(state, null, "Naces como %s T%d" % [str(state["sp"]["name"]), int(state["sp"]["tier"])])
+	add_log(state, null, "Año %s" % _year_name(str(roll["theme"])))
 	return state
+
+
+static func _year_name(theme: String) -> String:
+	return {"bloom": "de la proliferación de orugas", "rodent": "de roedores",
+		"wet": "húmedo", "lean": "escaso"}.get(theme, "equilibrado")
 
 
 static func seed_waters(state: Dictionary, rng: RandomNumberGenerator) -> void:
@@ -64,25 +74,31 @@ static func seed_waters(state: Dictionary, rng: RandomNumberGenerator) -> void:
 static func seed_food(state: Dictionary, carry_saplings: int, rng: RandomNumberGenerator) -> void:
 	seed_waters(state, rng)
 	var extra: int = mini(carry_saplings, int(KarmaData.TUNING["saplingCap"]))
+	# Leave headroom below each flora cap so seedlings can mature into new
+	# plants during play; a world seeded exactly at cap could never grow.
+	# Draws keep the old counts so the rng stream (and every downstream
+	# spawn) is unchanged; only the kept prefix shrinks.
+	var headroom := int(KarmaData.TUNING.get("floraHeadroom", 2))
 	state["bushes"] = []
 	var i := 0
-	for pt in KarmaUtils.scatter_dry(state, flora_cap("berries") + extra, rng):
+	var bush_pts := KarmaUtils.scatter_dry(state, flora_cap("berries") + extra, rng)
+	for pt in bush_pts.slice(0, maxi(1, flora_cap("berries") - headroom) + extra):
 		(state["bushes"] as Array).append(KarmaUtils.mk_patch("berries", pt["x"], pt["y"], 3, {"mimic": i % 3 == 2, "mimicEaten": false}))
 		i += 1
 	state["shrubs"] = []
-	for pt in KarmaUtils.scatter_dry(state, flora_cap("apples"), rng):
+	for pt in KarmaUtils.scatter_dry(state, flora_cap("apples"), rng).slice(0, maxi(1, flora_cap("apples") - headroom)):
 		(state["shrubs"] as Array).append(KarmaUtils.mk_patch("apples", pt["x"], pt["y"], 2))
 	state["patches"] = []
-	for pt in KarmaUtils.scatter_dry(state, flora_cap("carrots"), rng):
+	for pt in KarmaUtils.scatter_dry(state, flora_cap("carrots"), rng).slice(0, maxi(1, flora_cap("carrots") - headroom)):
 		(state["patches"] as Array).append(KarmaUtils.mk_patch("carrots", pt["x"], pt["y"], 3))
 	state["clusters"] = []
-	for pt in KarmaUtils.scatter_dry(state, flora_cap("mushrooms"), rng):
+	for pt in KarmaUtils.scatter_dry(state, flora_cap("mushrooms"), rng).slice(0, maxi(1, flora_cap("mushrooms") - headroom)):
 		(state["clusters"] as Array).append(KarmaUtils.mk_patch("mushrooms", pt["x"], pt["y"], 2, {"toxicLeft": 1 if rng.randf() < 0.5 else 0, "toxicEaten": false}))
 	state["clumps"] = []
-	for pt in KarmaUtils.scatter_dry(state, flora_cap("leaves"), rng):
+	for pt in KarmaUtils.scatter_dry(state, maxi(1, flora_cap("leaves") - headroom), rng):
 		(state["clumps"] as Array).append(KarmaUtils.mk_patch("leaves", pt["x"], pt["y"], 3, {"regrowT": 0.0}))
 	state["oaks"] = []
-	for pt in KarmaUtils.scatter_dry(state, flora_cap("nuts"), rng):
+	for pt in KarmaUtils.scatter_dry(state, maxi(1, flora_cap("nuts") - headroom), rng):
 		(state["oaks"] as Array).append(KarmaUtils.mk_patch("nuts", pt["x"], pt["y"], 3))
 	state["insects"] = []
 	KarmaGame.seed_insect_minimums(state, rng)
@@ -93,12 +109,13 @@ static func seed_food(state: Dictionary, carry_saplings: int, rng: RandomNumberG
 
 
 static func seed_foes(state: Dictionary, sp: Dictionary, rng: RandomNumberGenerator) -> void:
-	var table: Array = (KarmaData.TIER_SPAWNS.get(int(sp["tier"]), KarmaData.TIER_SPAWNS[1]) as Array).duplicate()
-	var reps: int = maxi(1, roundi(KarmaUtils.area_scale()))
-	for r in reps:
-		for t in table:
-			var pt: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
-			(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, str(t), float(pt["x"]), float(pt["y"]), int(sp["tier"]))))
+	# Scripted hunters are the pressure floor, not a stacked pack: fauna predator
+	# communities already cover the tiers, so only the T0 saponpc role (which
+	# has no fauna equivalent) spawns here, counted against sapo in seed_fauna.
+	if int(sp["tier"]) != 0:
+		return
+	var pt := distant_pt(state, rng)
+	(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, "saponpc", float(pt["x"]), float(pt["y"]), 0)))
 
 
 static func mk_agent(a: Dictionary) -> Dictionary:
@@ -138,13 +155,18 @@ static func player_agent(state: Dictionary) -> Dictionary:
 		"hp": state["hp"], "brain": "PLAYER"}
 
 
-static func seed_company(state: Dictionary, rng: RandomNumberGenerator) -> void:
-	for i in int(KarmaData.POP["company"]):
-		var pt := {"x": float(state["px"]) + (rng.randf() * 200.0 - 100.0), "y": float(state["py"]) + (rng.randf() * 200.0 - 100.0)}
-		KarmaUtils.nudge_dry(state, pt)
-		(state["agents"] as Array).append(mk_agent({"role": "company", "speciesKey": state["speciesKey"],
-			"hp": float(state["sp"]["maxHp"]), "x": pt["x"], "y": pt["y"], "saved": false}))
-	seed_fauna(state, rng)
+static func possess_member(state: Dictionary) -> void:
+	# Fixed roster: the player takes over one census member instead of spawning
+	# extra bodies on top. Census floors guarantee a member exists.
+	for a in (state["agents"] as Array):
+		if str(a.get("speciesKey", "")) == str(state["speciesKey"]) and str(a.get("brain", "")) != "PLAYER":
+			state["px"] = float(a["x"])
+			state["py"] = float(a["y"])
+			(state["agents"] as Array).erase(a)
+			return
+
+
+static func seed_refuges(state: Dictionary, rng: RandomNumberGenerator) -> void:
 	state["refuges"] = []
 	for r in KarmaData.REFUGES:
 		for pt in KarmaUtils.scatter_dry(state, KarmaUtils.scaled_count(int(r["count"])), rng):
@@ -176,10 +198,64 @@ static func spawn_fauna(state: Dictionary, k: String, x: float, y: float) -> Dic
 
 
 static func seed_fauna(state: Dictionary, rng: RandomNumberGenerator) -> void:
-	for k in (KarmaData.POP["faunaFloor"] as Dictionary):
-		for i in fauna_count(str(k)):
-			var pt: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
-			spawn_fauna(state, str(k), float(pt["x"]), float(pt["y"]))
+	if not state.has("census"):
+		for k in (KarmaData.POP["faunaFloor"] as Dictionary):
+			for i in fauna_count(str(k)):
+				var pt: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
+				spawn_fauna(state, str(k), float(pt["x"]), float(pt["y"]))
+		return
+	var counts: Dictionary = (state["census"] as Dictionary)["counts"]
+	for k in counts:
+		var n := int(counts[k])
+		if str(k) == "sapo" and int(state["sp"]["tier"]) == 0:
+			n -= 1 # the saponpc pressure hunter spawns in seed_foes instead
+		if str(k) in ["halcon", "zorro", "lobo"]:
+			for i in n:
+				var far := distant_pt(state, rng)
+				spawn_fauna(state, str(k), float(far["x"]), float(far["y"]))
+			continue
+		var anchor := community_anchor(state, str(k), rng)
+		for i in n:
+			var mp := member_pt(state, anchor, i, rng)
+			if str(k) == str(state["speciesKey"]):
+				spawn_company(state, float(mp["x"]), float(mp["y"]))
+			else:
+				spawn_fauna(state, str(k), float(mp["x"]), float(mp["y"]))
+
+
+static func community_anchor(state: Dictionary, species_key: String, rng: RandomNumberGenerator) -> Dictionary:
+	var spots := []
+	match species_key:
+		"oruga":
+			spots = state.get("clumps", [])
+		"sapo":
+			# Anchor on the water itself: nudge_dry slides members onto the shore ring.
+			spots = state.get("waters", [])
+		"raton", "ardilla":
+			spots = (state.get("bushes", []) as Array) + (state.get("shrubs", []) as Array) + (state.get("oaks", []) as Array)
+		"topo":
+			spots = state.get("patches", [])
+	if (spots as Array).is_empty():
+		return KarmaUtils.scatter_dry(state, 1, rng)[0]
+	var s: Dictionary = (spots as Array)[rng.randi() % (spots as Array).size()]
+	return {"x": float(s["x"]), "y": float(s["y"])}
+
+
+static func member_pt(state: Dictionary, anchor: Dictionary, i: int, rng: RandomNumberGenerator) -> Dictionary:
+	var pt := {"x": float(anchor["x"]), "y": float(anchor["y"])}
+	if i == 1:
+		# Hearth pair: guarantees two congeners start within social-verb range.
+		var ang := rng.randf() * TAU
+		pt = {"x": float(anchor["x"]) + cos(ang) * 20.0, "y": float(anchor["y"]) + sin(ang) * 20.0}
+	elif i > 1:
+		pt = {"x": float(anchor["x"]) + rng.randf() * 500.0 - 250.0,
+			"y": float(anchor["y"]) + rng.randf() * 500.0 - 250.0}
+	return KarmaUtils.nudge_dry(state, pt)
+
+
+static func spawn_company(state: Dictionary, x: float, y: float) -> void:
+	(state["agents"] as Array).append(mk_agent({"role": "company", "speciesKey": state["speciesKey"],
+		"hp": float(state["sp"]["maxHp"]), "x": x, "y": y, "saved": false}))
 
 
 static func distant_pt(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
@@ -197,11 +273,17 @@ static func distant_pt(state: Dictionary, rng: RandomNumberGenerator) -> Diction
 
 
 static func respawn_missing(state: Dictionary, rng: RandomNumberGenerator) -> void:
-	for k in (KarmaData.POP["faunaFloor"] as Dictionary):
+	var targets := {}
+	if state.has("census"):
+		targets = ((state["census"] as Dictionary)["counts"] as Dictionary).duplicate()
+	else:
+		for fk in (KarmaData.POP["faunaFloor"] as Dictionary):
+			targets[str(fk)] = fauna_count(str(fk))
+	for k in targets:
 		var n := (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == str(k)).size()
 		if str(state["speciesKey"]) == str(k):
 			n += 1
-		if n < fauna_count(str(k)):
+		if n < int(targets[k]):
 			var pt := distant_pt(state, rng)
 			spawn_fauna(state, str(k), float(pt["x"]), float(pt["y"]))
 
@@ -287,6 +369,8 @@ static func possess_or_spawn(state: Dictionary, next: String, carry_karma: float
 	var fresh := blank_state(next, carry_karma, carry_pa)
 	for k in keep:
 		fresh[k] = state[k]
+	if state.has("census"):
+		fresh["census"] = state["census"]
 	fresh["px"] = float(at["x"])
 	fresh["py"] = float(at["y"])
 	fresh["saplings"] = 0

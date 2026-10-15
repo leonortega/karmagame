@@ -12,6 +12,14 @@ const POP := {
 	"faunaFloor": {"oruga": 2, "sapo": 2, "raton": 3, "ardilla": 3, "topo": 2, "halcon": 1, "zorro": 2, "lobo": 2},
 }
 
+# Rolled starting census (ecosystem-census): floor = social minimum that keeps
+# verbs usable after 1-2 deaths, mid = feeder baseline, cap = diet/space ceiling.
+const CENSUS_FLOOR := {"oruga": 4, "sapo": 3, "raton": 4, "ardilla": 4, "topo": 3, "halcon": 2, "zorro": 2, "lobo": 2}
+const CENSUS_MID := {"oruga": 8, "sapo": 4, "raton": 5, "ardilla": 5, "topo": 4, "halcon": 2, "zorro": 3, "lobo": 2}
+const CENSUS_CAP := {"oruga": 11, "sapo": 6, "raton": 7, "ardilla": 7, "topo": 4, "halcon": 3, "zorro": 4, "lobo": 3}
+const CENSUS_THEMES := ["bloom", "rodent", "wet", "lean", "balanced"]
+const CENSUS := {"insectMaxDemand": 7.0, "preyPerHunter": 3.0}
+
 const SPECIES := {
 	"oruga": {"name": "Oruga", "tier": 0, "speed": 80.0, "vision": 130.0, "maxHp": 60.0, "radius": 8.0, "size": 1, "hungerMult": 1.5, "color": "#9ccc65", "desc": "Castigo: lenta, todos te cazan"},
 	"sapo": {"name": "Sapo", "tier": 1, "speed": 110.0, "vision": 170.0, "maxHp": 80.0, "radius": 9.0, "size": 1, "hungerMult": 1.25, "color": "#4db6ac", "desc": "Lengua a 90px, cabe en madrigueras-S"},
@@ -79,7 +87,7 @@ static func _build_tuning() -> Dictionary:
 		"mateRespawn": 45.0, "mateMax": 4,
 		"respawnTime": 20.0,
 		"landTime": 1.0,
-		"leafRegrow": 60.0, "insectRespawn": 12.0, "insectMax": 40, "insectCharcoMin": 10, "insectLagoMin": 20,
+		"insectRespawn": 12.0, "insectMax": 40, "insectCharcoMin": 10, "insectLagoMin": 20,
 		"dietHintCd": 5.0, "groomRange": 30.0, "groomTime": 3.0, "groomCd": 30.0, "groomKarma": 5.0,
 		"pestKarma": 3.0, "prudentKarma": 2.0, "aerateKarma": 3.0, "plantKarma": 10.0,
 		"toxinKarma": 5.0, "chorusKarma": 5.0,
@@ -94,7 +102,8 @@ static func _build_tuning() -> Dictionary:
 		"cedeKarma": 15.0, "divePa": 10.0, "cacheFullHambre": 80.0,
 		"senseTremorCd": 25.0, "senseTrackCd": 30.0, "revealTime": 3.0, "trackTime": 5.0,
 		"curlCd": 20.0, "saplingCap": 3,
-		"fruitRegrow": 45.0, "seedSproutChance": 0.35, "seedlingMaturity": 75.0,
+		"fruitRegrowByKind": {"berries": 20.0, "carrots": 25.0, "leaves": 30.0, "mushrooms": 30.0, "apples": 35.0, "nuts": 45.0},
+		"seedSproutChance": 0.35, "seedlingMult": 2.0, "floraHeadroom": 2.0,
 		"seedlingMax": 10, "seedScatter": 60.0, "oakTreeCap": 6,
 		"rockCount": 8, "solidRefuge": 16.0, "solidPlant": 12.0, "solidRock": 14.0, "losSamples": 10,
 		"regenHambre": 30.0, "regenSed": 30.0, "thirstMult": 2.0, "deficitMax": 2.0,

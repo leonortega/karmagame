@@ -691,21 +691,20 @@ func test_pack_floor_lobo_is_two() -> void:
 	assert_int(int((KarmaData.POP["faunaFloor"] as Dictionary)["lobo"])).is_equal(2)
 
 
-func test_fresh_run_seeds_two_fauna_lobos() -> void:
+func test_fresh_run_seeds_census_lobos() -> void:
 	var s := KarmaState.new_run("raton", 0.0, 0.0, 0, _rng)
-	assert_int(_fauna_lobos(s).size()).is_equal(2)
+	var expect := int((s["census"] as Dictionary)["counts"]["lobo"])
+	assert_int(_fauna_lobos(s).size()).is_equal(expect)
 
 
-func test_respawn_tops_up_lobos_to_two() -> void:
+func test_respawn_tops_up_lobos_to_census() -> void:
 	var s := KarmaState.new_run("raton", 0.0, 0.0, 0, _rng)
+	var expect := int((s["census"] as Dictionary)["counts"]["lobo"])
 	for o in _fauna_lobos(s):
 		(s["agents"] as Array).erase(o)
-	KarmaState.respawn_missing(s, _rng)
-	assert_int(_fauna_lobos(s).size()).is_equal(1)
-	KarmaState.respawn_missing(s, _rng)
-	assert_int(_fauna_lobos(s).size()).is_equal(2)
-	KarmaState.respawn_missing(s, _rng)
-	assert_int(_fauna_lobos(s).size()).is_equal(2)
+	for i in expect + 1:
+		KarmaState.respawn_missing(s, _rng)
+	assert_int(_fauna_lobos(s).size()).is_equal(expect)
 
 
 func test_regurg_feeds_hungry_fauna_packmate() -> void:

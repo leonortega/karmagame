@@ -137,6 +137,9 @@ static func solid_radius(refuge_type: String) -> float:
 static func collect_solids(state: Dictionary) -> Array:
 	var out: Array = []
 	for r in state.get("refuges", []):
+		# Scent marks, threads, shadows, and wallows warn or snare; they never block.
+		if str(r.get("type", "")) in ["scent-post", "silk-thread", "shadow-disc", "wallow", "foam-ring"]:
+			continue
 		out.append({"x": r["x"], "y": r["y"], "r": solid_radius(str(r["type"]))})
 	for key in ["bushes", "shrubs", "patches", "clusters"]:
 		for p in state.get(key, []):

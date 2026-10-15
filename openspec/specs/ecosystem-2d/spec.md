@@ -182,7 +182,7 @@ The system SHALL forbid an airborne Halcón from eating; attempting E near food 
 - **THEN** the Lobo can reach and damage it during the 1s grounded window
 
 ### Requirement: Vegetarian menu
-The system SHALL spawn per life the listed initial counts of each food — these are densities of a living total that regrows and reseeds per `flora-lifecycle` (caps are area-scaled per kind): 7 berry bushes (3 fruits each, +15/+5), 3 apple shrubs (2 apples each, +22/+8), 2 carrot patches (3 carrots each, +18/+5, Ratón/Topo), 4 mushroom clusters (2 mushrooms each, +10/+0, Ratón/Ardilla, 1-in-4 toxic at −20 Vida with tint + Keen-nose reveal), 4 leaf-clumps (3 leaves, +12/+3, Oruga only, regrow 1 per 60s, karma-exempt), 2 oak clumps (3 nuts each, +18/+5, Ardilla/Ratón/Topo, Ardilla-carriable), and 6 wandering insects (+10/+3, Sapo/Topo, respawn 1 per 20s max 6, Sapo tongue range applies). Food catalog:
+The system SHALL spawn per life the listed initial counts of each food minus `TUNING.floraHeadroom` (2) headroom per kind — these are densities of a living total that regrows and reseeds per `flora-lifecycle` (caps are area-scaled per kind; the headroom lets seedlings mature into new plants during play): 7 berry bushes (3 fruits each, +15/+5), 3 apple shrubs (2 apples each, +22/+8), 2 carrot patches (3 carrots each, +18/+5, Ratón/Topo), 4 mushroom clusters (2 mushrooms each, +10/+0, Ratón/Ardilla, 1-in-4 toxic at −20 Vida with tint + Keen-nose reveal), 4 leaf-clumps (3 leaves, +12/+3, Oruga only, regrow 1 per 30s on the per-kind table, karma-exempt), 2 oak clumps (3 nuts each, +18/+5, Ardilla/Ratón/Topo, Ardilla-carriable), and 6 wandering insects (+10/+3, Sapo/Topo, respawn 1 per 20s max 6, Sapo tongue range applies). Food catalog:
 
 | Food | Entity | Count | Eaters | Payoff | Twist |
 |---|---|---|---|---|---|
@@ -199,7 +199,7 @@ The system SHALL spawn per life the listed initial counts of each food — these
 - **THEN** Vida drops by 20 with no karma change
 
 #### Scenario: Leaves regrow
-- **WHEN** a leaf-clump sits stripped for 60s
+- **WHEN** a leaf-clump sits stripped for 30s
 - **THEN** one leaf has regrown
 
 ### Requirement: Lifelike animal rendering

@@ -16,6 +16,12 @@ static func _set_intent(a: Dictionary, kind: String, x: float, y: float, target:
 		(a["jev_intent"] as Dictionary)["target"] = target
 
 
+static func _verb_ready(a: Dictionary, slot: int) -> bool:
+	if not a.has("verbCds"):
+		return true
+	return float((a["verbCds"] as Array)[slot - 1]) <= 0.0
+
+
 static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var menu: Array = []
 	var ax := float(a["x"])
@@ -50,6 +56,8 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var cache: Variant = KarmaEat.nearest_spare_flora_for(state, a, eat_range)
 	if cache != null:
 		menu.append({"kind": "seedcache", "label": "Cache seed", "x": float((cache as Dictionary)["x"]), "y": float((cache as Dictionary)["y"]), "target": cache})
+	if _verb_ready(a, 4) and KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), float(KarmaData.TUNING["aiCoverRange"])) != null:
+		menu.append({"kind": "scout", "label": "Scout posts", "x": ax, "y": ay})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
 	return menu
 
@@ -76,7 +84,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 
 
 static func mock_choice(menu: Array) -> int:
-	var order := ["eat", "drink", "flee", "alarm", "groom", "seedcache", "seek_food", "wander"]
+	var order := ["eat", "drink", "flee", "alarm", "scout", "groom", "seedcache", "seek_food", "wander"]
 	for want in order:
 		for i in menu.size():
 			if str((menu[i] as Dictionary)["kind"]) == want:
@@ -214,6 +222,9 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 		"seedcache":
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 2)
+		"scout":
+			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			return KarmaGame.cast_verb_for(state, a, 4)
 		_:
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true

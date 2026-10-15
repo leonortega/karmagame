@@ -62,7 +62,7 @@ func test_carrion_lifecycle() -> void:
 func test_edible_for_chain() -> void:
 	assert_bool(KarmaPredators.edible_for("zorro", "raton", 10.0)).is_true()
 	assert_bool(KarmaPredators.edible_for("zorro", "lobo", 10.0)).is_false()
-	assert_bool(KarmaPredators.edible_for("lobo", "zorro", 10.0)).is_false() # lobo hunts tiers [2] via zorro rule, not edible_for
+	assert_bool(KarmaPredators.edible_for("lobo", "zorro", 10.0)).is_true() # zorro is tier 2 in lobo huntsTiers; edible_agent_for delegates here (no separate zorro rule)
 	assert_bool(KarmaPredators.edible_for("saponpc", "oruga", 10.0)).is_true()
 	assert_bool(KarmaPredators.edible_for("saponpc", "raton", 10.0)).is_false()
 
@@ -81,6 +81,7 @@ func test_buy_rejects_debt_and_stacking() -> void:
 func test_cast_verb_cooldown_and_cost() -> void:
 	var s := _fresh("topo")
 	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(s["px"]) + 5.0, "y": float(s["py"]), "dug": true})
+	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(s["px"]) + 10.0, "y": float(s["py"]), "dug": true}) # tunneline links two burrows
 	assert_bool(KarmaGame.cast_verb(s, 2)).is_true() # tunneline refuerza
 	assert_float((s["verbCds"] as Array)[1]).is_equal(25.0)
 	assert_bool(KarmaGame.cast_verb(s, 2)).is_false() # on cooldown

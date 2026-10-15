@@ -191,31 +191,14 @@ static func apply_halcon_answer(state: Dictionary, a: Dictionary, menu: Array, a
 			_set_intent(a, "eat", float(pick["x"]), float(pick["y"]), pick.get("target"))
 			return KarmaEat.eat_carrion(state, pick.get("target"), a)
 		"courtesy":
-			if not (state["carrions"] as Array).has(pick.get("target")):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
-				return true
-			if KarmaEat.carrion_stage(pick.get("target")) != "fresh" or bool((pick.get("target") as Dictionary).get("ceded", false)):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
-				return true
-			(pick.get("target") as Dictionary)["ceded"] = true
-			KarmaState.add_karma(state, a, float(KarmaData.TUNING["cedeKarma"]), "Carroña compartida (+karma)" + _flavor(a))
-			(a["verbCds"] as Array)[2] = float((KarmaData.VERB_DEFS["halcon"] as Array)[2]["cd"])
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
-			return true
+			return KarmaGame.cast_verb_for(state, a, 3)
 		"scare", "bone":
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 4 if str(pick["kind"]) == "scare" else 5)
 		"thermal":
-			var defs: Array = KarmaData.VERB_DEFS["halcon"]
-			if float(a.get("pa", 0.0)) < float(defs[1]["costPa"]):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
-				return false
-			a["pa"] = float(a.get("pa", 0.0)) - float(defs[1]["costPa"])
-			(a["verbCds"] as Array)[1] = float(defs[1]["cd"])
-			a["thermalT"] = float(KarmaData.TUNING["thermalTime"]) * (2.0 if KarmaShop.has_adapt(a, "thermalPlus") else 1.0)
-			KarmaState.add_log(state, a, "Térmica: ojo de águila" + _flavor(a))
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
-			return true
+			return KarmaGame.cast_verb_for(state, a, 2)
 		"dive", "seek_carrion", "drink", "flee":
 			_set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target"))
 			return true

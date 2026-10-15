@@ -77,6 +77,9 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	if danger != null and _verb_ready(a, 1):
 		var tf_label := "Tail flick (hunted!)" if hunted else "Tail flick"
 		menu.append({"kind": "tailflick", "label": tf_label, "x": float((danger as Dictionary)["x"]), "y": float((danger as Dictionary)["y"]), "target": danger})
+	var groom_mate: Variant = KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), float(KarmaData.TUNING["groomRange"]))
+	if groom_mate != null and _verb_ready(a, 5):
+		menu.append({"kind": "groom", "label": "Groom mate", "x": float((groom_mate as Dictionary)["x"]), "y": float((groom_mate as Dictionary)["y"]), "target": groom_mate})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
 		if water != null:
@@ -113,7 +116,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 
 
 static func mock_choice(menu: Array) -> int:
-	var order := ["eat", "drink", "flee", "bury_nut", "carry_nut", "bark", "tailflick", "falsecache", "seek_food", "wander"]
+	var order := ["eat", "drink", "flee", "bury_nut", "carry_nut", "bark", "groom", "tailflick", "falsecache", "seek_food", "wander"]
 	for want in order:
 		for i in menu.size():
 			if str((menu[i] as Dictionary)["kind"]) == want:
@@ -170,6 +173,9 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 		"falsecache":
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 3)
+		"groom":
+			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			return KarmaGame.cast_verb_for(state, a, 5)
 		"seek_food", "drink", "flee":
 			_set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target", null))
 			return true

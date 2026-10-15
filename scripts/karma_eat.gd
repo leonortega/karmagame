@@ -295,7 +295,7 @@ static func dig_burrow(state: Dictionary, for_agent: Variant) -> bool:
 	t["dug"] = int(t.get("dug", 0)) + 1
 	var px := float((for_agent as Dictionary)["x"]) if for_agent != null else float(state["px"])
 	var py := float((for_agent as Dictionary)["y"]) if for_agent != null else float(state["py"])
-	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": px, "y": py, "dug": true})
+	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": px, "y": py, "dug": true, "charge": 1})
 	if for_agent != null:
 		KarmaState.add_karma(state, for_agent, float(KarmaData.TUNING["aerateKarma"]), "Airea la tierra (+karma)")
 		return true
@@ -306,6 +306,10 @@ static func dig_burrow(state: Dictionary, for_agent: Variant) -> bool:
 
 static func eat_patch(state: Dictionary, p: Variant, for_agent: Variant) -> bool:
 	if p == null:
+		return false
+	# Empty or dead plants hold nothing: refuse instead of driving stock
+	# negative (which would stall regrow for extra cycles per point).
+	if not bool((p as Dictionary).get("alive", false)) or int((p as Dictionary).get("amount", 0)) <= 0:
 		return false
 	if not (KarmaData.DIET[diet_key(state, for_agent)] as Array).has(str((p as Dictionary)["kind"])):
 		return false
@@ -349,7 +353,7 @@ static func eat_last_fruit(state: Dictionary, p: Dictionary, for_agent: Variant)
 	heal_eater(state, for_agent, float(KarmaData.TUNING["lastFruitHp"]))
 	refill_hambre(state, for_agent, float(KarmaData.TUNING["lastFruitHp"]))
 	if for_agent == null:
-		KarmaState.add_karma(state, null, float(KarmaData.TUNING["lastFruitKarma"]), "Último %s: se seca para siempre (%d karma)" % [str(p["kind"]), int(KarmaData.TUNING["lastFruitKarma"])])
+		KarmaState.add_karma(state, null, float(KarmaData.TUNING["lastFruitKarma"]), "Último %s: volverá a dar fruto (%d karma)" % [str(p["kind"]), int(KarmaData.TUNING["lastFruitKarma"])])
 	return true
 
 
@@ -377,8 +381,9 @@ static func eat_insect(state: Dictionary, i: Variant, for_agent: Variant) -> boo
 		return false
 	(state["insects"] as Array).erase(i)
 	var pay: Dictionary = KarmaData.FOODDEF["insects"]
-	heal_eater(state, for_agent, float(pay["hp"]))
-	refill_hambre(state, for_agent, float(pay["hp"]))
+	var bonus := 8.0 if bool((i as Dictionary).get("fat", false)) else 0.0
+	heal_eater(state, for_agent, float(pay["hp"]) + bonus)
+	refill_hambre(state, for_agent, float(pay["hp"]) + bonus)
 	if for_agent != null:
 		if str((for_agent as Dictionary).get("speciesKey", "")) == "sapo":
 			KarmaState.add_karma(state, for_agent, float(KarmaData.TUNING["pestKarma"]), "Control de plagas (+karma)")
