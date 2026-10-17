@@ -5,7 +5,7 @@
 Each species gets a 5-verb action bar on keys 1–5 drawn from real animal behavior. Verbs cost vida/PA with per-verb cooldowns, pay karma in the right context, and are cast by AI agents of the same species through the same table — the action bar is each animal's ecological role made playable.
 ## Requirements
 ### Requirement: Five species verbs on keys 1–5
-The game SHALL define `VERB_DEFS[speciesKey]` with exactly 5 verbs per species (slot 1–5), each with name, description, cooldown, and real costs (`costHp`, `costPa`). Keys 1–5 SHALL cast the matching verb; when the shop overlay is open, keys 1–4 SHALL keep buying shop items instead. E/Q/B/H/V/C behavior SHALL be unchanged. The verb bar SHALL render as a vertical list with one item per line showing slot, name, and remaining cooldown, keeping the existing unaffordable-dim behavior.
+The game SHALL define `VERB_DEFS[speciesKey]` with exactly 5 verbs per species (slot 1–5), each with name, description, cooldown, and real costs (`costHp`, `costPa`). Keys 1–5 SHALL cast the matching verb only when no modal is open; when the shop modal is open, keys 1–3 SHALL buy the matching shop item instead and no verb is cast; when birth, judgment, or pause modals are open, number keys SHALL do nothing. E/Q/B/H/V/C behavior SHALL be unchanged except swallowed while any modal owns focus (B closes shop, Esc closes shop or toggles pause, R confirms only in judgment). The verb bar SHALL render as a vertical list with one item per line showing slot, name, and remaining cooldown, keeping the existing unaffordable-dim behavior.
 
 #### Scenario: Cast a verb
 - **WHEN** the player as topo presses 1 with the shop closed and cooldown ready
@@ -23,12 +23,20 @@ The game SHALL define `VERB_DEFS[speciesKey]` with exactly 5 verbs per species (
 - **WHEN** the player looks at the verb bar as any species
 - **THEN** five rows appear stacked vertically, each with its slot number and name, and a row on cooldown appends remaining seconds
 
+#### Scenario: Modal swallows verbs
+- **WHEN** the player presses any of 1–5 while pause, birth, or judgment is open
+- **THEN** nothing is cast and nothing is bought
+
 ### Requirement: Verbs cost vida or PA and pay contextual karma
-Each verb SHALL apply its declared costs before its effect, and karma payouts SHALL be context-conditional (e.g. regurgitate requires a hungry conspecific, cull-weak pays bonus karma when the target's HP is below 30%). Costs that bring Vida to 0 SHALL trigger the normal death path. Existing verb karma values SHALL be preserved when migrating (shout +30, plant +10, aerate +3, groom +5, cede +15, strike +5/+20, prudent +2, pest +3). Every verb SHALL additionally write the shared world or another animal (entity added, removed, or marked; HP/hambre moved; another body displaced; hunter given restT; mate given saved/rallyT/cleanse; carrion flagged ceded; shared reveal left in the world). Karma, PA, vision, self-heal, self-hide, or self-teleport alone SHALL NOT satisfy a verb. A cast whose world/other precondition is absent SHALL fail without paying costs, starting cooldown, or granting karma/PA/vida.
+Each verb SHALL apply its declared costs before its effect, SHALL scale cooldowns and channel durations by caster age stage per `animal-senescence` (old animals act slower; costs unchanged), and karma payouts SHALL be context-conditional (e.g. regurgitate requires a hungry conspecific, cull-weak pays bonus karma when the target's HP is below 30%). Costs that bring Vida to 0 SHALL trigger the normal death path. Existing verb karma values SHALL be preserved when migrating (shout +30, plant +10, aerate +3, groom +5, cede +15, strike +5/+20, prudent +2, pest +3). Every verb SHALL additionally write the shared world or another animal (entity added, removed, or marked; HP/hambre moved; another body displaced; hunter given restT; mate given saved/rallyT/cleanse; carrion flagged ceded; shared reveal left in the world). Karma, PA, vision, self-heal, self-hide, or self-teleport alone SHALL NOT satisfy a verb. A cast whose world/other precondition is absent SHALL fail without paying costs, starting cooldown, or granting karma/PA/vida. Failed kill verbs SHALL deal partial age-scaled damage and burn cooldown with no feast heal.
 
 #### Scenario: Paying real costs
 - **WHEN** the oruga casts seda-cuerda
 - **THEN** its Vida drops by the verb's costHp and PA by costPa before the effect resolves
+
+#### Scenario: Old hands are slower
+- **WHEN** a frail topo casts aerate versus a prime topo with the same cooldown ready
+- **THEN** the frail cast carries the longer age-scaled cooldown before it can cast again
 
 #### Scenario: Context gates the reward
 - **WHEN** the lobo uses regurgitate-feed with no hungry conspecific nearby
@@ -139,7 +147,7 @@ Tunneline SHALL link two dug burrows (travel between them) or raise a burrow's c
 - **THEN** both burrows join one network and the caster gains karma
 
 ### Requirement: Every reworked verb is JEV-handleable
-Every reworked verb SHALL be offerable in its species JEV candidate menu from legal moves only (cooldown, range, stock/charge, hunter/mate precondition, HP/PA affordability checked at menu build), rankable by the sidecar which SHALL only rank and never invent moves, and applicable through the same functions as the player. Wander SHALL always be present so the ranking always has an executable target. Stale answers (actor dead, target gone, stock eaten, refuge gone) and picks failing affordability at apply time SHALL resolve to continued steering or wander with no costs burned and no karma granted, never to a no-op freeze. The state text sent to the ranker SHALL carry the need behind the verb (hunger/thirst/pressure/charge) so ranking can weigh it.
+Every reworked verb SHALL be offerable in its species JEV candidate menu from legal moves only (cooldown, range, stock/charge, hunter/mate precondition, HP/PA affordability checked at menu build), rankable by the sidecar which SHALL only rank and never invent moves, and applicable through the same functions as the player. Wander SHALL always be present so the ranking always has an executable target. Stale answers (actor dead, target gone, stock eaten, refuge gone) and picks failing affordability at apply time SHALL resolve to continued steering or wander with no costs burned and no karma granted, never to a no-op freeze. The state text sent to the ranker SHALL carry the need behind the verb (hunger/thirst/pressure/charge) plus age signals (self stage, hunter/prey age stage, frailty/force hint) so ranking can weigh age.
 
 #### Scenario: Legal-only menus
 - **WHEN** an AI ardilla with bark on cooldown or no oak stock in range needs a menu
@@ -152,3 +160,7 @@ Every reworked verb SHALL be offerable in its species JEV candidate menu from le
 #### Scenario: Stale answers fall back to wander
 - **WHEN** a ranked worm pick reaches an AI topo whose refuge charge was spent before apply
 - **THEN** the topo keeps steering or wanders with no HP, PA, cooldown, or karma change
+
+#### Scenario: Ranker sees age
+- **WHEN** a frail AI raton wounded by a failed pounce needs a menu with a prime zorro near and a refuge in range
+- **THEN** its state text carries its frail stage and the hunter's prime stage so flee-to-refuge can outrank wandering

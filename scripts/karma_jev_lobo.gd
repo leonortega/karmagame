@@ -30,17 +30,18 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var ay := float(a["y"])
 	var eat_range := float(KarmaData.TUNING["eatRange"])
 	var perception := float(KarmaAI.ai_pred_row(a).get("perception", 280.0))
-	# Contact carrion first; distant carrion only when hungry.
+	# Contact carrion first; distant carrion only when hungry, or when old/weak scavenging.
+	var scavenge := KarmaAI.prefer_carrion(a) and KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), perception) != null
 	var meal: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), eat_range)
 	if meal != null:
 		menu.append({"kind": "eat", "label": "Eat carrion", "x": float((meal as Dictionary)["x"]), "y": float((meal as Dictionary)["y"]), "target": meal})
-	elif KarmaAI.is_hungry(a):
-		var trek := float(KarmaData.TUNING["wanderSeekRange"])
+	elif KarmaAI.is_hungry(a) or scavenge:
+		var trek := float(KarmaData.TUNING["wanderSeekRange"]) if KarmaAI.is_hungry(a) else perception
 		var far: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), trek)
 		if far != null:
 			menu.append({"kind": "seek_carrion", "label": "Seek carrion", "x": float((far as Dictionary)["x"]), "y": float((far as Dictionary)["y"]), "target": far})
 	var prey: Variant = KarmaAI.nearest_ai_prey(state, a, perception)
-	if prey != null:
+	if not scavenge and prey != null:
 		menu.append({"kind": "hunt", "label": "Hunt prey", "x": float((prey as Dictionary)["x"]), "y": float((prey as Dictionary)["y"]), "target": prey})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var forage := float(KarmaData.SPECIES["lobo"]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
@@ -244,7 +245,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"prey_visible": KarmaAI.nearest_ai_prey(state, a, perception) != null,
 		"carrion_near": KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), float(KarmaData.TUNING["eatRange"])) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
-	}
+	}.merged(KarmaJev.age_fields(state, a))
 
 
 static func is_red_flag(snapshot: Dictionary, menu: Array, answer: Dictionary) -> bool:
@@ -273,7 +274,7 @@ static func state_text(state: Dictionary, a: Dictionary) -> String:
 		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
 		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
 		str(snap["threatened"]), str(snap["prey_visible"]),
-		str(snap["carrion_near"]), str(snap["water_near"]), need_token(state, a)]
+		str(snap["carrion_near"]), str(snap["water_near"]), need_token(state, a)] + KarmaJev.age_text(snap)
 
 
 static func all_jev_lobos(state: Dictionary) -> Array:

@@ -111,7 +111,7 @@ static func build_halcon_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"prey_visible": KarmaAI.nearest_ai_prey(state, a, 200.0) != null,
 		"carrion_near": KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, float(a["x"]), float(a["y"]), float(KarmaData.TUNING["drinkRange"])) != null,
-	}
+	}.merged(KarmaJev.age_fields(state, a))
 
 
 static func all_jev_halcons(state: Dictionary) -> Array:
@@ -124,7 +124,7 @@ static func halcon_state_text(state: Dictionary, a: Dictionary) -> String:
 		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
 		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
 		str(snap["threatened"]), str(snap["grounded"]), float(snap["landT"]),
-		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])]
+		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
 
 
 static func build_halcon_http_body(state: Dictionary) -> Dictionary:

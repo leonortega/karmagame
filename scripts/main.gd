@@ -46,12 +46,21 @@ var _jev_flush_t := 0.0
 # Refresh at ~7Hz and skip labels whose text did not change.
 var _hud_t := 0.0
 var _hud_cache := {}
+var _modal_dim: ColorRect
+var _modal_panel: PanelContainer
+var _birth_t := 0.0
+var _judge_t := 0.0
+var _last_modal := ""
 
 
 func _ready() -> void:
 	rng.randomize()
-	state = KarmaState.new_run(KarmaGame.draw_start_form(rng), 0.0, 0.0, 0, rng)
+	var first := KarmaGame.draw_start_form(rng)
+	state = KarmaState.new_run(first, 0.0, 0.0, 0, rng)
+	state["introDone"] = false
+	state["introNext"] = first
 	_build_hud()
+	_build_modal()
 	_jev_http = HTTPRequest.new()
 	_jev_http.timeout = 2.0
 	add_child(_jev_http)
@@ -538,21 +547,195 @@ func _build_hud() -> void:
 	_style_hud_label("others", 11, Color("#cfd8dc"))
 
 
+func _build_modal() -> void:
+	var layer := get_node("HUD") as CanvasLayer
+	_modal_dim = ColorRect.new()
+	_modal_dim.name = "ModalDim"
+	_modal_dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_modal_dim.color = Color(0, 0, 0, 0.55)
+	_modal_dim.visible = false
+	layer.add_child(_modal_dim)
+	_modal_panel = PanelContainer.new()
+	_modal_panel.name = "ModalPanel"
+	_modal_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_modal_panel.custom_minimum_size = Vector2(460, 0)
+	_modal_panel.add_theme_stylebox_override("panel", _panel_style(Color("#ffd54f")))
+	_modal_panel.visible = false
+	layer.add_child(_modal_panel)
+	var modal_box := VBoxContainer.new()
+	modal_box.add_theme_constant_override("separation", 6)
+	_modal_panel.add_child(modal_box)
+	for key in ["modal_title", "modal_body", "modal_blocks", "modal_hint"]:
+		var l := Label.new()
+		l.name = key
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(428, 0)
+		l.add_theme_font_size_override("font_size", 13 if key != "modal_title" else 16)
+		l.add_theme_color_override("font_color", Color("#ffd54f") if key == "modal_title" else Color("#e8ede9"))
+		modal_box.add_child(l)
+		_labels[key] = l
+	var primary := Button.new()
+	primary.name = "modal_primary"
+	primary.custom_minimum_size = Vector2(428, 28)
+	modal_box.add_child(primary)
+	_labels["modal_primary"] = primary
+	primary.pressed.connect(_on_modal_primary)
+	var close_b := Button.new()
+	close_b.name = "modal_close"
+	close_b.text = "Cerrar (B/Esc)"
+	close_b.custom_minimum_size = Vector2(428, 24)
+	modal_box.add_child(close_b)
+	_labels["modal_close"] = close_b
+	close_b.pressed.connect(_on_modal_close)
+
+
+func _modal_pool_for(state: Dictionary, modal: String) -> Array:
+	if modal == "birth":
+		return KarmaData.SPECIES.keys()
+	if modal == "judgment":
+		var p: Array = state.get("pendingPool", [])
+		if p.is_empty():
+			p = KarmaShop.pool_for(float(state.get("karma", 0.0)))
+		return p
+	return []
+
+
+func _modal_next_for(state: Dictionary, modal: String) -> String:
+	if modal == "birth":
+		return str(state.get("introNext", state.get("speciesKey", "raton")))
+	if modal == "judgment":
+		return str(state.get("pendingNext", "raton"))
+	return ""
+
+
+func _refresh_modal() -> void:
+	if _modal_dim == null or _modal_panel == null:
+		return
+	var modal := KarmaModals.active_modal(state)
+	if modal != _last_modal:
+		if modal == "birth":
+			_birth_t = 0.0
+		if modal == "judgment":
+			_judge_t = 0.0
+		_last_modal = modal
+	var open := modal != ""
+	_modal_dim.visible = open
+	_modal_panel.visible = open
+	if not open:
+		return
+	var primary := _labels["modal_primary"] as Button
+	var close_b := _labels["modal_close"] as Button
+	if modal == "shop":
+		_set_text("modal_title", "TIENDA — %s (PA %d)" % [str(state["sp"]["name"]), int(state.get("pa", 0.0))])
+		_set_text("modal_body", "\n".join(KarmaHud.shop_modal_rows(state)))
+		_set_text("modal_blocks", "")
+		_set_text("modal_hint", "1-3 comprar · B/Esc cerrar")
+		primary.text = "Cerrar (B)"
+		close_b.visible = true
+	elif modal == "birth":
+		var pool := _modal_pool_for(state, modal)
+		var nxt := _modal_next_for(state, modal)
+		var hl := KarmaModals.roulette_pick(pool, nxt, _birth_t)
+		_set_text("modal_title", "KARMA")
+		_set_text("modal_body", "los dioses han elegido que nazcas como:")
+		_set_text("modal_blocks", "\n".join(KarmaHud.birth_blocks(pool, hl)))
+		if _birth_t >= KarmaModals.SETTLE_AFTER:
+			var sp: Dictionary = KarmaData.SPECIES.get(nxt, {"name": nxt, "tier": 1})
+			_set_text("modal_hint", "Eres %s T%d · Espacio/Enter para empezar" % [str(sp["name"]), int(sp["tier"])])
+		else:
+			_set_text("modal_hint", "··· los dioses deciden ···")
+		primary.text = "Empezar (Espacio)"
+		close_b.visible = false
+	elif modal == "judgment":
+		var pool := _modal_pool_for(state, modal)
+		var nxt := _modal_next_for(state, modal)
+		var hl := KarmaModals.roulette_pick(pool, nxt, _judge_t)
+		_set_text("modal_title", "JUICIO")
+		_set_text("modal_body", "los dioses han elegido que reencarnes como:\n" + KarmaHud.judgment_summary(state))
+		_set_text("modal_blocks", "\n".join(KarmaHud.birth_blocks(pool, hl)))
+		if _judge_t >= KarmaModals.SETTLE_AFTER or pool.size() <= 1:
+			var sp: Dictionary = KarmaData.SPECIES.get(nxt, {"name": nxt, "tier": 1})
+			_set_text("modal_hint", "Reencarnas en %s T%d · R para reencarnar" % [str(sp["name"]), int(sp["tier"])])
+		else:
+			_set_text("modal_hint", "··· los dioses deciden ···")
+		primary.text = "Reincarnar (R)"
+		close_b.visible = false
+	elif modal == "pause":
+		_set_text("modal_title", "PAUSA")
+		_set_text("modal_body", "◆ %s T%d · PA %d · Karma %d" % [str(state["sp"]["name"]), int(state["sp"]["tier"]), int(state.get("pa", 0.0)), int(state.get("karma", 0.0))])
+		_set_text("modal_blocks", "")
+		_set_text("modal_hint", "WASD moverse · E comer · Q gritar · H esconderse · B tienda · 1-5 verbos · P/Esc seguir")
+		primary.text = "Seguir (P/Esc)"
+		close_b.visible = true
+
+
+func _on_modal_primary() -> void:
+	if state.is_empty():
+		return
+	var modal := KarmaModals.active_modal(state)
+	if modal == "birth":
+		state["introDone"] = true
+	elif modal == "judgment":
+		state = KarmaState.reincarnate(state, rng)
+		_judge_t = 0.0
+		_last_modal = KarmaModals.active_modal(state)
+	elif modal == "pause":
+		state["paused"] = false
+	elif modal == "shop":
+		state["shopOpen"] = false
+
+
+func _on_modal_close() -> void:
+	if state.is_empty():
+		return
+	var modal := KarmaModals.active_modal(state)
+	if modal == "shop":
+		state["shopOpen"] = false
+	elif modal == "pause":
+		state["paused"] = false
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if state.is_empty():
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
-		var k := (event as InputEventKey).physical_keycode
+		var ev := event as InputEventKey
+		var k := ev.physical_keycode
 		if k == 0:
-			k = (event as InputEventKey).keycode
+			k = ev.keycode
 		var ch := String.chr(k).to_lower() if k >= 32 and k < 128 else ""
 		# Number keys: Godot keycodes KEY_1..KEY_5.
 		var num := -1
 		if k >= KEY_1 and k <= KEY_5:
 			num = int(k - KEY_0)
-		if state.get("dead", false):
+		var is_esc := ev.keycode == KEY_ESCAPE or ev.physical_keycode == KEY_ESCAPE
+		var is_enter := ev.keycode == KEY_ENTER or ev.keycode == KEY_KP_ENTER or ev.physical_keycode == KEY_ENTER
+		var is_space := k == KEY_SPACE
+		var modal := KarmaModals.active_modal(state)
+		if modal == "judgment":
 			if ch == "r":
-				state = KarmaState.reincarnate(state, rng)
+				_on_modal_primary()
+			return
+		if modal == "birth":
+			if is_space or is_enter:
+				_on_modal_primary()
+			return
+		if modal == "pause":
+			if ch == "p" or is_esc:
+				state["paused"] = false
+			return
+		if modal == "shop":
+			if ch == "b" or is_esc:
+				state["shopOpen"] = false
+				return
+			if ch == "p":
+				state["shopOpen"] = false
+				state["paused"] = true
+				return
+			if num >= 1 and num <= 3:
+				for it in KarmaShop.catalog_for(str(state["speciesKey"])):
+					if str(it["key"]) == str(num):
+						KarmaShop.buy_item(state, state, str(it["id"]))
 			return
 		match ch:
 			"e":
@@ -560,28 +743,40 @@ func _unhandled_input(event: InputEvent) -> void:
 			"q":
 				KarmaState.try_shout(state)
 			"h":
-				if not bool(state.get("shopOpen", false)):
-					KarmaState.toggle_hide(state)
+				KarmaState.toggle_hide(state)
 			"v":
 				KarmaEat.sense_pulse(state)
 			"c":
 				KarmaEat.carry_action(state)
 			"b":
-				state["shopOpen"] = not bool(state.get("shopOpen", false))
-		if ch == "" and event is InputEventKey and (event as InputEventKey).keycode == KEY_ESCAPE:
-			state["shopOpen"] = false
-		if num >= 1 and num <= 5 and not bool(state.get("shopOpen", false)):
+				state["shopOpen"] = true
+			"p":
+				state["paused"] = true
+			"r":
+				if bool(state.get("dead", false)):
+					state = KarmaState.reincarnate(state, rng)
+		if is_esc and not bool(state.get("dead", false)) and not bool(state.get("shopOpen", false)):
+			state["paused"] = true
+		if num >= 1 and num <= 5:
 			KarmaGame.cast_verb(state, num)
-		elif num >= 1 and num <= 3 and bool(state.get("shopOpen", false)):
-			for it in KarmaShop.catalog_for(str(state["speciesKey"])):
-				if str(it["key"]) == str(num):
-					KarmaShop.buy_item(state, state, str(it["id"]))
 
 
 func _physics_process(delta: float) -> void:
 	if state.is_empty():
 		return
 	var dt := minf(delta, 0.05)
+	var frozen := KarmaModals.active_modal(state)
+	if frozen != "":
+		if frozen == "birth":
+			_birth_t += dt
+		if frozen == "judgment":
+			_judge_t += dt
+		queue_redraw()
+		_hud_t += dt
+		if _hud_t >= 0.15:
+			_hud_t = 0.0
+			_refresh_hud()
+		return
 	if not bool(state.get("dead", false)):
 		var ix := (1.0 if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT) else 0.0) - (1.0 if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT) else 0.0)
 		var iy := (1.0 if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN) else 0.0) - (1.0 if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP) else 0.0)
@@ -647,6 +842,7 @@ func _refresh_hud() -> void:
 		_set_text("shop", "TIENDA (B cerrar):\n" + "\n".join(srows))
 	else:
 		_set_text("shop", "")
+	_refresh_modal()
 
 
 func _medal(pos: Vector2, radius: float, fill: Color, glyph: String, glyph_size: float, font: Font, outline := Color(0, 0, 0, 0), ring_width := 0.0) -> void:

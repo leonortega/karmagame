@@ -110,6 +110,39 @@ static func appraise_emocion(snapshot: Dictionary, kind: String) -> String:
 	return ""
 
 
+static func stage_of(o: Variant) -> String:
+	if o == null:
+		return ""
+	return KarmaData.age_stage(str((o as Dictionary).get("speciesKey", "raton")), float((o as Dictionary).get("edad", 0.0)))
+
+
+static func nearest_hunter_stage(state: Dictionary, a: Dictionary) -> String:
+	return stage_of(KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), KarmaState.hunter_agents(state), KarmaAI.fear_range_for(a)))
+
+
+static func nearest_prey_stage(state: Dictionary, a: Dictionary, rnge: float) -> String:
+	return stage_of(KarmaAI.nearest_ai_prey(state, a, rnge))
+
+
+static func age_fields(state: Dictionary, a: Dictionary) -> Dictionary:
+	var sk := str(a.get("speciesKey", "raton"))
+	var secs := float(a.get("edad", 0.0))
+	var rnge := float(KarmaAI.ai_pred_row(a).get("perception", 200.0))
+	return {
+		"stage": KarmaData.age_stage(sk, secs),
+		"force": KarmaData.force_mult_for(sk, secs),
+		"frailty": KarmaData.frailty_mult_for(sk, secs),
+		"threat_stage": nearest_hunter_stage(state, a),
+		"prey_stage": nearest_prey_stage(state, a, rnge),
+	}
+
+
+static func age_text(snap: Dictionary) -> String:
+	return " stage=%s force=%.2f frailty=%.2f threat_stage=%s prey_stage=%s" % [
+		str(snap.get("stage", "")), float(snap.get("force", 1.0)), float(snap.get("frailty", 1.0)),
+		str(snap.get("threat_stage", "")), str(snap.get("prey_stage", ""))]
+
+
 static func intent_tick(a: Dictionary, dt: float) -> void:
 	if not a.has("jev_intent"):
 		return

@@ -5,7 +5,7 @@
 Define the core creature attributes (Vida, Karma, PA) and their tuning so every life, decision, and reward behaves consistently and is testable without any engine.
 ## Requirements
 ### Requirement: Vida drains with hunger and triggers judgment at zero
-The system SHALL decrease hambre and sed continuously over time at species-paced rates derived from life expectancy, SHALL regenerate Vida over time only when hambre is above `H_thresh` AND sed is above `S_thresh`, SHALL otherwise drain Vida with a deficit multiplier that grows as stocks empty, and SHALL trigger the Judgment sequence when Vida reaches 0. The hambre drain rate SHALL equal the global base rate multiplied by the possessed species' hunger multiplier and the sed drain rate SHALL be a documented multiple of it: short-lived forms drain faster, long-lived forms drain slower. Default multipliers SHALL keep the Ratón near the historic baseline pace. Edad SHALL increase with time with no effect on this requirement.
+The system SHALL decrease hambre and sed continuously over time at species-paced rates derived from life expectancy, SHALL regenerate Vida over time only when hambre is above `H_thresh` AND sed is above `S_thresh` (regen scaled down by age per `animal-senescence`), SHALL otherwise drain Vida with a deficit multiplier that grows as stocks empty, SHALL scale all damage by attacker force and victim frailty with age, SHALL kill by age at the species lifespan with a "vejez" judgment reason, and SHALL trigger the Judgment sequence when Vida reaches 0. The hambre drain rate SHALL equal the global base rate multiplied by the possessed species' hunger multiplier and the sed drain rate SHALL be a documented multiple of it: short-lived forms drain faster, long-lived forms drain slower. Default multipliers SHALL keep the Ratón near the historic baseline pace. Edad SHALL increase with time with full effect on this requirement.
 
 #### Scenario: Hunger depletes vida
 - **WHEN** the player survives 10 seconds with hambre or sed below threshold at its species drain rates
@@ -25,7 +25,11 @@ The system SHALL decrease hambre and sed continuously over time at species-paced
 
 #### Scenario: Fed and watered regenerates instead of draining
 - **WHEN** the player keeps hambre and sed both above threshold for 10 seconds with no damage taken
-- **THEN** Vida is higher than at start by regen-rate × time, capped at max
+- **THEN** Vida is higher than at start by age-scaled regen-rate × time, capped at max (frail regenerates less than prime)
+
+#### Scenario: Old age kills the sheltered
+- **WHEN** a prime animal and a frail animal of the same species sit fed and watered past the frail one's lifespan
+- **THEN** the frail one dies of age while the prime one lives
 
 ### Requirement: Karma stays within -100 to +100
 The system SHALL clamp Karma Ecológico to the range -100…+100 on every change.
@@ -134,11 +138,15 @@ The system SHALL provide the Halcón as the fastest form with the largest vision
 - **THEN** no Karma/PA is granted and an informational message is shown
 
 ### Requirement: Zorro form (Tier 2)
-The system SHALL provide the Zorro as a fast hunter, size 3, whose Pounce dash-kills prey with 6s cooldown and that cannot shout.
+The system SHALL provide the Zorro as a fast hunter, size 3, whose Pounce deals documented base damage scaled by attacker force and victim frailty with 6s cooldown (kill plus carrion only when damage meets or exceeds victim vida, otherwise partial damage plus a decision-gated escape window) and that cannot shout.
 
 #### Scenario: Zorro pounce kills prey
-- **WHEN** a Zorro uses the eat action adjacent to a congener with Pounce ready
+- **WHEN** a prime Zorro uses the eat action adjacent to a congener with Pounce ready and scaled damage meets or exceeds its vida
 - **THEN** the congener dies, a fresh carrion spawns at its position, and the Zorro gains Vida per the wasteful-kill rule
+
+#### Scenario: Old Zorro fails on prime prey
+- **WHEN** a frail Zorro pounces a prime congener at high vida and scaled damage falls short
+- **THEN** the victim takes partial damage, no carrion spawns, the Zorro burns cooldown with no feast heal, and the victim may flee or hide
 
 #### Scenario: Zorro cannot shout
 - **WHEN** the player is a Zorro and attempts to shout
@@ -230,7 +238,7 @@ The system SHALL grant karma for one characteristic virtue per form: Oruga prude
 - **THEN** Karma rises by 20
 
 ### Requirement: New verbs
-The system SHALL provide: Ratón Squeeze (counts as size 1 for refuge fit, passive), Ardilla Carry (C near a nut picks it up, C again drops; only one carried; E while carrying still eats only non-nut food), species-sense on V (Topo Tremor: 3s reveal of food and predators, 25s cooldown; Zorro Track: outline to nearest carrion for 5s, 30s cooldown), Sapo Camouflage (motionless 2s outside refuges drops Zorro pursuit only, breaks on move), Oruga Curl (motionless takes half damage, 20s cooldown), Halcón Dive (E on a mate within 60px kills it, spawns carrion, wasteful rule applies).
+The system SHALL provide: Ratón Squeeze (counts as size 1 for refuge fit, passive), Ardilla Carry (C near a nut picks it up, C again drops; only one carried; E while carrying still eats only non-nut food), species-sense on V (Topo Tremor: 3s reveal of food and predators, 25s cooldown; Zorro Track: outline to nearest carrion for 5s, 30s cooldown), Sapo Camouflage (motionless 2s outside refuges drops Zorro pursuit only, breaks on move), Oruga Curl (motionless takes half of the age-scaled damage, 20s cooldown), Halcón Dive (E on a mate within 60px deals documented base damage scaled by age; kill plus carrion only when damage meets or exceeds victim vida, wasteful rule applies).
 
 #### Scenario: Squeeze fits anywhere small
 - **WHEN** a Ratón presses H near a burrow-S
@@ -242,14 +250,18 @@ The system SHALL provide: Ratón Squeeze (counts as size 1 for refuge fit, passi
 
 #### Scenario: Curl halves damage
 - **WHEN** a motionless Oruga with Curl ready takes a bite
-- **THEN** the damage is halved and the 20s cooldown starts
+- **THEN** the age-scaled damage is halved and the 20s cooldown starts
 
 ### Requirement: Lobo form (Tier 2 apex)
-The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the Halcón but tougher, whose diet is carrion and mates, that cannot shout, hunts tier 2 agents and zorro agents, and fears nothing.
+The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the Halcón but tougher, whose diet is carrion and mates, that cannot shout, hunts tier 2 agents and zorro agents with age-scaled damage (kill plus carrion only when damage meets or exceeds victim vida), and fears nothing.
 
 #### Scenario: Lobo hunts the big
-- **WHEN** a player-controlled Lobo uses the eat action adjacent to a tier 2 agent or zorro agent with its kill verb ready
+- **WHEN** a player-controlled prime Lobo uses the eat action adjacent to a tier 2 agent or zorro agent with its kill verb ready and scaled damage is lethal
 - **THEN** the victim dies, a fresh carrion spawns at its position, and the wasteful-kill rule applies
+
+#### Scenario: Old Lobo wounds instead of killing
+- **WHEN** a frail Lobo strikes a prime tier 2 agent and scaled damage falls short of its vida
+- **THEN** the victim survives wounded and may escape per its decision layer
 
 #### Scenario: Lobo cannot shout
 - **WHEN** the player is a Lobo and attempts the altruistic shout
@@ -260,7 +272,7 @@ The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the
 - **THEN** no AI agent targets the Lobo as prey; zorro agents flee from it
 
 ### Requirement: NPC agents share the hunger-eat-die loop
-The system SHALL run hunger drain, diet-gated eating with identical payoffs, and death for AI agents: every agent loses Vida continuously at its own species-paced drain rate (same multiplier as the player of that species), eats only its DIET table entries with the same Vida gains, and dies at 0 Vida leaving a fresh carrion for carnivore diets. AI kills obey the same contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
+The system SHALL run hunger drain, diet-gated eating with identical payoffs, age-scaled speed/regen/damage/frailty, and death for AI agents: every agent loses Vida continuously at its own species-paced drain rate (same multiplier as the player of that species), eats only its DIET table entries with the same Vida gains, and dies at 0 Vida or at lifespan leaving a fresh carrion for carnivore diets. AI kills obey the same age-scaled contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
 
 #### Scenario: NPC grazer eats and survives
 - **WHEN** an AI raton reaches a berry patch with fruit remaining
@@ -272,7 +284,7 @@ The system SHALL run hunger drain, diet-gated eating with identical payoffs, and
 
 #### Scenario: NPC carnivore hunts fauna
 - **WHEN** an AI carnivore perceives a smaller or equal-size agent (any brain)
-- **THEN** it pursues and strikes on contact, killing the victim and spawning carrion; it never targets itself
+- **THEN** it pursues and strikes with age-scaled damage, killing only when lethal and otherwise wounding into a chase; it never targets itself
 
 #### Scenario: NPC grazer earns karma for prudent eating
 - **WHEN** an AI Oruga agent eats a sustainable leaf (not the last)

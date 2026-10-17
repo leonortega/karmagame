@@ -121,8 +121,12 @@ static func update_needs(t: Dictionary, max_hp: float, dt: float) -> void:
 	t["hambre"] = clampf(float(t.get("hambre", 100.0)) - KarmaData.hunger_rate_for(str(t.get("speciesKey", "raton"))) * dt, 0.0, 100.0)
 	t["sed"] = clampf(float(t.get("sed", 100.0)) - KarmaData.thirst_rate_for(str(t.get("speciesKey", "raton"))) * dt, 0.0, 100.0)
 	t["edad"] = float(t.get("edad", 0.0)) + dt
+	if KarmaData.is_natural_death(str(t.get("speciesKey", "raton")), float(t["edad"])):
+		t["hp"] = 0.0
+		return
 	if float(t["hambre"]) > float(KarmaData.TUNING["regenHambre"]) and float(t["sed"]) > float(KarmaData.TUNING["regenSed"]):
-		t["hp"] = minf(max_hp, float(t.get("hp", max_hp)) + float(KarmaData.TUNING["vidaRegenPerSec"]) * dt)
+		var regen := float(KarmaData.TUNING["vidaRegenPerSec"]) * KarmaData.regen_mult_for(str(t.get("speciesKey", "raton")), float(t.get("edad", 0.0)))
+		t["hp"] = minf(max_hp, float(t.get("hp", max_hp)) + regen * dt)
 		return
 	var deficit: float = minf((100.0 - float(t["hambre"])) / 100.0 + (100.0 - float(t["sed"])) / 100.0, float(KarmaData.TUNING["deficitMax"]))
 	t["hp"] = float(t.get("hp", max_hp)) - KarmaData.hunger_rate_for(str(t.get("speciesKey", "raton"))) * (1.0 + deficit) * eff_age_mult() * dt

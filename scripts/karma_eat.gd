@@ -250,13 +250,17 @@ static func nearest_spare_flora_for(state: Dictionary, a: Dictionary, max_d: flo
 
 
 static func pounce_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> bool:
-	add_carrion(state, float(m["x"]), float(m["y"]))
+	var attacker: Dictionary = for_agent if for_agent != null else state
+	var base := KarmaState.eff_max_hp_for(m)
+	var lethal := resolve_strike(state, attacker, m, base)
 	if for_agent != null:
 		(for_agent as Dictionary)["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
-		heal_eater(state, for_agent, float(KarmaData.TUNING["pounceHp"]))
+		if lethal:
+			heal_eater(state, for_agent, float(KarmaData.TUNING["pounceHp"]))
 		return true
 	state["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
-	KarmaState.remove_agent(state, m)
+	if not lethal:
+		return true
 	KarmaState.add_pa(state, null, float(KarmaData.TUNING["pouncePa"]))
 	if float(state["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp(state):
 		KarmaState.add_karma(state, null, float(KarmaData.TUNING["wastefulKarma"]), "Mataste por deporte: %d karma" % int(KarmaData.TUNING["wastefulKarma"]))
@@ -267,17 +271,23 @@ static func pounce_kill(state: Dictionary, m: Dictionary, for_agent: Variant) ->
 
 
 static func dive_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> bool:
-	add_carrion(state, float(m["x"]), float(m["y"]))
+	var attacker: Dictionary = for_agent if for_agent != null else state
 	if for_agent != null:
 		(for_agent as Dictionary)["x"] = float(m["x"])
 		(for_agent as Dictionary)["y"] = float(m["y"])
-		heal_eater(state, for_agent, float(KarmaData.TUNING["pounceHp"]))
+	else:
+		state["px"] = float(m["x"])
+		state["py"] = float(m["y"])
+		state["grounded"] = true
+	var base := KarmaState.eff_max_hp_for(m)
+	var lethal := resolve_strike(state, attacker, m, base)
+	if for_agent != null:
+		if lethal:
+			heal_eater(state, for_agent, float(KarmaData.TUNING["pounceHp"]))
 		return true
-	state["px"] = float(m["x"])
-	state["py"] = float(m["y"])
-	KarmaState.remove_agent(state, m)
+	if not lethal:
+		return true
 	KarmaState.add_pa(state, null, float(KarmaData.TUNING["divePa"]))
-	state["grounded"] = true
 	if float(state["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp(state):
 		KarmaState.add_karma(state, null, float(KarmaData.TUNING["wastefulKarma"]), "Cazaste por deporte desde el cielo (%d karma)" % int(KarmaData.TUNING["wastefulKarma"]))
 	else:
@@ -286,12 +296,22 @@ static func dive_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> b
 	return true
 
 
+static func resolve_strike(state: Dictionary, attacker: Dictionary, victim: Dictionary, base: float) -> bool:
+	var dmg := KarmaData.scaled_damage(base, attacker, victim)
+	if dmg >= float(victim.get("hp", 0.0)):
+		KarmaState.remove_agent(state, victim)
+		add_carrion(state, float(victim["x"]), float(victim["y"]))
+		return true
+	victim["hp"] = float(victim.get("hp", 0.0)) - dmg
+	return false
+
+
 static func dig_burrow(state: Dictionary, for_agent: Variant) -> bool:
 	var t: Dictionary = for_agent if for_agent != null else state
 	var dig_plus := 1 if KarmaShop.has_adapt(t, "digPlus") else 0
 	if float(t.get("digCd", 0.0)) > 0.0 or int(t.get("dug", 0)) >= int(KarmaData.TUNING["digMax"]) + dig_plus:
 		return false
-	t["digCd"] = float(KarmaData.TUNING["digCd"])
+	t["digCd"] = KarmaData.aged_time(t, float(KarmaData.TUNING["digCd"]))
 	t["dug"] = int(t.get("dug", 0)) + 1
 	var px := float((for_agent as Dictionary)["x"]) if for_agent != null else float(state["px"])
 	var py := float((for_agent as Dictionary)["y"]) if for_agent != null else float(state["py"])
@@ -496,7 +516,7 @@ static func sense_pulse(state: Dictionary) -> bool:
 	if bool(state.get("dead", false)) or bool(state.get("hidden", false)) or float(state.get("senseCd", 0.0)) > 0.0:
 		return false
 	if str(state["speciesKey"]) == "topo":
-		state["senseCd"] = float(KarmaData.TUNING["senseTremorCd"])
+		state["senseCd"] = KarmaData.aged_time(state, float(KarmaData.TUNING["senseTremorCd"]))
 		state["revealT"] = float(KarmaData.TUNING["revealTime"])
 		KarmaState.add_log(state, null, "Temblor: sientes comida y peligro (3s)")
 		return true
@@ -504,7 +524,7 @@ static func sense_pulse(state: Dictionary) -> bool:
 		if (state.get("carrions", []) as Array).is_empty():
 			KarmaState.add_log(state, null, "Sin rastro de carroña")
 			return false
-		state["senseCd"] = float(KarmaData.TUNING["senseTrackCd"])
+		state["senseCd"] = KarmaData.aged_time(state, float(KarmaData.TUNING["senseTrackCd"]))
 		state["trackT"] = float(KarmaData.TUNING["trackTime"])
 		KarmaState.add_log(state, null, "Rastro: hueles carroña (5s)")
 		return true

@@ -51,11 +51,11 @@ static func ai_hunt_eat(state: Dictionary, a: Dictionary, prey: Dictionary, dt: 
 		if str(a.get("speciesKey", "")) == "halcon":
 			a["x"] = float(prey["x"])
 			a["y"] = float(prey["y"])
-		KarmaState.remove_agent(state, prey)
-		KarmaEat.add_carrion(state, float(prey["x"]), float(prey["y"]))
-		KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
-		if str(a.get("speciesKey", "")) == "zorro":
+		var lethal := KarmaEat.resolve_strike(state, a, prey, KarmaState.eff_max_hp_for(prey))
+		if lethal and str(a.get("speciesKey", "")) == "zorro":
 			a["satedT"] = float(KarmaData.TUNING["satedTime"])
+		if lethal:
+			KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
 		return true
 	var mult: float = float(KarmaData.TUNING["loboChaseMult"]) if str(a.get("speciesKey", "")) == "lobo" else float(KarmaData.TUNING["chaseMult"])
 	KarmaGame.move_toward(state, a, float(prey["x"]), float(prey["y"]), mult, dt)
@@ -88,8 +88,9 @@ static func ai_flee(state: Dictionary, a: Dictionary, dt: float) -> bool:
 		var cd := Vector2(float((cover as Dictionary)["x"]), float((cover as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
 		if cd == 0.0:
 			cd = 1.0
-		dx = dx * 0.6 + (float((cover as Dictionary)["x"]) - float(a["x"])) / cd * 0.4
-		dy = dy * 0.6 + (float((cover as Dictionary)["y"]) - float(a["y"])) / cd * 0.4
+		var cover_w := float(KarmaData.TUNING["frailCoverBias"]) if is_senesced(a) else 0.4
+		dx = dx * (1.0 - cover_w) + (float((cover as Dictionary)["x"]) - float(a["x"])) / cd * cover_w
+		dy = dy * (1.0 - cover_w) + (float((cover as Dictionary)["y"]) - float(a["y"])) / cd * cover_w
 	var dl := Vector2(dx, dy).length()
 	if dl == 0.0:
 		dl = 1.0
@@ -177,6 +178,22 @@ static func ai_buy_adaptation(state: Dictionary, a: Dictionary) -> bool:
 
 static func ai_max_hp(a: Dictionary) -> float:
 	return float(KarmaData.SPECIES[str(a["speciesKey"])]["maxHp"]) + (25.0 if KarmaShop.has_adapt(a, "stomach") else 0.0)
+
+
+static func is_senesced(a: Dictionary) -> bool:
+	return KarmaData.age_stage(str(a.get("speciesKey", "raton")), float(a.get("edad", 0.0))) != "prime"
+
+
+static func prefer_carrion(a: Dictionary) -> bool:
+	var max_hp := ai_max_hp(a)
+	if float(a.get("hp", max_hp)) < float(KarmaData.TUNING["scavengeHpFrac"]) * max_hp:
+		return true
+	return is_senesced(a)
+
+
+static func fear_range_for(a: Dictionary) -> float:
+	var base := float(KarmaData.TUNING["aiFearRange"])
+	return base * (float(KarmaData.TUNING["frailFearMult"]) if is_senesced(a) else 1.0)
 
 
 static func food_threshold(a: Dictionary) -> float:
@@ -280,9 +297,9 @@ static func ai_maybe_verb(state: Dictionary, a: Dictionary, dt: float) -> bool:
 				a["groomT"] = 0.0
 			else:
 				a["groomT"] = float(a.get("groomT", 0.0)) + dt
-				if float(a["groomT"]) >= float(KarmaData.TUNING["groomTime"]):
+				if float(a["groomT"]) >= KarmaData.aged_time(a, float(KarmaData.TUNING["groomTime"])):
 					a["groomT"] = 0.0
-					a["groomCd"] = float(KarmaData.TUNING["groomCd"])
+					a["groomCd"] = KarmaData.aged_time(a, float(KarmaData.TUNING["groomCd"]))
 					KarmaState.add_karma(state, a, float(KarmaData.TUNING["groomKarma"]), "Acicala a un congénere (+karma)")
 					return true
 			return KarmaGame.cast_verb_for(state, a, 5)
@@ -367,7 +384,7 @@ static func refuge_fits_size(sp: Dictionary, r: Dictionary, key: String) -> bool
 
 static func is_hunted(state: Dictionary, a: Dictionary) -> bool:
 	return KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" and KarmaPredators.edible_for(str(o.get("type", "")), str(a.get("speciesKey", "")), 1e9)), float(KarmaData.TUNING["aiFearRange"])) != null
+		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" and KarmaPredators.edible_for(str(o.get("type", "")), str(a.get("speciesKey", "")), 1e9)), fear_range_for(a)) != null
 
 
 static func ai_hide_tick(state: Dictionary, a: Dictionary, dt: float) -> bool:

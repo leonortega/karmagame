@@ -3,6 +3,8 @@ extends RefCounted
 
 # Port of src/script/hud.js data builders (DOM writes live in main.gd).
 
+const STAGE_LABEL := {"prime": "joven", "worn": "maduro", "frail": "frágil"}
+
 
 static func other_panel_lines(state: Dictionary) -> Array:
 	var lines: Array = []
@@ -52,8 +54,39 @@ static func verb_rows(state: Dictionary) -> Array:
 	return out
 
 
+static func shop_modal_rows(state: Dictionary) -> Array:
+	var out: Array = []
+	for it in KarmaShop.catalog_for(str(state.get("speciesKey", "raton"))):
+		var owned := KarmaShop.has_adapt(state, str(it["effect"]))
+		var afford := float(state.get("pa", 0.0)) >= float(it["cost"])
+		var mark := "✔ " if owned else ("✓ " if afford else "🔒 ")
+		out.append("%s[%s] %s (%d PA) — %s" % [mark, str(it["key"]), str(it["name"]), int(it["cost"]), str(it["desc"])])
+	return out
+
+
+static func birth_blocks(pool: Array, highlight_key: String) -> Array:
+	var out: Array = []
+	for k in pool:
+		var kk := str(k)
+		var mark := "▶ " if kk == highlight_key else "· "
+		out.append("%s%s %s" % [mark, KarmaDraw.species_icon(kk), str(KarmaData.SPECIES.get(kk, {"name": kk})["name"])])
+	return out
+
+
+static func judgment_summary(state: Dictionary) -> String:
+	var feed: Array = state.get("lifeLog", [])
+	var tail: Array = feed.slice(maxi(0, feed.size() - 4))
+	var lines: Array = []
+	lines.append("Karma %d · %ss · %s" % [int(state.get("karma", 0.0)), KarmaUtils.fmt_time(float(state.get("time", 0.0))), str(state.get("judgeReason", ""))])
+	lines.append("Ultimos: %s" % (" | ".join(tail) if not tail.is_empty() else "—"))
+	return "\n".join(lines)
+
+
 static func edad_line(state: Dictionary) -> String:
-	return "Edad %ds (~%.1f años)" % [int(state.get("edad", 0.0)), KarmaData.animal_years(str(state["speciesKey"]), float(state.get("edad", 0.0)))]
+	var secs := float(state.get("edad", 0.0))
+	var sk := str(state["speciesKey"])
+	var line := "Edad %ds (~%.1f años)" % [int(secs), KarmaData.animal_years(sk, secs)]
+	return line + " · %s" % str(STAGE_LABEL.get(KarmaData.age_stage(sk, secs), "joven"))
 
 
 static func bar(frac: float, width := 10) -> String:

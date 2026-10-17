@@ -32,8 +32,9 @@ static func blank_state(species_key: String, karma: float, pa: float) -> Diction
 		"cam": {"x": 0.0, "y": 0.0},
 		"agents": [], "possessed": 0,
 		"lifeLog": [], "feed": [], "otherFeed": [],
-		"owned": {}, "shopOpen": false,
-		"pendingNext": null, "pendingPool": null,
+		"owned": {}, "shopOpen": false, "paused": false,
+		"introDone": true, "introNext": null,
+		"pendingNext": null, "pendingPool": null, "judgeReason": "",
 		"mateT": 0.0, "insectT": 0.0, "respawnT": 0.0,
 		"hambreWarned": false, "sedWarned": false,
 		"escortT": 0.0, "escortTarget": null,
@@ -273,6 +274,11 @@ static func distant_pt(state: Dictionary, rng: RandomNumberGenerator) -> Diction
 
 
 static func respawn_missing(state: Dictionary, rng: RandomNumberGenerator) -> void:
+	# Tier-0 worlds keep one scripted pressure hunter (saponpc). Rebuild it before
+	# the census top-up so it fills the reserved sapo slot instead of a grazer.
+	if int(state["sp"]["tier"]) == 0 and hunter_agents(state).is_empty():
+		var ph := distant_pt(state, rng)
+		(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, "saponpc", float(ph["x"]), float(ph["y"]), 0)))
 	var targets := {}
 	if state.has("census"):
 		targets = ((state["census"] as Dictionary)["counts"] as Dictionary).duplicate()
@@ -289,7 +295,8 @@ static func respawn_missing(state: Dictionary, rng: RandomNumberGenerator) -> vo
 
 
 static func eff_speed(state: Dictionary) -> float:
-	return float(state["sp"]["speed"]) * (1.15 if KarmaShop.has_adapt(state, "swift") else 1.0)
+	var swift := 1.15 if KarmaShop.has_adapt(state, "swift") else 1.0
+	return float(state["sp"]["speed"]) * swift * KarmaData.speed_mult_for(str(state.get("speciesKey", "raton")), float(state.get("edad", 0.0)))
 
 
 static func eff_vision(state: Dictionary) -> float:

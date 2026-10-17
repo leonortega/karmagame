@@ -8,8 +8,6 @@
 
 config_version=5
 
-category_patch/migrate_value/new_name=null
-
 [animation]
 
 compatibility/default_parent_skeleton_in_mesh_instance_3d=true

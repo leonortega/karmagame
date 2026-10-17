@@ -112,7 +112,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"])) != null,
 		"insect_near": KarmaUtils.nearest_from(ax, ay, state.get("insects", []), _tongue_reach(a)) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
-	}
+	}.merged(KarmaJev.age_fields(state, a))
 
 
 static func state_text(state: Dictionary, a: Dictionary) -> String:
@@ -120,7 +120,7 @@ static func state_text(state: Dictionary, a: Dictionary) -> String:
 	return "Sapo hp_frac=%.2f hambre=%d sed=%d karma=%d pa=%d hungry=%s threatened=%s pressure=%s insects=%s water=%s" % [
 		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
 		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
-		str(snap["threatened"]), str(snap["pressure_near"]), str(snap["insect_near"]), str(snap["water_near"])]
+		str(snap["threatened"]), str(snap["pressure_near"]), str(snap["insect_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
 
 
 static func mock_choice(menu: Array) -> int:

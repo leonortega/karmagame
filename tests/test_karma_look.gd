@@ -40,6 +40,28 @@ func test_vital_fracs_derive_from_state() -> void:
 	assert_bool(abs(KarmaHud.thirst_frac(s) - 0.75) < 0.001).is_true()
 
 
+func test_edad_line_reads_seconds_and_animal_years() -> void:
+	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
+	prime["edad"] = 40.0
+	var line := KarmaHud.edad_line(prime)
+	assert_bool(line.contains("40s")).is_true()
+	assert_bool(line.contains("2.0")).is_true()
+
+
+func test_edad_line_shows_spanish_stage() -> void:
+	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
+	prime["edad"] = 40.0
+	assert_bool(KarmaHud.edad_line(prime).contains("joven")).is_true()
+	var worn := KarmaState.blank_state("raton", 0.0, 0.0)
+	worn["edad"] = 100.0
+	assert_bool(KarmaHud.edad_line(worn).contains("maduro")).is_true()
+	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
+	frail["edad"] = 200.0
+	var line := KarmaHud.edad_line(frail)
+	assert_bool(line.contains("frágil")).is_true()
+	assert_bool(line.contains("prime") or line.contains("worn") or line.contains("frail")).is_false()
+
+
 func test_refuge_medal_differs_by_type() -> void:
 	assert_bool(KarmaDraw.refuge_medal("burrow-S").to_html() != KarmaDraw.refuge_medal("old-oak").to_html()).is_true()
 

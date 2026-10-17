@@ -65,10 +65,11 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var max_hp := _max_hp(a)
 	var defs: Array = KarmaData.VERB_DEFS["zorro"]
 	var dendig_cost := float(defs[3]["costHp"])
+	var scavenge := KarmaAI.prefer_carrion(a) and KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), perception) != null
 	var mate: Variant = KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), pounce_range)
-	if float(a.get("pounceCd", 0.0)) <= 0.0 and mate != null:
+	if not scavenge and float(a.get("pounceCd", 0.0)) <= 0.0 and mate != null:
 		menu.append({"kind": "pounce", "label": "Pounce raton", "x": float((mate as Dictionary)["x"]), "y": float((mate as Dictionary)["y"]), "target": mate})
-	if KarmaAI.nearest_ai_prey(state, a, perception) != null:
+	if not scavenge and KarmaAI.nearest_ai_prey(state, a, perception) != null:
 		var prey: Variant = KarmaAI.nearest_ai_prey(state, a, perception)
 		menu.append({"kind": "hunt", "label": "Hunt prey", "x": float((prey as Dictionary)["x"]), "y": float((prey as Dictionary)["y"]), "target": prey})
 	var meal: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), eat_range)
@@ -81,7 +82,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 			if float(a.get("hambre", 100.0)) >= float(KarmaData.TUNING["cacheFullHambre"]):
 				cache_label = "Cache carrion (you are full: store it for later)"
 			menu.append({"kind": "cache", "label": cache_label, "x": float((meal as Dictionary)["x"]), "y": float((meal as Dictionary)["y"]), "target": meal})
-	elif KarmaAI.is_hungry(a):
+	elif KarmaAI.is_hungry(a) or scavenge:
 		var far: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), perception)
 		if far != null:
 			menu.append({"kind": "seek_carrion", "label": "Seek carrion", "x": float((far as Dictionary)["x"]), "y": float((far as Dictionary)["y"]), "target": far})
@@ -132,7 +133,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"prey_visible": KarmaAI.nearest_ai_prey(state, a, perception) != null,
 		"carrion_near": KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), float(KarmaData.TUNING["eatRange"])) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
-	}
+	}.merged(KarmaJev.age_fields(state, a))
 
 
 static func build_batch(state: Dictionary) -> Array:
@@ -186,7 +187,7 @@ static func state_text(state: Dictionary, a: Dictionary) -> String:
 		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
 		str(snap["threatened"]), str(snap["sated"]),
 		float((snap["cds"] as Dictionary)["pounce"]), float((snap["cds"] as Dictionary)["strike"]),
-		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])]
+		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
 
 
 static func build_http_body(state: Dictionary) -> Dictionary:
@@ -242,7 +243,8 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			(pick.get("target") as Dictionary)["ceded"] = true
 			var ck: float = float(KarmaData.TUNING["cedeKarma"]) * (2.0 if KarmaShop.has_adapt(a, "cedePlus") else 1.0)
 			KarmaState.add_karma(state, a, ck, "Cede la presa a otros (+karma)" + _flavor(a))
-			(a["verbCds"] as Array)[2] = float((KarmaData.VERB_DEFS["zorro"] as Array)[2]["cd"])
+			if a.has("verbCds") and (a["verbCds"] as Array).size() > 2:
+				(a["verbCds"] as Array)[2] = float((KarmaData.VERB_DEFS["zorro"] as Array)[2]["cd"])
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
 		"cache":
@@ -251,7 +253,8 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 				return true
 			(state["carrions"] as Array).erase(pick.get("target"))
 			a["stash"] = 1
-			(a["verbCds"] as Array)[1] = float((KarmaData.VERB_DEFS["zorro"] as Array)[1]["cd"])
+			if a.has("verbCds") and (a["verbCds"] as Array).size() > 1:
+				(a["verbCds"] as Array)[1] = float((KarmaData.VERB_DEFS["zorro"] as Array)[1]["cd"])
 			KarmaState.add_log(state, a, "Entierras carroña para después" + _flavor(a))
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
@@ -259,7 +262,8 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(a["x"]), "y": float(a["y"]), "dug": true})
 			a["hp"] = float(a.get("hp", 0.0)) - float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["costHp"])
 			a["pa"] = float(a.get("pa", 0.0)) - float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["costPa"])
-			(a["verbCds"] as Array)[3] = float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["cd"])
+			if a.has("verbCds") and (a["verbCds"] as Array).size() > 3:
+				(a["verbCds"] as Array)[3] = float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["cd"])
 			KarmaState.add_log(state, a, "Excavas una guarida" + _flavor(a))
 			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true

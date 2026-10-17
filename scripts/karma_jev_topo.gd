@@ -128,7 +128,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
 		"dug_near": _dug_near(state, a) != null,
 		"larder": int(a.get("larder", 0)),
-	}
+	}.merged(KarmaJev.age_fields(state, a))
 
 
 static func state_text(state: Dictionary, a: Dictionary) -> String:
@@ -137,7 +137,7 @@ static func state_text(state: Dictionary, a: Dictionary) -> String:
 		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
 		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
 		str(snap["threatened"]), str(snap["pressure_near"]), str(snap["food_near"]), str(snap["water_near"]),
-		str(snap["dug_near"]), int(snap["larder"])]
+		str(snap["dug_near"]), int(snap["larder"])] + KarmaJev.age_text(snap)
 
 
 static func mock_choice(menu: Array) -> int:

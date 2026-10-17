@@ -112,7 +112,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"carriedNut": bool(a.get("carriedNut", false)),
 		"food_near": KarmaEat.nearest_edible_patch_for(state, a, eat_range) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
-	}
+	}.merged(KarmaJev.age_fields(state, a))
 
 
 static func mock_choice(menu: Array) -> int:
@@ -202,7 +202,7 @@ static func state_text(state: Dictionary, a: Dictionary) -> String:
 	return "Ardilla hp_frac=%.2f hambre=%d sed=%d karma=%d pa=%d hungry=%s threatened=%s carried=%s food=%s water=%s" % [
 		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
 		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
-		str(snap["threatened"]), str(snap["carriedNut"]), str(snap["food_near"]), str(snap["water_near"])]
+		str(snap["threatened"]), str(snap["carriedNut"]), str(snap["food_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
 
 
 static func build_batch(state: Dictionary) -> Array:

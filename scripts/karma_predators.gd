@@ -16,6 +16,11 @@ static func mk_predator(state: Dictionary, type: String, x: float, y: float, pla
 		"caution_food": randf(), "caution_water": randf()}
 
 
+static func eff_speed(p: Dictionary) -> float:
+	# Old legs slower, same gait mode: hunter displacement scales with age.
+	return float(p.get("speed", 100.0)) * KarmaData.speed_mult_for(str(p.get("speciesKey", "raton")), float(p.get("edad", 0.0)))
+
+
 static func edible_for(hunter_type: String, victim_key: String, dist: float) -> bool:
 	if hunter_type == "saponpc":
 		return victim_key == "oruga"
@@ -61,7 +66,7 @@ static func curled_agent(agent: Dictionary) -> bool:
 static func update_predators(state: Dictionary, dt: float, rng: RandomNumberGenerator, solids: Array = []) -> void:
 	var dead: Array = []
 	var list: Array = solids if not solids.is_empty() else KarmaUtils.collect_solids(state)
-	for p in KarmaState.all_hunters(state):
+	for p in KarmaState.hunter_agents(state):
 		step_predator(state, p, dt, dead, rng, list)
 	for z in dead:
 		KarmaState.remove_agent(state, z)
@@ -69,9 +74,7 @@ static func update_predators(state: Dictionary, dt: float, rng: RandomNumberGene
 
 static func step_predator(state: Dictionary, p: Dictionary, dt: float, dead: Array, rng: RandomNumberGenerator, solids: Array = []) -> void:
 	var t: Dictionary = KarmaData.PRED.get(str(p.get("type", "")), KarmaData.PRED_FALLBACK)
-	p["hambre"] = clampf(float(p.get("hambre", 100.0)) - KarmaData.hunger_rate_for(str(p.get("speciesKey", "zorro"))) * dt, 0.0, 100.0)
-	p["sed"] = clampf(float(p.get("sed", 100.0)) - KarmaData.thirst_rate_for(str(p.get("speciesKey", "zorro"))) * dt, 0.0, 100.0)
-	p["edad"] = float(p.get("edad", 0.0)) + dt
+	KarmaUtils.update_needs(p, KarmaAI.ai_max_hp(p), dt)
 	if float(p.get("satedT", 0.0)) > 0.0:
 		p["satedT"] = float(p["satedT"]) - dt
 	if float(p.get("restT", 0.0)) > 0.0:
@@ -121,19 +124,19 @@ static func strike_agents(state: Dictionary, p: Dictionary, t: Dictionary, dt: f
 		d = 1.0
 	var kill_range := 60.0 if str(p.get("type", "")) == "halcon" else 20.0
 	if d <= kill_range:
+		p["restT"] = float(KarmaData.TUNING["restTime"])
 		if str(p.get("type", "")) == "halcon":
 			KarmaEat.dive_kill(state, v, p)
-			KarmaState.remove_agent(state, v)
 			return
-		KarmaState.remove_agent(state, v)
-		KarmaEat.add_carrion(state, float(v["x"]), float(v["y"]))
-		KarmaEat.heal_eater(state, p, float(KarmaData.TUNING["pounceHp"]))
-		if str(p.get("type", "")) == "zorro":
-			p["satedT"] = float(KarmaData.TUNING["satedTime"])
+		var lethal = KarmaEat.resolve_strike(state, p, v, KarmaState.eff_max_hp_for(v))
+		if lethal:
+			KarmaEat.heal_eater(state, p, float(KarmaData.TUNING["pounceHp"]))
+			if str(p.get("type", "")) == "zorro":
+				p["satedT"] = float(KarmaData.TUNING["satedTime"])
 		return
 	var mult: float = float(KarmaData.TUNING["loboChaseMult"]) if str(p.get("type", "")) == "lobo" else float(KarmaData.TUNING["chaseMult"])
-	p["x"] = float(p["x"]) + (float(v["x"]) - float(p["x"])) / d * float(p.get("speed", 100.0)) * mult * dt
-	p["y"] = float(p["y"]) + (float(v["y"]) - float(p["y"])) / d * float(p.get("speed", 100.0)) * mult * dt
+	p["x"] = float(p["x"]) + (float(v["x"]) - float(p["x"])) / d * eff_speed(p) * mult * dt
+	p["y"] = float(p["y"]) + (float(v["y"]) - float(p["y"])) / d * eff_speed(p) * mult * dt
 	p["mode"] = "hunt"
 
 
@@ -150,8 +153,8 @@ static func flee_check(state: Dictionary, p: Dictionary, t: Dictionary, dt: floa
 		var d := Vector2(float(p["x"]), float(p["y"])).distance_to(Vector2(float((fear as Dictionary)["x"]), float((fear as Dictionary)["y"])))
 		if d == 0.0:
 			d = 1.0
-		p["x"] = float(p["x"]) + (float(p["x"]) - float((fear as Dictionary)["x"])) / d * float(p.get("speed", 100.0)) * 1.3 * dt
-		p["y"] = float(p["y"]) + (float(p["y"]) - float((fear as Dictionary)["y"])) / d * float(p.get("speed", 100.0)) * 1.3 * dt
+		p["x"] = float(p["x"]) + (float(p["x"]) - float((fear as Dictionary)["x"])) / d * eff_speed(p) * 1.3 * dt
+		p["y"] = float(p["y"]) + (float(p["y"]) - float((fear as Dictionary)["y"])) / d * eff_speed(p) * 1.3 * dt
 		p["mode"] = "flee"
 		return true
 	return false
@@ -170,8 +173,8 @@ static func camp_step(state: Dictionary, p: Dictionary, dt: float) -> bool:
 			if dd == 0.0:
 				dd = 1.0
 			if dd > 30.0:
-				p["x"] = float(p["x"]) + dx / dd * float(p.get("speed", 100.0)) * dt
-				p["y"] = float(p["y"]) + dy / dd * float(p.get("speed", 100.0)) * dt
+				p["x"] = float(p["x"]) + dx / dd * eff_speed(p) * dt
+				p["y"] = float(p["y"]) + dy / dd * eff_speed(p) * dt
 		return true
 	if bool(state.get("hidden", false)) and bool(p.get("huntingPlayer", false)):
 		if not canopy_blind(state, p):
@@ -215,8 +218,8 @@ static func chase(p: Dictionary, t: Dictionary, hit: Dictionary, lure_on: bool, 
 	var dd := Vector2(float(hit["tx"]), float(hit["ty"])).distance_to(Vector2(float(p["x"]), float(p["y"])))
 	if dd == 0.0:
 		dd = 1.0
-	p["x"] = float(p["x"]) + (float(hit["tx"]) - float(p["x"])) / dd * float(p.get("speed", 100.0)) * mult * dt
-	p["y"] = float(p["y"]) + (float(hit["ty"]) - float(p["y"])) / dd * float(p.get("speed", 100.0)) * mult * dt
+	p["x"] = float(p["x"]) + (float(hit["tx"]) - float(p["x"])) / dd * eff_speed(p) * mult * dt
+	p["y"] = float(p["y"]) + (float(hit["ty"]) - float(p["y"])) / dd * eff_speed(p) * mult * dt
 	p["mode"] = "hunt"
 	p["huntT"] = float(p.get("huntT", 0.0)) + dt
 	if float(p["huntT"]) > float(KarmaData.TUNING["chaseMax"]) and not lure_on:
@@ -228,7 +231,7 @@ static func chase(p: Dictionary, t: Dictionary, hit: Dictionary, lure_on: bool, 
 static func strike_contact(state: Dictionary, p: Dictionary, t: Dictionary, dp: float) -> void:
 	if bool(state.get("hidden", false)) or dp >= float(state["sp"]["radius"]) + float(t["body"]) / 2.0 or float(state.get("invuln", 0.0)) > 0.0:
 		return
-	var dmg := float(t["damage"])
+	var dmg := KarmaData.scaled_damage(float(t["damage"]), p, state)
 	if bool(state.get("bristled", false)):
 		state["bristled"] = false
 		p["hp"] = float(p.get("hp", 60.0)) - dmg
@@ -247,14 +250,14 @@ static func feast(state: Dictionary, p: Dictionary, dead: Array) -> void:
 	if str(p.get("type", "")) == "zorro" and float(p.get("satedT", 0.0)) <= 0.0:
 		var m: Variant = KarmaUtils.nearest_from(float(p["x"]), float(p["y"]), stalk_victims(state, p), 16.0)
 		if m != null:
-			KarmaState.remove_agent(state, m)
-			KarmaEat.add_carrion(state, float((m as Dictionary)["x"]), float((m as Dictionary)["y"]))
-			p["satedT"] = float(KarmaData.TUNING["satedTime"])
-			KarmaState.add_log(state, null, "Un zorro cazó un congénere (hay carroña fresca)")
+			var lethal := KarmaEat.resolve_strike(state, p, m, KarmaState.eff_max_hp_for(m))
+			if lethal:
+				p["satedT"] = float(KarmaData.TUNING["satedTime"])
+				KarmaState.add_log(state, null, "Un zorro cazo un congenere (hay carroña fresca)")
 	if str(p.get("type", "")) == "lobo":
 		var z: Variant = KarmaUtils.nearest_from(float(p["x"]), float(p["y"]),
 			(state["agents"] as Array).filter(func(o): return str(o.get("type", "")) == "zorro" and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 20.0)
 		if z != null:
-			dead.append(z)
-			KarmaEat.add_carrion(state, float((z as Dictionary)["x"]), float((z as Dictionary)["y"]))
-			KarmaState.add_log(state, null, "Un lobo mató un zorro (hay carroña fresca)")
+			var lethal := KarmaEat.resolve_strike(state, p, z, KarmaState.eff_max_hp_for(z))
+			if lethal:
+				KarmaState.add_log(state, null, "Un lobo mato un zorro (hay carroña fresca)")
