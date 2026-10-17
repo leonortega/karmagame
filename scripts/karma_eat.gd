@@ -43,13 +43,19 @@ static func nearest_water(state: Dictionary, max_d: float) -> Variant:
 static func drink_water(state: Dictionary, w: Variant, for_agent: Variant) -> bool:
 	if w == null:
 		return false
+	var body := w as Dictionary
+	if float(body.get("level", 1.0)) <= 0.0:
+		return false
+	var cost := KarmaData.water_sip_cost_for(diet_key(state, for_agent))
 	if for_agent != null:
 		var a := for_agent as Dictionary
 		a["sed"] = minf(100.0, float(a.get("sed", 100.0)) + float(KarmaData.TUNING["sipSed"]))
 		heal_eater(state, a, float(KarmaData.TUNING["sipHp"]))
+		body["level"] = maxf(0.0, float(body["level"]) - cost)
 		return true
 	state["sed"] = minf(100.0, float(state["sed"]) + float(KarmaData.TUNING["sipSed"]))
 	state["hp"] = minf(KarmaState.eff_max_hp(state), float(state["hp"]) + float(KarmaData.TUNING["sipHp"]))
+	body["level"] = maxf(0.0, float(body["level"]) - cost)
 	KarmaState.add_log(state, null, "Bebes agua (+sed, +vida)")
 	return true
 

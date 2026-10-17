@@ -221,20 +221,24 @@ The system SHALL draw every world entity as a cohesive emoji glyph over a solid 
 - **WHEN** a Lobo and an Oruga appear together
 - **THEN** the Lobo emoji renders larger than the Oruga emoji within the animal band
 
-### Requirement: Infinite water bodies dot the map
-The system SHALL seed infinite charcos (tiny, scattered) and lagos (large landscape anchors, few) as drinkable terrain with counts scaled by world area as densities, SHALL render each as a blue body scaled to its radius with its distinct water glyph and label kept on top, and SHALL persist them across reincarnation like refuges and rocks. Only water SHALL exist inside: all other scatters SHALL avoid water interiors.
+### Requirement: Water bodies render at their current level
+The system SHALL render each charco and lago as a blue body scaled to its current water level, keeping its distinct water glyph and label on top, so a drained lago reads as a smaller lake and a drained charco as a shrinking puddle. A body at zero level SHALL read as an empty basin (no water color) while still showing its placement. The system SHALL also render the active rain state on the canvas while a rain event is falling.
 
-#### Scenario: Water is reachable by density
+#### Scenario: A depleted body reads smaller
+- **WHEN** a lago or charco has drained below full
+- **THEN** its rendered water body is visibly smaller than at full level
+
+#### Scenario: A dry body reads as an empty basin
+- **WHEN** a body's level reaches zero
+- **THEN** it renders as an empty basin with no water fill, still showing its glyph and label
+
+#### Scenario: Rain is visible on the map
+- **WHEN** a rain event is active
+- **THEN** the canvas shows a rain state over the world
+
+#### Scenario: Water is still reachable by density
 - **WHEN** the possessed agent crosses the enlarged world at its species speed
-- **THEN** a drinkable charco or lago lies within a bounded travel time comparable to food proportions, because counts scale with area
-
-#### Scenario: Lago reads as a lake, charco as a puddle
-- **WHEN** a lago and a charco appear on screen together
-- **THEN** the lago renders as a visibly larger blue body than the charco, each keeping its water glyph and label
-
-#### Scenario: Nothing else spawns inside
-- **WHEN** the world seeds food, refuges, rocks, or agents
-- **THEN** every placed entity lands outside all water radii
+- **THEN** drinkable charcos or lagos lie within a bounded travel time comparable to food proportions, because counts scale with area
 
 ### Requirement: Insects cluster at lagos
 The system SHALL bias insect respawns to a shore ring around lagos (never inside the water) while keeping the existing respawn cadence (1 per 20s, max 6) and wander behavior, so lake shores visibly hold more insects for Sapo/Topo hunters.

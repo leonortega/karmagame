@@ -62,6 +62,17 @@ func test_edad_line_shows_spanish_stage() -> void:
 	assert_bool(line.contains("prime") or line.contains("worn") or line.contains("frail")).is_false()
 
 
+func test_water_disc_scales_fill_with_level() -> void:
+	var full := KarmaDraw.water_disc({"kind": "lago", "r": 95.0, "level": 100.0, "cap": 100.0})
+	assert_float(float(full["fill"])).is_equal(95.0)
+	assert_bool(bool(full["dry"])).is_false()
+	var quarter := KarmaDraw.water_disc({"kind": "lago", "r": 95.0, "level": 25.0, "cap": 100.0})
+	assert_bool(abs(float(quarter["fill"]) - 47.5) < 0.01).is_true()
+	var dry := KarmaDraw.water_disc({"kind": "lago", "r": 95.0, "level": 0.0, "cap": 100.0})
+	assert_float(float(dry["fill"])).is_equal(0.0)
+	assert_bool(bool(dry["dry"])).is_true()
+
+
 func test_refuge_medal_differs_by_type() -> void:
 	assert_bool(KarmaDraw.refuge_medal("burrow-S").to_html() != KarmaDraw.refuge_medal("old-oak").to_html()).is_true()
 

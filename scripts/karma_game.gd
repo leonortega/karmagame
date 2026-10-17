@@ -191,6 +191,38 @@ static func regrow_fruit(list: Array, cap: int, dt: float) -> void:
 			p["regrowT"] = 0.0
 
 
+static func weather_tick(state: Dictionary, dt: float, rng: RandomNumberGenerator) -> void:
+	var w: Dictionary = state["weather"]
+	w["t"] = float(w.get("t", 0.0)) - dt
+	if float(w["t"]) > 0.0:
+		return
+	if bool(w.get("raining", false)):
+		w["raining"] = false
+		w["t"] = rng.randf_range(float(KarmaData.TUNING["rainDryMin"]), float(KarmaData.TUNING["rainDryMax"]))
+		KarmaState.add_log(state, null, "Escampa: el cielo se despeja")
+		return
+	w["raining"] = true
+	w["t"] = rng.randf_range(float(KarmaData.TUNING["rainWetMin"]), float(KarmaData.TUNING["rainWetMax"]))
+	KarmaState.add_log(state, null, "Empieza a llover: los charcos y lagos se recargan")
+	rain_insect_burst(state, rng)
+
+
+static func rain_insect_burst(state: Dictionary, rng: RandomNumberGenerator) -> void:
+	var ceiling := int(KarmaData.TUNING["insectMax"]) + int(KarmaData.TUNING["rainInsectBurst"])
+	var room := ceiling - (state.get("insects", []) as Array).size()
+	var n := mini(int(KarmaData.TUNING["rainInsectBurst"]), maxi(0, room))
+	for i in n:
+		(state["insects"] as Array).append(spawn_insect_pt(state, rng))
+
+
+static func rain_refill(state: Dictionary, dt: float) -> void:
+	for w in state.get("waters", []):
+		var cap := float(w.get("cap", 0.0))
+		if cap <= 0.0:
+			continue
+		w["level"] = minf(cap, float(w.get("level", 0.0)) + cap / float(KarmaData.TUNING["rainFillTime"]) * dt)
+
+
 static func age_world(state: Dictionary, dt: float, rng: RandomNumberGenerator) -> void:
 	for c in state.get("carrions", []):
 		c["age"] = float(c.get("age", 0.0)) + dt
@@ -236,6 +268,9 @@ static func age_world(state: Dictionary, dt: float, rng: RandomNumberGenerator) 
 	if float(state["respawnT"]) >= float(KarmaData.TUNING["respawnTime"]):
 		state["respawnT"] = 0.0
 		KarmaState.respawn_missing(state, rng)
+	weather_tick(state, dt, rng)
+	if bool((state["weather"] as Dictionary).get("raining", false)):
+		rain_refill(state, dt)
 
 
 static func loco_mult(species_key: String, grounded: bool, clock: float) -> float:

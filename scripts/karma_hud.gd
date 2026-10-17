@@ -106,6 +106,11 @@ static func thirst_frac(state: Dictionary) -> float:
 	return clampf(float(state.get("sed", 0.0)) / 100.0, 0.0, 1.0)
 
 
+static func weather_line(state: Dictionary) -> String:
+	var w: Dictionary = state.get("weather", {})
+	return "🌧️ Lluvia" if bool(w.get("raining", false)) else ""
+
+
 static func prompt_line(state: Dictionary) -> String:
 	if bool(state.get("hidden", false)):
 		return "Oculto — H salir · hambre y sed siguen drenando"

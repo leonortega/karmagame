@@ -36,6 +36,7 @@ static func blank_state(species_key: String, karma: float, pa: float) -> Diction
 		"introDone": true, "introNext": null,
 		"pendingNext": null, "pendingPool": null, "judgeReason": "",
 		"mateT": 0.0, "insectT": 0.0, "respawnT": 0.0,
+		"weather": {"raining": false, "t": float(KarmaData.TUNING["rainDryMin"])},
 		"hambreWarned": false, "sedWarned": false,
 		"escortT": 0.0, "escortTarget": null,
 		"bushes": [], "shrubs": [], "patches": [], "clusters": [], "clumps": [], "oaks": [],
@@ -67,9 +68,17 @@ static func _year_name(theme: String) -> String:
 static func seed_waters(state: Dictionary, rng: RandomNumberGenerator) -> void:
 	state["waters"] = []
 	for pt in KarmaUtils.scatter(KarmaUtils.scaled_count(int(KarmaData.TUNING["charcoCount"])), rng):
-		(state["waters"] as Array).append({"kind": "charco", "x": pt["x"], "y": pt["y"], "r": float(KarmaData.TUNING["charcoR"])})
+		var ccap := water_cap_for("charco")
+		(state["waters"] as Array).append({"kind": "charco", "x": pt["x"], "y": pt["y"], "r": float(KarmaData.TUNING["charcoR"]), "level": ccap, "cap": ccap})
 	for pt in KarmaUtils.scatter(KarmaUtils.scaled_count(int(KarmaData.TUNING["lagoCount"])), rng):
-		(state["waters"] as Array).append({"kind": "lago", "x": pt["x"], "y": pt["y"], "r": float(KarmaData.TUNING["lagoR"])})
+		var lcap := water_cap_for("lago")
+		(state["waters"] as Array).append({"kind": "lago", "x": pt["x"], "y": pt["y"], "r": float(KarmaData.TUNING["lagoR"]), "level": lcap, "cap": lcap})
+
+
+static func water_cap_for(kind: String) -> float:
+	var r := float(KarmaData.TUNING["lagoR"]) if kind == "lago" else float(KarmaData.TUNING["charcoR"])
+	var ratio := r / float(KarmaData.TUNING["charcoR"])
+	return float(KarmaData.TUNING["waterCapCharco"]) * ratio * ratio
 
 
 static func seed_food(state: Dictionary, carry_saplings: int, rng: RandomNumberGenerator) -> void:

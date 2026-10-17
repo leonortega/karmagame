@@ -261,15 +261,16 @@ static func seeks_water(a: Dictionary) -> bool:
 
 static func ai_seek_water(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	var rnge: float = float(KarmaData.SPECIES[str(a["speciesKey"])]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
+	var wet: Array = (state.get("waters", []) as Array).filter(func(w): return float(w.get("level", 1.0)) > 0.0)
 	var best: Variant = null
 	var bd := rnge
-	for w in state.get("waters", []):
+	for w in wet:
 		var d := Vector2(float(w["x"]), float(w["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) - float(w["r"])
 		if d < bd:
 			bd = d
 			best = w
 	if best == null:
-		best = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("waters", []), 1e9)
+		best = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), wet, 1e9)
 	if best == null:
 		return false
 	KarmaGame.move_toward(state, a, float((best as Dictionary)["x"]), float((best as Dictionary)["y"]), 1.0, dt)

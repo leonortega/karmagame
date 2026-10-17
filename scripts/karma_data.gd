@@ -109,6 +109,10 @@ static func _build_tuning() -> Dictionary:
 		"regenHambre": 30.0, "regenSed": 30.0, "thirstMult": 2.0, "deficitMax": 2.0,
 		"sipSed": 35.0, "sipHp": 5.0, "drinkRange": 46.0,
 		"charcoCount": 6, "lagoCount": 2, "charcoR": 20.0, "lagoR": 95.0,
+		"waterCapCharco": 20.0, "rainFillTime": 20.0,
+		"rainDryMin": 40.0, "rainDryMax": 90.0, "rainWetMin": 8.0, "rainWetMax": 30.0,
+		"rainInsectBurst": 12,
+		"waterSipBySpecies": {"oruga": 0.5, "sapo": 0.5, "ardilla": 0.8, "raton": 1.0, "topo": 1.0, "halcon": 1.5, "zorro": 1.5, "lobo": 2.0},
 		"lakeInsectBias": 0.6, "lakeShore": 120.0, "charcoInsectBias": 0.7,
 		"forageRangeMult": 0.5, "hungerPriority": 0.4, "aiHideMax": 5.0, "aiCoverRange": 250.0, "lowHpPercept": 1.4,
 		"aiFearRange": 200.0, "wanderSeekRange": 1000.0,
@@ -277,6 +281,10 @@ static func hunger_rate_for(species_key: String) -> float:
 
 static func thirst_rate_for(species_key: String) -> float:
 	return hunger_rate_for(species_key) * float(TUNING["thirstMult"])
+
+
+static func water_sip_cost_for(species_key: String) -> float:
+	return float((TUNING["waterSipBySpecies"] as Dictionary).get(species_key, 1.0))
 
 
 static func senescence_row(species_key: String) -> Dictionary:

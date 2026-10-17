@@ -65,6 +65,8 @@ static func nearest_water_for(state: Dictionary, ax: float, ay: float, max_d: fl
 	var best: Variant = null
 	var bd := max_d
 	for w in state.get("waters", []):
+		if float(w.get("level", 1.0)) <= 0.0:
+			continue
 		var d := Vector2(ax, ay).distance_to(Vector2(float(w["x"]), float(w["y"]))) - float(w["r"])
 		if d < bd:
 			bd = d

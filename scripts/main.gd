@@ -528,7 +528,7 @@ func _build_hud() -> void:
 	_add_hud_label(left, "others_title", PANEL_W, 20.0)
 	_add_hud_label(left, "others", PANEL_W, 120.0)
 	var right := _make_side_panel(layer, "RightPanel", Vector2(VIEW_W - PANEL_W - PANEL_MARGIN, PANEL_MARGIN), PANEL_W)
-	for key in ["species", "vitals", "karma", "edad", "prompt"]:
+	for key in ["species", "vitals", "karma", "edad", "weather", "prompt"]:
 		_add_hud_label(right, key, PANEL_W, 20.0)
 	_add_hud_label(right, "controls", PANEL_W, 110.0)
 	_add_hud_label(right, "verbs", PANEL_W, 90.0)
@@ -538,6 +538,7 @@ func _build_hud() -> void:
 	_style_hud_label("karma", 13, Color("#ffd54f"))
 	_style_hud_label("vitals", 12, Color("#ffffff"))
 	_style_hud_label("edad", 11, Color("#b0bec5"))
+	_style_hud_label("weather", 12, Color("#81d4fa"))
 	_style_hud_label("prompt", 12, Color("#80deea"))
 	_style_hud_label("controls", 12, Color("#dcedc8"))
 	_style_hud_label("verbs", 12, Color("#dcedc8"))
@@ -817,6 +818,7 @@ func _refresh_hud() -> void:
 		KarmaHud.bar(KarmaHud.thirst_frac(state), 10), int(state.get("sed", 0.0))])
 	_set_text("karma", "◈ PA %d · Karma %d%s" % [int(state.get("pa", 0.0)), int(state.get("karma", 0.0)), " · MUERTO (R reencarnar)" if bool(state.get("dead", false)) else ""])
 	_set_text("edad", KarmaHud.edad_line(state))
+	_set_text("weather", KarmaHud.weather_line(state))
 	_set_text("prompt", KarmaHud.prompt_line(state))
 	_set_text("others_title", "▼ OTROS ANIMALES")
 	_set_text("others", "\n".join(KarmaHud.other_panel_lines(state)))
@@ -902,10 +904,13 @@ func _draw() -> void:
 		var body := KarmaDraw.water_disc(w)
 		var wr: float = float(body["r"])
 		draw_circle(wpos, wr + 5.0, KarmaDraw.SHORE)
-		draw_circle(wpos, wr, body["color"])
-		draw_arc(wpos, wr - 3.0, PI * 0.9, PI * 1.7, 24, Color(1, 1, 1, 0.25), 2.0)
+		draw_circle(wpos, wr, KarmaDraw.DRY_BASIN)
+		if not bool(body["dry"]):
+			draw_circle(wpos, float(body["fill"]), body["color"])
+			draw_arc(wpos, wr - 3.0, PI * 0.9, PI * 1.7, 24, Color(1, 1, 1, 0.25), 2.0)
 		_medal(wpos, 11.0, Color(0, 0, 0, 0.25), KarmaDraw.water_icon(str(w.get("kind", ""))), 13.0, font)
-		_pill(wpos + Vector2(0, wr + 16.0), str(KarmaDraw.WATER_LABEL.get(str(w.get("kind", "")), "agua")), font, 11)
+		var wlabel := "seco" if bool(body["dry"]) else str(KarmaDraw.WATER_LABEL.get(str(w.get("kind", "")), "agua"))
+		_pill(wpos + Vector2(0, wr + 16.0), wlabel, font, 11)
 	for k in state.get("rocks", []):
 		var kpos := Vector2(float(k["x"]), float(k["y"])) - cam
 		if not view.has_point(kpos):
@@ -1018,6 +1023,13 @@ func _draw() -> void:
 	draw_arc(pp, pr + 3.0, 0, TAU, 32, Color("#1565c0"), 2.0)
 	_pill(pp + Vector2(0, pr + 18.0), "TU %s" % str(psp["name"]), font, 12)
 	_hp_bar(pp + Vector2(0, pr + 38.0), pr * 2.0 + 12.0, KarmaHud.hp_frac(state))
+	if bool((state.get("weather", {}) as Dictionary).get("raining", false)):
+		var rain_t := float(state.get("time", 0.0))
+		draw_rect(Rect2(Vector2.ZERO, Vector2(VIEW_W, VIEW_H)), Color(0.25, 0.45, 0.7, 0.16))
+		for i in 40:
+			var rx := fmod(float(i) * 97.3 + rain_t * 220.0, VIEW_W)
+			var ry := fmod(float(i) * 151.7 + rain_t * 620.0, VIEW_H)
+			draw_line(Vector2(rx, ry), Vector2(rx - 4.0, ry + 14.0), Color(0.8, 0.9, 1.0, 0.5), 1.5)
 	var badge_y := 30.0
 	var badge_x := VIEW_W - PANEL_W - PANEL_MARGIN - 240.0
 	if bool(state.get("hidden", false)):

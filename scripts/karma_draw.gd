@@ -25,6 +25,9 @@ const SHADOW := Color(0, 0, 0, 0.30)
 const RIM := Color(0, 0, 0, 0.35)
 const PILL_BG := Color(0, 0, 0, 0.62)
 const SHORE := Color("#8d9b6a")
+const WATER_CHARCO := Color("#42a5f5")
+const WATER_LAGO := Color("#1565c0")
+const DRY_BASIN := Color("#6d4c41")
 const ROCK_BODY := Color("#607d8b")
 const ROCK_TOP := Color("#90a4ae")
 const INSECT_MEDAL := Color("#5d4037")
@@ -83,7 +86,11 @@ static func carrion_look(stage: String) -> Dictionary:
 
 
 static func water_disc(w: Dictionary) -> Dictionary:
-	return {"r": float(w["r"]), "color": Color("#1565c0") if str(w.get("kind", "")) == "lago" else Color("#42a5f5")}
+	var r := float(w["r"])
+	var cap := float(w.get("cap", 0.0))
+	var frac := 1.0 if cap <= 0.0 else clampf(float(w.get("level", cap)) / cap, 0.0, 1.0)
+	return {"r": r, "fill": r * sqrt(frac), "dry": frac <= 0.0,
+		"color": WATER_LAGO if str(w.get("kind", "")) == "lago" else WATER_CHARCO}
 
 
 static func species_medal(form: String) -> Color:
