@@ -626,18 +626,6 @@ func test_enabled_log_records_schema() -> void:
 	KarmaJev.LOG_JEV_LOBO = false
 
 
-func test_pick_batch_7_rotates_when_all_due() -> void:
-	assert_str(KarmaJev.pick_batch_species_7(true, true, true, true, true, true, true, "topo")).is_equal("lobo")
-	assert_str(KarmaJev.pick_batch_species_7(true, true, true, true, true, true, true, "lobo")).is_equal("zorro")
-	assert_str(KarmaJev.pick_batch_species_7(false, false, false, false, false, false, true, "zorro")).is_equal("lobo")
-	assert_str(KarmaJev.pick_batch_species_7(false, false, false, false, false, false, false, "zorro")).is_equal("")
-
-
-func test_pick_batch_7_prefers_longest_waiting() -> void:
-	var served := {"zorro": 10.0, "lobo": 5.0}
-	assert_str(KarmaJev.pick_batch_species_7(true, false, false, false, false, false, true, "zorro", served)).is_equal("lobo")
-
-
 func test_apply_target_gone_falls_back_to_wander() -> void:
 	var s := _fresh_lobo_state()
 	var a := _ai_lobo(s, 500.0, 500.0)

@@ -8,20 +8,7 @@ extends RefCounted
 const SCHEMA_VERSION := "jev-halcon/v1"
 const QUESTION := "Que hace el halcon ahora? Elige un candidato."
 const USE_JEV := true
-
-
-static func _verb_ready(a: Dictionary, slot: int) -> bool:
-	if not a.has("verbCds"):
-		return true
-	return float((a["verbCds"] as Array)[slot - 1]) <= 0.0
-
-
-static func _max_hp(a: Dictionary) -> float:
-	return KarmaAI.ai_max_hp(a)
-
-
-static func _set_intent(a: Dictionary, kind: String, x: float, y: float, target: Variant = null) -> void:
-	a["jev_intent"] = {"kind": kind, "x": x, "y": y, "ttl": 5.0}
+const MOCK_ORDER := ["eat", "courtesy", "dive", "scare", "bone", "thermal", "drink", "seek_carrion", "flee", "wander"]
 
 
 static func _flavor(a: Dictionary) -> String:
@@ -57,7 +44,7 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 	var eat_range := float(KarmaData.TUNING["eatRange"])
 	var hunt_range := 200.0
 	var prey: Variant = KarmaAI.nearest_ai_prey(state, a, hunt_range)
-	if prey != null and _verb_ready(a, 1):
+	if prey != null and KarmaJevBridge.verb_ready(a, 1):
 		menu.append({"kind": "dive", "label": "Dive prey", "x": float((prey as Dictionary)["x"]), "y": float((prey as Dictionary)["y"]), "target": prey})
 	var meal: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), eat_range)
 	if meal != null:
@@ -65,7 +52,7 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 		if float(a.get("hambre", 100.0)) < float(KarmaData.TUNING["regenHambre"]):
 			eat_label = "Eat carrion (you are hungry: eat now!)"
 		menu.append({"kind": "eat", "label": eat_label, "x": float((meal as Dictionary)["x"]), "y": float((meal as Dictionary)["y"]), "target": meal})
-		if bool(a.get("grounded", false)) and KarmaEat.carrion_stage(meal) == "fresh" and not bool((meal as Dictionary).get("ceded", false)) and _verb_ready(a, 3):
+		if bool(a.get("grounded", false)) and KarmaEat.carrion_stage(meal) == "fresh" and not bool((meal as Dictionary).get("ceded", false)) and KarmaJevBridge.verb_ready(a, 3):
 			menu.append({"kind": "courtesy", "label": "Share carrion", "x": float((meal as Dictionary)["x"]), "y": float((meal as Dictionary)["y"]), "target": meal})
 	elif KarmaAI.is_hungry(a):
 		var far: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), hunt_range)
@@ -73,11 +60,11 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 			menu.append({"kind": "seek_carrion", "label": "Seek carrion", "x": float((far as Dictionary)["x"]), "y": float((far as Dictionary)["y"]), "target": far})
 	var small: Variant = KarmaUtils.nearest_from(ax, ay,
 		(state["agents"] as Array).filter(func(o): return o != a and str(o.get("role", "")) == "fauna" and int(KarmaData.SPECIES.get(str(o.get("speciesKey", "raton")), {"size": 9})["size"]) <= 2), 90.0)
-	if small != null and _verb_ready(a, 4):
+	if small != null and KarmaJevBridge.verb_ready(a, 4):
 		menu.append({"kind": "scare", "label": "Scare prey", "x": float((small as Dictionary)["x"]), "y": float((small as Dictionary)["y"]), "target": small})
-	if _verb_ready(a, 5):
+	if KarmaJevBridge.verb_ready(a, 5):
 		menu.append({"kind": "bone", "label": "Drop bone", "x": ax, "y": ay})
-	if _verb_ready(a, 2) and float(a.get("thermalT", 0.0)) <= 0.0 and float(a.get("pa", 0.0)) >= float((KarmaData.VERB_DEFS["halcon"] as Array)[1]["costPa"]):
+	if KarmaJevBridge.verb_ready(a, 2) and float(a.get("thermalT", 0.0)) <= 0.0 and float(a.get("pa", 0.0)) >= float((KarmaData.VERB_DEFS["halcon"] as Array)[1]["costPa"]):
 		menu.append({"kind": "thermal", "label": "Ride thermal (-%d PA)" % int(float((KarmaData.VERB_DEFS["halcon"] as Array)[1]["costPa"])), "x": ax, "y": ay})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var forage := float(KarmaData.SPECIES["halcon"]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
@@ -94,7 +81,7 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_halcon_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := _max_hp(a)
+	var max_hp := KarmaJevBridge.max_hp(a)
 	return {
 		"schema": SCHEMA_VERSION,
 		"species": "halcon",
@@ -115,16 +102,14 @@ static func build_halcon_state(state: Dictionary, a: Dictionary) -> Dictionary:
 
 
 static func all_jev_halcons(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == "halcon" and str(a.get("brain", "")) != "PLAYER")
+	return KarmaJevBridge.all_agents(state, "halcon")
 
 
 static func halcon_state_text(state: Dictionary, a: Dictionary) -> String:
 	var snap := build_halcon_state(state, a)
-	return "Halcon hp_frac=%.2f hambre=%d sed=%d karma=%d pa=%d hungry=%s threatened=%s grounded=%s landT=%.1f prey=%s carrion=%s water=%s" % [
-		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
-		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
-		str(snap["threatened"]), str(snap["grounded"]), float(snap["landT"]),
-		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
+	return KarmaJevBridge.state_text("Halcon", snap, "grounded=%s landT=%.1f prey=%s carrion=%s water=%s",
+		[str(snap["grounded"]), float(snap["landT"]),
+		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])])
 
 
 static func build_halcon_http_body(state: Dictionary) -> Dictionary:
@@ -132,76 +117,48 @@ static func build_halcon_http_body(state: Dictionary) -> Dictionary:
 
 
 static func build_halcon_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
-	var states: Array = []
-	var menus := {}
-	var included: Array = []
-	for a in agents:
-		var menu := build_halcon_menu(state, a)
-		var criteria := {}
-		for c in menu:
-			var kind := str((c as Dictionary)["kind"])
-			var label := str((c as Dictionary)["label"])
-			if kind != "" and label != "" and not criteria.has(kind):
-				criteria[kind] = label
-		if criteria.size() < 2:
-			continue
-		var rid := "%d" % included.size()
-		states.append({
-			"id": rid,
-			"state": halcon_state_text(state, a),
-			"questions": {"intent": {"type": "choice", "instructions": QUESTION, "criteria": criteria}},
-		})
-		menus[rid] = menu
-		included.append(a)
-	return {"states": states, "menus": menus, "agents": included}
+	return KarmaJevBridge.build_http_body_for(state, agents,
+		Callable(KarmaJevHalcon, "build_halcon_menu"), Callable(KarmaJevHalcon, "halcon_state_text"), QUESTION)
 
 
 static func halcon_mock_choice(menu: Array) -> int:
-	var order := ["eat", "courtesy", "dive", "scare", "bone", "thermal", "drink", "seek_carrion", "flee", "wander"]
-	for want in order:
-		for i in menu.size():
-			if str((menu[i] as Dictionary)["kind"]) == want:
-				return i
-	return maxi(0, menu.size() - 1)
+	return KarmaJevBridge.mock_choice(menu, MOCK_ORDER)
 
 
 static func mock_halcon_macro(state: Dictionary, a: Dictionary) -> bool:
-	var menu := build_halcon_menu(state, a)
-	if menu.is_empty():
-		return false
-	var answer := {"choice": halcon_mock_choice(menu), "probs": [1.0], "emocion": "Instinto"}
-	return apply_halcon_answer(state, a, menu, answer)
+	return KarmaJevBridge.mock_macro(state, a,
+		Callable(KarmaJevHalcon, "build_halcon_menu"), MOCK_ORDER, Callable(KarmaJevHalcon, "apply_halcon_answer"))
 
 
 static func apply_halcon_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
 	a["jev_emocion"] = str(answer.get("emocion", ""))
 	if bool(answer.get("target_gone", false)):
-		_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+		KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 		return true
 	var idx := int(answer.get("choice", -1))
 	if idx < 0 or idx >= menu.size():
-		_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+		KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 		return true
 	var pick := menu[idx] as Dictionary
 	match str(pick["kind"]):
 		"eat":
 			if not (state["carrions"] as Array).has(pick.get("target")):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 				return true
-			_set_intent(a, "eat", float(pick["x"]), float(pick["y"]), pick.get("target"))
+			KarmaJevBridge.set_intent(a, "eat", float(pick["x"]), float(pick["y"]), pick.get("target"))
 			return KarmaEat.eat_carrion(state, pick.get("target"), a)
 		"courtesy":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 3)
 		"scare", "bone":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 4 if str(pick["kind"]) == "scare" else 5)
 		"thermal":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 2)
 		"dive", "seek_carrion", "drink", "flee":
-			_set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target"))
+			KarmaJevBridge.set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target"))
 			return true
 		_:
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true

@@ -8,20 +8,7 @@ extends RefCounted
 const SCHEMA_VERSION := "jev-zorro/v1"
 const QUESTION := "Que hace el zorro ahora? Elige un candidato."
 const USE_JEV := true
-
-
-static func _verb_ready(a: Dictionary, slot: int) -> bool:
-	if not a.has("verbCds"):
-		return true
-	return float((a["verbCds"] as Array)[slot - 1]) <= 0.0
-
-
-static func _max_hp(a: Dictionary) -> float:
-	return KarmaAI.ai_max_hp(a)
-
-
-static func _set_intent(a: Dictionary, kind: String, x: float, y: float, target: Variant = null) -> void:
-	a["jev_intent"] = {"kind": kind, "x": x, "y": y, "ttl": 5.0}
+const MOCK_ORDER := ["eat", "cede", "pounce", "hunt", "strike", "cache", "dendig", "drink", "flee", "seek_carrion", "wander"]
 
 
 static func _flavor(a: Dictionary) -> String:
@@ -62,7 +49,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var eat_range := float(KarmaData.TUNING["eatRange"])
 	var pounce_range := float(KarmaData.TUNING["pounceRange"])
 	var perception := float(KarmaAI.ai_pred_row(a).get("perception", 200.0))
-	var max_hp := _max_hp(a)
+	var max_hp := KarmaJevBridge.max_hp(a)
 	var defs: Array = KarmaData.VERB_DEFS["zorro"]
 	var dendig_cost := float(defs[3]["costHp"])
 	var scavenge := KarmaAI.prefer_carrion(a) and KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), perception) != null
@@ -75,9 +62,9 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var meal: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), eat_range)
 	if meal != null:
 		menu.append({"kind": "eat", "label": "Eat carrion", "x": float((meal as Dictionary)["x"]), "y": float((meal as Dictionary)["y"]), "target": meal})
-		if not bool((meal as Dictionary).get("ceded", false)) and float(a.get("hp", max_hp)) >= float(KarmaData.TUNING["wastefulHpFrac"]) * max_hp and _verb_ready(a, 3):
+		if not bool((meal as Dictionary).get("ceded", false)) and float(a.get("hp", max_hp)) >= float(KarmaData.TUNING["wastefulHpFrac"]) * max_hp and KarmaJevBridge.verb_ready(a, 3):
 			menu.append({"kind": "cede", "label": "Cede carrion", "x": float((meal as Dictionary)["x"]), "y": float((meal as Dictionary)["y"]), "target": meal})
-		if KarmaEat.carrion_stage(meal) != "rotten" and int(a.get("stash", 0)) <= 0 and _verb_ready(a, 2):
+		if KarmaEat.carrion_stage(meal) != "rotten" and int(a.get("stash", 0)) <= 0 and KarmaJevBridge.verb_ready(a, 2):
 			var cache_label := "Cache carrion"
 			if float(a.get("hambre", 100.0)) >= float(KarmaData.TUNING["cacheFullHambre"]):
 				cache_label = "Cache carrion (you are full: store it for later)"
@@ -86,11 +73,11 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		var far: Variant = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), perception)
 		if far != null:
 			menu.append({"kind": "seek_carrion", "label": "Seek carrion", "x": float((far as Dictionary)["x"]), "y": float((far as Dictionary)["y"]), "target": far})
-	if float(a.get("hp", max_hp)) > dendig_cost and _verb_ready(a, 4):
+	if float(a.get("hp", max_hp)) > dendig_cost and KarmaJevBridge.verb_ready(a, 4):
 		menu.append({"kind": "dendig", "label": "Dig den", "x": ax, "y": ay})
 	var threat: Variant = KarmaUtils.nearest_from(ax, ay,
 		(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
-	if threat != null and float(a.get("strikeCd", 0.0)) <= 0.0 and _verb_ready(a, 5):
+	if threat != null and float(a.get("strikeCd", 0.0)) <= 0.0 and KarmaJevBridge.verb_ready(a, 5):
 		menu.append({"kind": "strike", "label": "Strike predator", "x": float((threat as Dictionary)["x"]), "y": float((threat as Dictionary)["y"]), "target": threat})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var forage := float(KarmaData.SPECIES["zorro"]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
@@ -109,7 +96,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := _max_hp(a)
+	var max_hp := KarmaJevBridge.max_hp(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var perception := float(KarmaAI.ai_pred_row(a).get("perception", 200.0))
@@ -137,57 +124,33 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 
 
 static func build_batch(state: Dictionary) -> Array:
-	var batch: Array = []
-	for a in state["agents"] as Array:
-		if str(a.get("speciesKey", "")) != "zorro" or str(a.get("brain", "")) == "PLAYER":
-			continue
-		batch.append({
-			"id": str(a.get("instance_id", str(a))),
-			"state": build_state(state, a),
-			"question": QUESTION,
-			"candidates": build_menu(state, a).map(func(c): return str((c as Dictionary)["kind"]) + ": " + str((c as Dictionary)["label"])),
-		})
-	return batch
+	return KarmaJevBridge.build_batch(state, "zorro",
+		Callable(KarmaJevZorro, "build_state"), Callable(KarmaJevZorro, "build_menu"), QUESTION)
 
 
 static func mock_choice(menu: Array) -> int:
-	var order := ["eat", "cede", "pounce", "hunt", "strike", "cache", "dendig", "drink", "flee", "seek_carrion", "wander"]
-	for want in order:
-		for i in menu.size():
-			if str((menu[i] as Dictionary)["kind"]) == want:
-				return i
-	return maxi(0, menu.size() - 1)
+	return KarmaJevBridge.mock_choice(menu, MOCK_ORDER)
 
 
 static func mock_macro(state: Dictionary, a: Dictionary) -> bool:
-	var menu := build_menu(state, a)
-	if menu.is_empty():
-		return false
-	var answer := {"choice": mock_choice(menu), "probs": [1.0], "emocion": "Instinto"}
-	return apply_answer(state, a, menu, answer)
+	return KarmaJevBridge.mock_macro(state, a,
+		Callable(KarmaJevZorro, "build_menu"), MOCK_ORDER, Callable(KarmaJevZorro, "apply_answer"))
 
 
 static func all_jev_zorros(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == "zorro" and str(a.get("brain", "")) != "PLAYER")
+	return KarmaJevBridge.all_agents(state, "zorro")
 
 
 static func candidate_ids(menu: Array) -> Array:
-	var ids: Array = []
-	for c in menu:
-		var kind := str((c as Dictionary)["kind"])
-		if kind != "" and not ids.has(kind):
-			ids.append(kind)
-	return ids
+	return KarmaJevBridge.candidate_ids(menu)
 
 
 static func state_text(state: Dictionary, a: Dictionary) -> String:
 	var snap := build_state(state, a)
-	return "Zorro hp_frac=%.2f hambre=%d sed=%d karma=%d pa=%d hungry=%s threatened=%s sated=%s pounce_cd=%.0f strike_cd=%.0f prey=%s carrion=%s water=%s" % [
-		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
-		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
-		str(snap["threatened"]), str(snap["sated"]),
+	return KarmaJevBridge.state_text("Zorro", snap, "sated=%s pounce_cd=%.0f strike_cd=%.0f prey=%s carrion=%s water=%s",
+		[str(snap["sated"]),
 		float((snap["cds"] as Dictionary)["pounce"]), float((snap["cds"] as Dictionary)["strike"]),
-		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
+		str(snap["prey_visible"]), str(snap["carrion_near"]), str(snap["water_near"])])
 
 
 static func build_http_body(state: Dictionary) -> Dictionary:
@@ -195,68 +158,48 @@ static func build_http_body(state: Dictionary) -> Dictionary:
 
 
 static func build_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
-	var states: Array = []
-	var menus := {}
-	var included: Array = []
-	for a in agents:
-		var menu := build_menu(state, a)
-		var criteria := {}
-		for c in menu:
-			var kind := str((c as Dictionary)["kind"])
-			var label := str((c as Dictionary)["label"])
-			if kind != "" and label != "" and not criteria.has(kind):
-				criteria[kind] = label
-		if criteria.size() < 2:
-			continue
-		var rid := "%d" % included.size()
-		states.append({
-			"id": rid,
-			"state": state_text(state, a),
-			"questions": {"intent": {"type": "choice", "instructions": QUESTION, "criteria": criteria}},
-		})
-		menus[rid] = menu
-		included.append(a)
-	return {"states": states, "menus": menus, "agents": included}
+	return KarmaJevBridge.build_http_body_for(state, agents,
+		Callable(KarmaJevZorro, "build_menu"), Callable(KarmaJevZorro, "state_text"), QUESTION)
 
 
 static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
 	a["jev_emocion"] = str(answer.get("emocion", ""))
 	if bool(answer.get("target_gone", false)):
-		_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+		KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 		return true
 	var idx := int(answer.get("choice", -1))
 	if idx < 0 or idx >= menu.size():
-		_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+		KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 		return true
 	var pick := menu[idx] as Dictionary
 	match str(pick["kind"]):
 		"eat":
 			if not (state["carrions"] as Array).has(pick.get("target")):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 				return true
-			_set_intent(a, "eat", float(pick["x"]), float(pick["y"]), pick.get("target"))
+			KarmaJevBridge.set_intent(a, "eat", float(pick["x"]), float(pick["y"]), pick.get("target"))
 			return KarmaEat.eat_carrion(state, pick.get("target"), a)
 		"cede":
 			if not (state["carrions"] as Array).has(pick.get("target")):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 				return true
 			(pick.get("target") as Dictionary)["ceded"] = true
 			var ck: float = float(KarmaData.TUNING["cedeKarma"]) * (2.0 if KarmaShop.has_adapt(a, "cedePlus") else 1.0)
 			KarmaState.add_karma(state, a, ck, "Cede la presa a otros (+karma)" + _flavor(a))
 			if a.has("verbCds") and (a["verbCds"] as Array).size() > 2:
 				(a["verbCds"] as Array)[2] = float((KarmaData.VERB_DEFS["zorro"] as Array)[2]["cd"])
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
 		"cache":
 			if not (state["carrions"] as Array).has(pick.get("target")):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 				return true
 			(state["carrions"] as Array).erase(pick.get("target"))
 			a["stash"] = 1
 			if a.has("verbCds") and (a["verbCds"] as Array).size() > 1:
 				(a["verbCds"] as Array)[1] = float((KarmaData.VERB_DEFS["zorro"] as Array)[1]["cd"])
 			KarmaState.add_log(state, a, "Entierras carroña para después" + _flavor(a))
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
 		"dendig":
 			(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(a["x"]), "y": float(a["y"]), "dug": true})
@@ -265,14 +208,14 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			if a.has("verbCds") and (a["verbCds"] as Array).size() > 3:
 				(a["verbCds"] as Array)[3] = float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["cd"])
 			KarmaState.add_log(state, a, "Excavas una guarida" + _flavor(a))
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
 		"strike":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 5)
 		"pounce", "hunt", "seek_carrion", "drink", "flee":
-			_set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target"))
+			KarmaJevBridge.set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target"))
 			return true
 		_:
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true

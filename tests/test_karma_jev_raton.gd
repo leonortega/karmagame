@@ -140,19 +140,6 @@ func test_mock_macro_never_logs() -> void:
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(0)
 
 
-func test_pick_batch_3_rotates_when_all_due() -> void:
-	assert_str(KarmaJev.pick_batch_species_3(true, true, true, "zorro")).is_equal("halcon")
-	assert_str(KarmaJev.pick_batch_species_3(true, true, true, "halcon")).is_equal("raton")
-	assert_str(KarmaJev.pick_batch_species_3(true, true, true, "raton")).is_equal("zorro")
-
-
-func test_pick_batch_3_skips_empty_species() -> void:
-	assert_str(KarmaJev.pick_batch_species_3(false, false, true, "zorro")).is_equal("raton")
-	assert_str(KarmaJev.pick_batch_species_3(true, false, false, "raton")).is_equal("zorro")
-	assert_str(KarmaJev.pick_batch_species_3(false, true, false, "zorro")).is_equal("halcon")
-	assert_str(KarmaJev.pick_batch_species_3(false, false, false, "zorro")).is_equal("")
-
-
 func _hunter_free(state: Dictionary, keep: Dictionary) -> void:
 	state["agents"] = (state["agents"] as Array).filter(func(o): return o == keep)
 

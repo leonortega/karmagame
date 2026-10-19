@@ -58,7 +58,6 @@ const PRED := {
 }
 const PRED_FALLBACK := {"name": "Depredador", "speed": 150.0, "perception": 250.0, "damage": 20.0,
 	"body": 22.0, "size": 3, "huntsTiers": [], "huntsMates": false, "huntsZorro": false, "fears": ["lobo"]}
-const TIER_SPAWNS := {0: ["zorro", "saponpc"], 1: ["zorro", "zorro"], 2: ["zorro", "lobo"]}
 const T1POOL := ["raton", "ardilla", "topo", "sapo"]
 const T2POOL := ["halcon", "zorro", "lobo"]
 
@@ -252,11 +251,6 @@ const LOCO := {
 	"lobo": {"mode": "continuous"},
 }
 
-const CONTROLS_BASE := [
-	{"key": "WASD/Flechas", "label": "moverse"},
-	{"key": "H", "label": "esconderse"},
-	{"key": "B", "label": "tienda (1-3 comprar)"},
-]
 const CONTROLS_E := {
 	"oruga": "comer hojas", "sapo": "lengua", "raton": "comer", "ardilla": "comer/llevar",
 	"topo": "cavar/comer", "halcon": "picado/aterrizar", "zorro": "zarpazo", "lobo": "cazar",

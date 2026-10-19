@@ -6,8 +6,6 @@ extends RefCounted
 # raton in KarmaJevRaton. This file keeps the old API stable.
 
 const SCHEMA_VERSION := "jev-zorro/v1"
-const QUESTION := "Que hace el zorro ahora? Elige un candidato."
-const HALCON_QUESTION := "Que hace el halcon ahora? Elige un candidato."
 const USE_JEV := true
 const USE_JEV_HALCON := true
 const USE_JEV_RATON := true
@@ -197,27 +195,6 @@ static func mark_asked(state: Dictionary, a: Dictionary, view_diag: float) -> vo
 	a["jev_last_asked"] = now
 
 
-static func pick_batch_species(zorro_due: bool, halcon_due: bool, last: String) -> String:
-	if zorro_due and halcon_due:
-		return "halcon" if last == "zorro" else "zorro"
-	if zorro_due:
-		return "zorro"
-	if halcon_due:
-		return "halcon"
-	return ""
-
-
-static func pick_batch_species_3(zorro_due: bool, halcon_due: bool, raton_due: bool, last: String) -> String:
-	var order := ["zorro", "halcon", "raton"]
-	var due := {"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due}
-	var start := (order.find(last) + 1) % order.size() if order.has(last) else 0
-	for i in order.size():
-		var species: String = order[(start + i) % order.size()]
-		if bool(due[species]):
-			return species
-	return ""
-
-
 static func _pick_best(order: Array, due: Dictionary, last: String, served: Dictionary) -> String:
 	var start := (order.find(last) + 1) % order.size() if order.has(last) else 0
 	var best := ""
@@ -228,26 +205,6 @@ static func _pick_best(order: Array, due: Dictionary, last: String, served: Dict
 			best = species
 			best_t = float(served.get(species, -1e9))
 	return best
-
-
-static func pick_batch_species_4(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, last: String, served: Dictionary = {}) -> String:
-	return _pick_best(["zorro", "halcon", "raton", "ardilla"],
-		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due}, last, served)
-
-
-static func pick_batch_species_5(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, last: String, served: Dictionary = {}) -> String:
-	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo"],
-		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due}, last, served)
-
-
-static func pick_batch_species_6(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, last: String, served: Dictionary = {}) -> String:
-	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo", "topo"],
-		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due, "topo": topo_due}, last, served)
-
-
-static func pick_batch_species_7(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, lobo_due: bool, last: String, served: Dictionary = {}) -> String:
-	return _pick_best(["zorro", "halcon", "raton", "ardilla", "sapo", "topo", "lobo"],
-		{"zorro": zorro_due, "halcon": halcon_due, "raton": raton_due, "ardilla": ardilla_due, "sapo": sapo_due, "topo": topo_due, "lobo": lobo_due}, last, served)
 
 
 static func pick_batch_species_8(zorro_due: bool, halcon_due: bool, raton_due: bool, ardilla_due: bool, sapo_due: bool, topo_due: bool, lobo_due: bool, oruga_due: bool, last: String, served: Dictionary = {}) -> String:
@@ -314,10 +271,6 @@ static func parse_answers(response: Dictionary, menus: Dictionary) -> Dictionary
 
 
 # --- Zorro delegates (stable API) ---
-
-static func zorro_definition() -> Dictionary:
-	return KarmaJevZorro.zorro_definition()
-
 
 static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	return KarmaJevZorro.build_menu(state, a)
@@ -407,14 +360,6 @@ static func apply_halcon_answer(state: Dictionary, a: Dictionary, menu: Array, a
 
 # --- Raton delegates ---
 
-static func raton_definition() -> Dictionary:
-	return KarmaJevRaton.raton_definition()
-
-
-static func build_raton_menu(state: Dictionary, a: Dictionary) -> Array:
-	return KarmaJevRaton.build_menu(state, a)
-
-
 static func build_raton_state(state: Dictionary, a: Dictionary) -> Dictionary:
 	return KarmaJevRaton.build_state(state, a)
 
@@ -423,24 +368,8 @@ static func all_jev_ratons(state: Dictionary) -> Array:
 	return KarmaJevRaton.all_jev_ratons(state)
 
 
-static func raton_state_text(state: Dictionary, a: Dictionary) -> String:
-	return KarmaJevRaton.state_text(state, a)
-
-
-static func build_raton_http_body(state: Dictionary) -> Dictionary:
-	return KarmaJevRaton.build_http_body(state)
-
-
 static func build_raton_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 	return KarmaJevRaton.build_http_body_for(state, agents)
-
-
-static func raton_mock_choice(menu: Array) -> int:
-	return KarmaJevRaton.mock_choice(menu)
-
-
-static func mock_raton_macro(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaJevRaton.mock_macro(state, a)
 
 
 static func apply_raton_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
@@ -448,14 +377,6 @@ static func apply_raton_answer(state: Dictionary, a: Dictionary, menu: Array, an
 
 
 # --- Ardilla delegates ---
-
-static func ardilla_definition() -> Dictionary:
-	return KarmaJevArdilla.ardilla_definition()
-
-
-static func build_ardilla_menu(state: Dictionary, a: Dictionary) -> Array:
-	return KarmaJevArdilla.build_menu(state, a)
-
 
 static func build_ardilla_state(state: Dictionary, a: Dictionary) -> Dictionary:
 	return KarmaJevArdilla.build_state(state, a)
@@ -465,24 +386,8 @@ static func all_jev_ardillas(state: Dictionary) -> Array:
 	return KarmaJevArdilla.all_jev_ardillas(state)
 
 
-static func ardilla_state_text(state: Dictionary, a: Dictionary) -> String:
-	return KarmaJevArdilla.state_text(state, a)
-
-
-static func build_ardilla_http_body(state: Dictionary) -> Dictionary:
-	return KarmaJevArdilla.build_http_body(state)
-
-
 static func build_ardilla_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 	return KarmaJevArdilla.build_http_body_for(state, agents)
-
-
-static func ardilla_mock_choice(menu: Array) -> int:
-	return KarmaJevArdilla.mock_choice(menu)
-
-
-static func mock_ardilla_macro(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaJevArdilla.mock_macro(state, a)
 
 
 static func apply_ardilla_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
@@ -490,14 +395,6 @@ static func apply_ardilla_answer(state: Dictionary, a: Dictionary, menu: Array, 
 
 
 # --- Sapo delegates ---
-
-static func sapo_definition() -> Dictionary:
-	return KarmaJevSapo.sapo_definition()
-
-
-static func build_sapo_menu(state: Dictionary, a: Dictionary) -> Array:
-	return KarmaJevSapo.build_menu(state, a)
-
 
 static func build_sapo_state(state: Dictionary, a: Dictionary) -> Dictionary:
 	return KarmaJevSapo.build_state(state, a)
@@ -507,24 +404,8 @@ static func all_jev_sapos(state: Dictionary) -> Array:
 	return KarmaJevSapo.all_jev_sapos(state)
 
 
-static func sapo_state_text(state: Dictionary, a: Dictionary) -> String:
-	return KarmaJevSapo.state_text(state, a)
-
-
-static func build_sapo_http_body(state: Dictionary) -> Dictionary:
-	return KarmaJevSapo.build_http_body(state)
-
-
 static func build_sapo_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 	return KarmaJevSapo.build_http_body_for(state, agents)
-
-
-static func sapo_mock_choice(menu: Array) -> int:
-	return KarmaJevSapo.mock_choice(menu)
-
-
-static func mock_sapo_macro(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaJevSapo.mock_macro(state, a)
 
 
 static func apply_sapo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
@@ -532,14 +413,6 @@ static func apply_sapo_answer(state: Dictionary, a: Dictionary, menu: Array, ans
 
 
 # --- Topo delegates ---
-
-static func topo_definition() -> Dictionary:
-	return KarmaJevTopo.topo_definition()
-
-
-static func build_topo_menu(state: Dictionary, a: Dictionary) -> Array:
-	return KarmaJevTopo.build_menu(state, a)
-
 
 static func build_topo_state(state: Dictionary, a: Dictionary) -> Dictionary:
 	return KarmaJevTopo.build_state(state, a)
@@ -549,24 +422,8 @@ static func all_jev_topos(state: Dictionary) -> Array:
 	return KarmaJevTopo.all_jev_topos(state)
 
 
-static func topo_state_text(state: Dictionary, a: Dictionary) -> String:
-	return KarmaJevTopo.state_text(state, a)
-
-
-static func build_topo_http_body(state: Dictionary) -> Dictionary:
-	return KarmaJevTopo.build_http_body(state)
-
-
 static func build_topo_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 	return KarmaJevTopo.build_http_body_for(state, agents)
-
-
-static func topo_mock_choice(menu: Array) -> int:
-	return KarmaJevTopo.mock_choice(menu)
-
-
-static func mock_topo_macro(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaJevTopo.mock_macro(state, a)
 
 
 static func apply_topo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
@@ -591,24 +448,8 @@ static func all_jev_lobos(state: Dictionary) -> Array:
 	return KarmaJevLobo.all_jev_lobos(state)
 
 
-static func lobo_state_text(state: Dictionary, a: Dictionary) -> String:
-	return KarmaJevLobo.state_text(state, a)
-
-
-static func build_lobo_http_body(state: Dictionary) -> Dictionary:
-	return KarmaJevLobo.build_http_body(state)
-
-
 static func build_lobo_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 	return KarmaJevLobo.build_http_body_for(state, agents)
-
-
-static func lobo_mock_choice(menu: Array) -> int:
-	return KarmaJevLobo.mock_choice(menu)
-
-
-static func mock_lobo_macro(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaJevLobo.mock_macro(state, a)
 
 
 static func apply_lobo_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
@@ -637,20 +478,12 @@ static func oruga_state_text(state: Dictionary, a: Dictionary) -> String:
 	return KarmaJevOruga.state_text(state, a)
 
 
-static func build_oruga_http_body(state: Dictionary) -> Dictionary:
-	return KarmaJevOruga.build_http_body(state)
-
-
 static func build_oruga_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 	return KarmaJevOruga.build_http_body_for(state, agents)
 
 
 static func oruga_mock_choice(menu: Array) -> int:
 	return KarmaJevOruga.mock_choice(menu)
-
-
-static func mock_oruga_macro(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaJevOruga.mock_macro(state, a)
 
 
 static func apply_oruga_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:

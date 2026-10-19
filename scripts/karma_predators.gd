@@ -43,10 +43,6 @@ static func camouflaged_state(state: Dictionary) -> bool:
 	return str(state["speciesKey"]) == "sapo" and float(state.get("stillT", 0.0)) >= 2.0
 
 
-static func camouflaged_agent(agent: Dictionary) -> bool:
-	return str(agent.get("speciesKey", "")) == "sapo" and float(agent.get("stillT", 0.0)) >= 2.0
-
-
 static func canopy_blind(state: Dictionary, pred: Dictionary) -> bool:
 	if not bool(state.get("hidden", false)):
 		return false
@@ -57,10 +53,6 @@ static func canopy_blind(state: Dictionary, pred: Dictionary) -> bool:
 
 static func curled_state(state: Dictionary) -> bool:
 	return str(state["speciesKey"]) == "oruga" and float(state.get("stillT", 0.0)) >= 0.01 and float(state.get("curlCd", 0.0)) <= 0.0 and not bool(state.get("moved", false))
-
-
-static func curled_agent(agent: Dictionary) -> bool:
-	return str(agent.get("speciesKey", "")) == "oruga" and float(agent.get("stillT", 0.0)) >= 0.01 and float(agent.get("curlCd", 0.0)) <= 0.0
 
 
 static func update_predators(state: Dictionary, dt: float, rng: RandomNumberGenerator, solids: Array = []) -> void:

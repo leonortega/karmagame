@@ -8,18 +8,7 @@ extends RefCounted
 const SCHEMA_VERSION := "jev-sapo/v1"
 const QUESTION := "Que hace el sapo ahora? Elige un candidato."
 const USE_JEV := true
-
-
-static func _set_intent(a: Dictionary, kind: String, x: float, y: float, target: Variant = null) -> void:
-	a["jev_intent"] = {"kind": kind, "x": x, "y": y, "ttl": 5.0}
-	if target != null:
-		(a["jev_intent"] as Dictionary)["target"] = target
-
-
-static func _verb_ready(a: Dictionary, slot: int) -> bool:
-	if not a.has("verbCds"):
-		return true
-	return float((a["verbCds"] as Array)[slot - 1]) <= 0.0
+const MOCK_ORDER := ["eat", "drink", "flee", "toxin", "pest", "burrowin", "croak", "chorus", "seek_food", "wander"]
 
 
 static func _tongue_reach(a: Dictionary) -> float:
@@ -60,7 +49,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		var far_bug: Variant = KarmaUtils.nearest_from(ax, ay, state.get("insects", []), forage)
 		if far_bug != null:
 			menu.append({"kind": "seek_food", "label": "Seek insect", "x": float((far_bug as Dictionary)["x"]), "y": float((far_bug as Dictionary)["y"]), "target": far_bug})
-	if bug != null and _verb_ready(a, 2):
+	if bug != null and KarmaJevBridge.verb_ready(a, 2):
 		menu.append({"kind": "pest", "label": "Pest sweep", "x": float((bug as Dictionary)["x"]), "y": float((bug as Dictionary)["y"]), "target": bug})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
@@ -73,12 +62,12 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["sapo"], r, "sapo") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
 				menu.append({"kind": "flee", "label": "Flee to refuge", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
-	if pressure != null and not bool(a.get("hidden", false)) and _verb_ready(a, 3):
+	if pressure != null and not bool(a.get("hidden", false)) and KarmaJevBridge.verb_ready(a, 3):
 		menu.append({"kind": "burrowin", "label": "Burrow in", "x": ax, "y": ay})
 	var close_hunter: Variant = KarmaUtils.nearest_from(ax, ay,
 		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), 60.0)
 	var toxin_cost := float((KarmaData.VERB_DEFS["sapo"] as Array)[3]["costHp"])
-	if close_hunter != null and _verb_ready(a, 4) and float(a.get("hp", 0.0)) > toxin_cost:
+	if close_hunter != null and KarmaJevBridge.verb_ready(a, 4) and float(a.get("hp", 0.0)) > toxin_cost:
 		menu.append({"kind": "toxin", "label": "Toxin spray", "x": float((close_hunter as Dictionary)["x"]), "y": float((close_hunter as Dictionary)["y"]), "target": close_hunter})
 	if float(a.get("shoutCd", 0.0)) <= 0.0:
 		var lurker: Variant = KarmaUtils.nearest_from(ax, ay,
@@ -87,7 +76,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 			menu.append({"kind": "croak", "label": "Croak alarm", "x": float((lurker as Dictionary)["x"]), "y": float((lurker as Dictionary)["y"]), "target": lurker})
 	var choir := (state["agents"] as Array).filter(func(o):
 		return o != a and str(o.get("speciesKey", "")) == "sapo" and str(o.get("role", "")) in ["company", "fauna"] and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["groomRange"]))
-	if not choir.is_empty() and _verb_ready(a, 5):
+	if not choir.is_empty() and KarmaJevBridge.verb_ready(a, 5):
 		menu.append({"kind": "chorus", "label": "Chorus", "x": ax, "y": ay})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
 	return menu
@@ -117,37 +106,27 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 
 static func state_text(state: Dictionary, a: Dictionary) -> String:
 	var snap := build_state(state, a)
-	return "Sapo hp_frac=%.2f hambre=%d sed=%d karma=%d pa=%d hungry=%s threatened=%s pressure=%s insects=%s water=%s" % [
-		float(snap["hp_frac"]), int(snap["hambre"]), int(snap["sed"]),
-		int(snap["karma"]), int(snap["pa"]), str(snap["hungry"]),
-		str(snap["threatened"]), str(snap["pressure_near"]), str(snap["insect_near"]), str(snap["water_near"])] + KarmaJev.age_text(snap)
+	return KarmaJevBridge.state_text("Sapo", snap, "pressure=%s insects=%s water=%s",
+		[str(snap["pressure_near"]), str(snap["insect_near"]), str(snap["water_near"])])
 
 
 static func mock_choice(menu: Array) -> int:
-	var order := ["eat", "drink", "flee", "toxin", "pest", "burrowin", "croak", "chorus", "seek_food", "wander"]
-	for want in order:
-		for i in menu.size():
-			if str((menu[i] as Dictionary)["kind"]) == want:
-				return i
-	return maxi(0, menu.size() - 1)
+	return KarmaJevBridge.mock_choice(menu, MOCK_ORDER)
 
 
 static func mock_macro(state: Dictionary, a: Dictionary) -> bool:
-	var menu := build_menu(state, a)
-	if menu.is_empty():
-		return false
-	var answer := {"choice": mock_choice(menu), "probs": [1.0], "emocion": "Instinto"}
-	return apply_answer(state, a, menu, answer)
+	return KarmaJevBridge.mock_macro(state, a,
+		Callable(KarmaJevSapo, "build_menu"), MOCK_ORDER, Callable(KarmaJevSapo, "apply_answer"))
 
 
 static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
 	a["jev_emocion"] = str(answer.get("emocion", ""))
 	if bool(answer.get("target_gone", false)):
-		_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+		KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 		return true
 	var idx := int(answer.get("choice", -1))
 	if idx < 0 or idx >= menu.size():
-		_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+		KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 		return true
 	var pick := menu[idx] as Dictionary
 	if str(answer.get("emocion", "")) == "":
@@ -157,66 +136,52 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 		"eat":
 			var target: Variant = pick.get("target", null)
 			if target == null or not (state["insects"] as Array).has(target):
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 				return true
-			_set_intent(a, "eat", float(pick["x"]), float(pick["y"]), target)
+			KarmaJevBridge.set_intent(a, "eat", float(pick["x"]), float(pick["y"]), target)
 			return KarmaEat.eat_insect(state, target, a)
 		"seek_food", "drink", "flee":
-			_set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target", null))
+			KarmaJevBridge.set_intent(a, str(pick["kind"]), float(pick["x"]), float(pick["y"]), pick.get("target", null))
 			return true
 		"pest":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 2)
 		"burrowin":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 3)
 		"toxin":
 			var toxin_cost := float((KarmaData.VERB_DEFS["sapo"] as Array)[3]["costHp"])
 			if float(a.get("hp", 0.0)) <= toxin_cost:
-				_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+				KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 				return false
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 4)
 		"croak":
 			var hunter: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
 				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			if hunter == null:
 				return true
 			return KarmaGame.cast_verb_for(state, a, 1)
 		"chorus":
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 5)
 		_:
-			_set_intent(a, "wander", float(a["x"]), float(a["y"]))
+			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
 
 
 static func all_jev_sapos(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == "sapo" and str(a.get("brain", "")) != "PLAYER")
+	return KarmaJevBridge.all_agents(state, "sapo")
 
 
 static func candidate_ids(menu: Array) -> Array:
-	var ids: Array = []
-	for c in menu:
-		var kind := str((c as Dictionary)["kind"])
-		if kind != "" and not ids.has(kind):
-			ids.append(kind)
-	return ids
+	return KarmaJevBridge.candidate_ids(menu)
 
 
 static func build_batch(state: Dictionary) -> Array:
-	var batch: Array = []
-	for a in state["agents"] as Array:
-		if str(a.get("speciesKey", "")) != "sapo" or str(a.get("brain", "")) == "PLAYER":
-			continue
-		batch.append({
-			"id": str(a.get("instance_id", str(a))),
-			"state": build_state(state, a),
-			"question": QUESTION,
-			"candidates": build_menu(state, a).map(func(c): return str((c as Dictionary)["kind"]) + ": " + str((c as Dictionary)["label"])),
-		})
-	return batch
+	return KarmaJevBridge.build_batch(state, "sapo",
+		Callable(KarmaJevSapo, "build_state"), Callable(KarmaJevSapo, "build_menu"), QUESTION)
 
 
 static func build_http_body(state: Dictionary) -> Dictionary:
@@ -224,25 +189,5 @@ static func build_http_body(state: Dictionary) -> Dictionary:
 
 
 static func build_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
-	var states: Array = []
-	var menus := {}
-	var included: Array = []
-	for a in agents:
-		var menu := build_menu(state, a)
-		var criteria := {}
-		for c in menu:
-			var kind := str((c as Dictionary)["kind"])
-			var label := str((c as Dictionary)["label"])
-			if kind != "" and label != "" and not criteria.has(kind):
-				criteria[kind] = label
-		if criteria.size() < 2:
-			continue
-		var rid := "%d" % included.size()
-		states.append({
-			"id": rid,
-			"state": state_text(state, a),
-			"questions": {"intent": {"type": "choice", "instructions": QUESTION, "criteria": criteria}},
-		})
-		menus[rid] = menu
-		included.append(a)
-	return {"states": states, "menus": menus, "agents": included}
+	return KarmaJevBridge.build_http_body_for(state, agents,
+		Callable(KarmaJevSapo, "build_menu"), Callable(KarmaJevSapo, "state_text"), QUESTION)

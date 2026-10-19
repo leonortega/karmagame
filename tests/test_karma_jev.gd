@@ -265,6 +265,34 @@ func test_hunt_intent_kills_on_contact() -> void:
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 
 
+func test_apply_hunt_intent_retains_prey_target() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	_strip_to(s, a)
+	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var menu: Array = KarmaJev.build_menu(s, a)
+	var idx := _menu_kind_index(menu, "hunt")
+	assert_int(idx).is_not_equal(-1)
+	assert_bool(KarmaJev.apply_answer(s, a, menu, {"choice": idx, "probs": [1.0], "emocion": ""})).is_true()
+	assert_str(str((a["jev_intent"] as Dictionary).get("kind", ""))).is_equal("hunt")
+	assert_bool((a["jev_intent"] as Dictionary).get("target", null) == prey).is_true()
+
+
+func test_apply_hunt_intent_kills_prey_on_contact() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	_strip_to(s, a)
+	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var carrion_n := (s["carrions"] as Array).size()
+	var menu: Array = KarmaJev.build_menu(s, a)
+	var idx := _menu_kind_index(menu, "hunt")
+	assert_int(idx).is_not_equal(-1)
+	assert_bool(KarmaJev.apply_answer(s, a, menu, {"choice": idx, "probs": [1.0], "emocion": ""})).is_true()
+	KarmaAI._ai_zorro(s, a, 0.1)
+	assert_bool((s["agents"] as Array).has(prey)).is_false()
+	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
+
+
 func test_should_ask_on_threat_with_nonflee_intent() -> void:
 	var s := _fresh_zorro_state()
 	var a := _ai_zorro(s, 500.0, 500.0)
@@ -568,6 +596,35 @@ func test_jev_halcon_dive_intent_kills_and_grounds_on_contact() -> void:
 	assert_bool(bool(a.get("grounded", false))).is_true()
 
 
+func test_apply_dive_intent_retains_prey_target() -> void:
+	var s := _fresh_halcon_state()
+	var a := _ai_halcon(s, 500.0, 500.0)
+	_strip_to(s, a)
+	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var menu: Array = KarmaJev.build_halcon_menu(s, a)
+	var idx := _halcon_kind_index(menu, "dive")
+	assert_int(idx).is_not_equal(-1)
+	assert_bool(KarmaJev.apply_halcon_answer(s, a, menu, {"choice": idx, "probs": [1.0], "emocion": ""})).is_true()
+	assert_str(str((a["jev_intent"] as Dictionary).get("kind", ""))).is_equal("dive")
+	assert_bool((a["jev_intent"] as Dictionary).get("target", null) == prey).is_true()
+
+
+func test_apply_dive_intent_kills_prey_on_contact() -> void:
+	var s := _fresh_halcon_state()
+	var a := _ai_halcon(s, 500.0, 500.0)
+	_strip_to(s, a)
+	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var carrion_n := (s["carrions"] as Array).size()
+	var menu: Array = KarmaJev.build_halcon_menu(s, a)
+	var idx := _halcon_kind_index(menu, "dive")
+	assert_int(idx).is_not_equal(-1)
+	assert_bool(KarmaJev.apply_halcon_answer(s, a, menu, {"choice": idx, "probs": [1.0], "emocion": ""})).is_true()
+	KarmaAI._ai_halcon(s, a, 0.1)
+	assert_bool((s["agents"] as Array).has(prey)).is_false()
+	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
+	assert_bool(bool(a.get("grounded", false))).is_true()
+
+
 func test_jev_halcon_live_flag_skips_mock_and_wanders() -> void:
 	var s := _fresh_halcon_state()
 	var a := _ai_halcon(s, 500.0, 500.0)
@@ -627,14 +684,6 @@ func test_hunger_event_fires_once_on_edge() -> void:
 	assert_bool(KarmaJev.should_ask(s, a, 10.6, 2000.0)).is_true()
 	KarmaJev.mark_asked(s, a, 2000.0)
 	assert_bool(KarmaJev.should_ask(s, a, 10.6, 2000.0)).is_false()
-
-
-func test_pick_batch_species_alternates_when_both_due() -> void:
-	assert_str(KarmaJev.pick_batch_species(true, true, "halcon")).is_equal("zorro")
-	assert_str(KarmaJev.pick_batch_species(true, true, "zorro")).is_equal("halcon")
-	assert_str(KarmaJev.pick_batch_species(true, false, "halcon")).is_equal("zorro")
-	assert_str(KarmaJev.pick_batch_species(false, true, "zorro")).is_equal("halcon")
-	assert_str(KarmaJev.pick_batch_species(false, false, "zorro")).is_equal("")
 
 
 func _strip_to(state: Dictionary, keep: Dictionary) -> void:

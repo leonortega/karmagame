@@ -16,8 +16,6 @@ const EMOJI_SIZE := {"animal": 28.0, "food": 18.0, "terrain": 15.0, "decor": 10.
 const ANIMAL_SIZE_DELTA := {"oruga": -4.0, "sapo": -2.0, "raton": 0.0, "ardilla": 0.0, "topo": 0.0, "halcon": 4.0, "zorro": 4.0, "lobo": 6.0}
 const REFUGE_SIZE := {"old-oak": 34.0, "hollow-tree": 26.0, "thorn-bush": 20.0, "burrow-S": 15.0, "burrow-M": 15.0}
 
-const LEGEND_LINES := ["🐛oruga 🐸sapo 🐭ratón 🐿️ardilla", "🦔topo 🦅halcón 🦊zorro 🐺lobo", "🍒bayas 🍎manzana 🥕zanahoria", "🍄setas 🌰nuez 🍃hojas 🦗bicho", "🍖carroña 🕳️madriguera 🪵tronco", "🌵zarza 🌳roble 🪨roca 🌱brote"]
-
 # Visual palette (display-only; gameplay numbers stay in KarmaData.TUNING).
 const MEADOW_B := Color("#1c2620")
 const GRID_LINE := Color(1, 1, 1, 0.045)

@@ -355,28 +355,6 @@ func test_wander_fallthrough_keeps_ladder_verbs() -> void:
 	assert_float(float(a["karma"])).is_equal(k0 + float(KarmaData.TUNING["shoutKarma"]) + float(KarmaData.TUNING["tailflickKarma"])) # danger + shout on cooldown: silent tailflick, not falsecache
 
 
-func test_pick_batch_4_rotates_when_all_due() -> void:
-	assert_str(KarmaJev.pick_batch_species_4(true, true, true, true, "zorro")).is_equal("halcon")
-	assert_str(KarmaJev.pick_batch_species_4(true, true, true, true, "halcon")).is_equal("raton")
-	assert_str(KarmaJev.pick_batch_species_4(true, true, true, true, "raton")).is_equal("ardilla")
-	assert_str(KarmaJev.pick_batch_species_4(true, true, true, true, "ardilla")).is_equal("zorro")
-
-
-func test_pick_batch_4_skips_empty_species() -> void:
-	assert_str(KarmaJev.pick_batch_species_4(false, false, false, true, "zorro")).is_equal("ardilla")
-	assert_str(KarmaJev.pick_batch_species_4(true, false, false, false, "ardilla")).is_equal("zorro")
-
-
-func test_pick_batch_4_prefers_longest_waiting() -> void:
-	var served := {"zorro": 10.0, "halcon": 9.0, "raton": 8.0, "ardilla": 1.0}
-	assert_str(KarmaJev.pick_batch_species_4(true, true, true, true, "zorro", served)).is_equal("ardilla")
-
-
-func test_pick_batch_4_tie_breaks_by_rotation() -> void:
-	var served := {"zorro": 5.0, "halcon": 5.0, "raton": 5.0, "ardilla": 5.0}
-	assert_str(KarmaJev.pick_batch_species_4(true, true, true, true, "halcon", served)).is_equal("raton")
-
-
 func test_mark_served_tracks_last_served_time() -> void:
 	var s := {"time": 12.5}
 	KarmaJev.mark_served(s, "ardilla")
@@ -573,5 +551,3 @@ func test_log_decision_copies_emocion_source() -> void:
 		{"choice": 0, "probs": [1.0], "emocion": "Hambre", "emocion_source": "local"}, true, "ardilla")
 	assert_str(str(((s["jev_log_ardilla"] as Array)[0] as Dictionary)["emocion_source"])).is_equal("local")
 	KarmaJev.LOG_JEV_ARDILLA = false
-	assert_str(KarmaJev.pick_batch_species_4(false, true, false, false, "zorro")).is_equal("halcon")
-	assert_str(KarmaJev.pick_batch_species_4(false, false, false, false, "zorro")).is_equal("")

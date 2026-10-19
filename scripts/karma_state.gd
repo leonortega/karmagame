@@ -148,21 +148,12 @@ static func hunter_agents(state: Dictionary) -> Array:
 	return (state["agents"] as Array).filter(func(a): return str(a.get("role", "")) == "hunter")
 
 
-static func fauna_agents(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("role", "")) == "fauna")
-
-
 static func all_hunters(state: Dictionary) -> Array:
 	return (state["agents"] as Array).filter(func(a): return str(a.get("kind", "")) == "hunter")
 
 
 static func remove_agent(state: Dictionary, a: Dictionary) -> void:
 	(state["agents"] as Array).erase(a)
-
-
-static func player_agent(state: Dictionary) -> Dictionary:
-	return {"id": state.get("possessed", 0), "speciesKey": state["speciesKey"], "x": state["px"], "y": state["py"],
-		"hp": state["hp"], "brain": "PLAYER"}
 
 
 static func possess_member(state: Dictionary) -> void:

@@ -311,13 +311,6 @@ func test_jev_live_without_intent_holds_wander() -> void:
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
 
 
-func test_pick_batch_5_rotates_when_all_due() -> void:
-	assert_str(KarmaJev.pick_batch_species_5(true, true, true, true, true, "ardilla")).is_equal("sapo")
-	assert_str(KarmaJev.pick_batch_species_5(true, true, true, true, true, "sapo")).is_equal("zorro")
-	assert_str(KarmaJev.pick_batch_species_5(false, false, false, false, true, "zorro")).is_equal("sapo")
-	assert_str(KarmaJev.pick_batch_species_5(false, false, false, false, false, "zorro")).is_equal("")
-
-
 func test_appraise_pressure_over_hunger_is_miedo() -> void:
 	assert_str(KarmaJev.appraise_emocion({"threatened": false, "hungry": true, "pressure_near": true}, "wander")).is_equal("Miedo")
 

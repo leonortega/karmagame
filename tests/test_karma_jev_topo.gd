@@ -240,10 +240,3 @@ func test_jev_live_without_intent_holds_wander() -> void:
 	a["jev_intent"] = {}
 	KarmaAITopo.step_jev(s, a, 0.1)
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
-
-
-func test_pick_batch_6_rotates_when_all_due() -> void:
-	assert_str(KarmaJev.pick_batch_species_6(true, true, true, true, true, true, "sapo")).is_equal("topo")
-	assert_str(KarmaJev.pick_batch_species_6(true, true, true, true, true, true, "topo")).is_equal("zorro")
-	assert_str(KarmaJev.pick_batch_species_6(false, false, false, false, false, true, "zorro")).is_equal("topo")
-	assert_str(KarmaJev.pick_batch_species_6(false, false, false, false, false, false, "zorro")).is_equal("")
