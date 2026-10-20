@@ -6,7 +6,7 @@ The world draw pass rebuilds the same text layout every frame: `_pill` calls `fo
 
 - Cache shaped label text so an unchanged label at the same size and width is not re-shaped every frame.
 - Cache per-species colors once instead of parsing the data color string on every agent draw.
-- Draw the static legend as one multiline call instead of repeated label work.
+- Leave legend rendering alone: the canvas legend was removed by `2026-10-19-remove-dead-jev-api`, and the ecosystem-2d spec forbids drawing one.
 - Keep every glyph, size, color, position, and visibility rule identical.
 - No spec-level, save-format, tuning, or API changes.
 

@@ -5,7 +5,7 @@
 Provide the explorable 2D ecosystem (map, food, threats, controls, feedback) where karma decisions happen through visible movement, eating, and alerting.
 ## Requirements
 ### Requirement: Bounded world with camera follow
-The system SHALL confine play to a bounded 2D world larger than the 1600×1200 baseline (WORLD 3200×2400) and SHALL keep the camera centered on the possessed agent within world bounds. Food, refuge, and agent counts SHALL scale with world area as densities rather than fixed constants. Movement SHALL additionally resolve against static solids (per `solid-terrain`): refuges, rocks, and living plants push agents out with slide. Every agent SHALL stay inside the world margin each tick: AI fauna, company mates, and hunters are clamped to the same boundary as the player after all movement resolves, so no animal ever leaves the world.
+The system SHALL confine play to a bounded 2D world larger than the 1600×1200 baseline (WORLD 3200×2400) and SHALL keep the camera centered on the possessed agent within world bounds. Food, refuge, and water counts SHALL scale with world area as densities rather than fixed constants, and agent counts SHALL come from the rolled census per `ecosystem-census` (fixed roster for the run, player as a member) instead of fixed per-species constants plus stacked company and scripted hunters. Movement SHALL additionally resolve against static solids (per `solid-terrain`): refuges, rocks, and living plants push agents out with slide. Every agent SHALL stay inside the world margin each tick: AI fauna, company mates, and hunters are clamped to the same boundary as the player after all movement resolves, so no animal ever leaves the world.
 
 #### Scenario: Movement stays in bounds
 - **WHEN** the player moves toward any world edge for an extended time
@@ -22,6 +22,10 @@ The system SHALL confine play to a bounded 2D world larger than the 1600×1200 b
 #### Scenario: AI agents stay in bounds
 - **WHEN** any AI agent, company mate, or hunter is pushed or steered past a world edge in a tick
 - **THEN** its position resolves back inside the same boundary margin as the player and it never leaves the world
+
+#### Scenario: Rolled roster replaces stacked spawns
+- **WHEN** a new game starts
+- **THEN** total agents equal the rolled census exactly, with no extra company pack or scripted hunter multiplication on top
 
 ### Requirement: Keyboard controls for move, eat, shout, shop
 The system SHALL support WASD/arrows for movement, E for eat/drink/strike/Pounce/tongue/Dig/Dive (context by species and need: drink when thirstier with water in range, eat when hungrier with food in range, kill verbs first for carnivores), Q for shout (only for shouting species: raton, ardilla, topo, sapo), B to open/close the mid-life shop, H to hide in / exit a nearby fitting refuge, V for species-sense (Topo/Zorro only), C to carry/drop/bury a nut (Ardilla only), number keys 1-5 to cast species verbs (1-3 to buy shop items while the shop is open), and R to reincarnate from the Judgment screen only. The controls hint SHALL be rendered per possessed species (shared BASE rows plus species extras) as a list with one entry per usable binding in the right panel, each entry showing live cooldown counters in `(Ns)` style while on cooldown, and SHALL omit R from the in-life panel. Species/tier identity SHALL be displayed separately from cooldown state.
@@ -69,7 +73,7 @@ The system SHALL spawn 7 living bushes with 3 fruits each per life, SHALL mark a
 - **THEN** the bush renders dead for one `fruitRegrow` cycle, then revives with 1 fruit (per `flora-lifecycle`)
 
 ### Requirement: Predators wander and chase with contact damage
-The system SHALL populate the map with carnivore agents (zorro, lobo) plus a sapo-NPC pressure role covered by sapo agents, where carnivore AI hunts agents of any brain (PLAYER or AI) as well as the possessed agent by the trophic table (zorro: tiers 0-1 agents and mates; lobo: tier 2 agents, grounded halcons, and zorro agents), and sapo agents hop toward oruga agents in perception and snap at contact range. No predator SHALL hunt prey 2+ sizes smaller beyond contact-range snap (optimal foraging); all SHALL lose hidden agents and camp the refuge ~3s before wandering off, and carnivore kills of any agent SHALL spawn fresh carrion. Ground-predator perception SHALL additionally respect trunk cover (per `solid-terrain`); the Halcón is exempt.
+The system SHALL populate the map with the rolled carnivore communities (zorro, lobo, halcon) plus a sapo pressure role covered by sapo agents, where carnivore AI hunts agents of any brain (PLAYER or AI) as well as the possessed agent by the trophic table (zorro: tiers 0-1 agents and mates; lobo: tier 2 agents, grounded halcons, and zorro agents; lobo SHALL NOT begin hunts against T0/T1 agents by water or spawn pressure alone though contact damage still applies), and sapo agents hop toward oruga agents in perception and snap at contact range. No predator SHALL hunt prey 2+ sizes smaller beyond contact-range snap (optimal foraging); all SHALL lose hidden agents and camp the refuge ~3s before wandering off, and carnivore kills of any agent SHALL spawn fresh carrion. Ground-predator perception SHALL additionally respect trunk cover (per `solid-terrain`); the Halcón is exempt. Scripted hunters beyond the rolled fauna predators SHALL NOT spawn when the rolled communities already provide that pressure, and T0 player starts cap hunters at floor and offset from prey clusters per `ecosystem-census`.
 
 #### Scenario: Chase and bite
 - **WHEN** a Ratón agent (any brain) enters a Zorro's perception range with clear line of sight
@@ -89,7 +93,7 @@ The system SHALL populate the map with carnivore agents (zorro, lobo) plus a sap
 
 #### Scenario: Lobo only threatens the big
 - **WHEN** the player is a T0 or T1 form
-- **THEN** no Lobo is on the map
+- **THEN** lobo agents are present per the rolled census but do not begin hunts against T0/T1 agents by pressure alone, though contact damage still applies
 
 #### Scenario: Zorro flees Lobo
 - **WHEN** a Lobo enters a Zorro NPC's perception range
@@ -104,11 +108,19 @@ The system SHALL populate the map with carnivore agents (zorro, lobo) plus a sap
 - **THEN** a fresh carrion entity spawns at the kill position
 
 ### Requirement: Congeners wander and flee when saved
-The system SHALL spawn 4 congeners that wander normally and flee from predators after a successful shout.
+The system SHALL spawn each species as one loose community per the rolled census (clustered around its food anchor with jitter inside travel range, predators offset from prey) instead of a fixed 4-congener pack plus uniform scatter, where community members wander normally and flee from predators after a successful shout.
 
 #### Scenario: Alert saves congeners
 - **WHEN** the player shouts successfully
 - **THEN** congeners switch to fleeing behavior away from predators
+
+#### Scenario: Communities start in travel reach
+- **WHEN** a new game spawns a community
+- **THEN** its members start clustered near their food anchor close enough that POI-travel reaches food, water, cover, or company within wander-seek range, not scattered uniformly across the world
+
+#### Scenario: Social verbs stay castable
+- **WHEN** an AI community of a social species begins the game
+- **THEN** at least two congeners start within social-verb range of each other so groom, chorus, share, howl, regurg, and escort preconditions can be met
 
 ### Requirement: HUD and cause-effect log are always visible
 The page SHALL use a three-column disposition: a left panel with the emoji legend and the other-animals block, the canvas in the center, and a right panel with the player HUD and the player event feed. The system SHALL display species and tier separately from cooldown state, Vida with max, hambre stock, sed stock, edad as per-species animal-years alongside raw seconds (display-only), Karma value with polarity, PA with icon plus emphasized style, elapsed run time with a clear label, shout cooldown state, hidden state with refuge prompt when near a fitting refuge, carried nut state, and species-sense cooldown in the right panel. Cause-effect entries SHALL be split by subject: player entries (last 5, good/bad/info polarity) go to the right-panel feed, while AI-agent karma entries for all agent species go to the left-panel other-animals feed with the actor species emoji prefixed to the existing text. The left-panel other-animals block SHALL hold a single heading with the agent roster rows (icon, karma, vida, last deed) above the other-animals event feed, and the roster format SHALL NOT change in this change. Only karma entries SHALL appear in either feed.

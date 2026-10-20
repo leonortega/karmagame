@@ -21,10 +21,10 @@ static func other_panel_lines(state: Dictionary) -> Array:
 
 
 static func control_rows(state: Dictionary) -> Array:
-	var sk := str(state["speciesKey"])
+	var sk: String = str(state["speciesKey"])
 	var rows: Array = [{"key": "WASD/Flechas", "label": "moverse", "cd": 0.0}]
-	var e_cd := 0.0
-	var e_extra := ""
+	var e_cd: float = 0.0
+	var e_extra: String = ""
 	if sk == "zorro" and float(state.get("pounceCd", 0.0)) > 0.0:
 		e_cd = float(state["pounceCd"])
 	if sk == "topo":
@@ -37,7 +37,7 @@ static func control_rows(state: Dictionary) -> Array:
 	if KarmaData.CONTROLS_V.has(sk):
 		rows.append({"key": "V", "label": str(KarmaData.CONTROLS_V[sk]), "cd": float(state.get("senseCd", 0.0))})
 	if sk in KarmaData.CONTROLS_C:
-		var nut := " (nuez en lomo: C enterrar)" if bool(state.get("carriedNut", false)) else ""
+		var nut: String = " (nuez en lomo: C enterrar)" if bool(state.get("carriedNut", false)) else ""
 		rows.append({"key": "C", "label": "llevar/enterrar" + nut, "cd": 0.0})
 	rows.append({"key": "H", "label": "salir (hambre y sed siguen)" if bool(state.get("hidden", false)) else "esconderse", "cd": 0.0})
 	rows.append({"key": "B", "label": "tienda (1-3 comprar)", "cd": 0.0})
@@ -57,9 +57,9 @@ static func verb_rows(state: Dictionary) -> Array:
 static func shop_modal_rows(state: Dictionary) -> Array:
 	var out: Array = []
 	for it in KarmaShop.catalog_for(str(state.get("speciesKey", "raton"))):
-		var owned := KarmaShop.has_adapt(state, str(it["effect"]))
-		var afford := float(state.get("pa", 0.0)) >= float(it["cost"])
-		var mark := "✔ " if owned else ("✓ " if afford else "🔒 ")
+		var owned: bool = KarmaShop.has_adapt(state, str(it["effect"]))
+		var afford: bool = float(state.get("pa", 0.0)) >= float(it["cost"])
+		var mark: String = "✔ " if owned else ("✓ " if afford else "🔒 ")
 		out.append("%s[%s] %s (%d PA) — %s" % [mark, str(it["key"]), str(it["name"]), int(it["cost"]), str(it["desc"])])
 	return out
 
@@ -67,8 +67,8 @@ static func shop_modal_rows(state: Dictionary) -> Array:
 static func birth_blocks(pool: Array, highlight_key: String) -> Array:
 	var out: Array = []
 	for k in pool:
-		var kk := str(k)
-		var mark := "▶ " if kk == highlight_key else "· "
+		var kk: String = str(k)
+		var mark: String = "▶ " if kk == highlight_key else "· "
 		out.append("%s%s %s" % [mark, KarmaDraw.species_icon(kk), str(KarmaData.SPECIES.get(kk, {"name": kk})["name"])])
 	return out
 
@@ -83,14 +83,14 @@ static func judgment_summary(state: Dictionary) -> String:
 
 
 static func edad_line(state: Dictionary) -> String:
-	var secs := float(state.get("edad", 0.0))
-	var sk := str(state["speciesKey"])
-	var line := "Edad %ds (~%.1f años)" % [int(secs), KarmaData.animal_years(sk, secs)]
+	var secs: float = float(state.get("edad", 0.0))
+	var sk: String = str(state["speciesKey"])
+	var line: String = "Edad %ds (~%.1f años)" % [int(secs), KarmaData.animal_years(sk, secs)]
 	return line + " · %s" % str(STAGE_LABEL.get(KarmaData.age_stage(sk, secs), "joven"))
 
 
-static func bar(frac: float, width := 10) -> String:
-	var fill := int(round(clampf(frac, 0.0, 1.0) * float(width)))
+static func bar(frac: float, width: int = 10) -> String:
+	var fill: int = int(round(clampf(frac, 0.0, 1.0) * float(width)))
 	return "■".repeat(fill) + "□".repeat(maxi(0, width - fill))
 
 
@@ -114,7 +114,7 @@ static func weather_line(state: Dictionary) -> String:
 static func prompt_line(state: Dictionary) -> String:
 	if bool(state.get("hidden", false)):
 		return "Oculto — H salir · hambre y sed siguen drenando"
-	var near := (state.get("refuges", []) as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= float(KarmaData.TUNING["hideRange"]))
+	var near: Array = (state.get("refuges", []) as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= float(KarmaData.TUNING["hideRange"]))
 	var fit: Variant = null
 	for r in near:
 		if KarmaState.refuge_fits(state, r):

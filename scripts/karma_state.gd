@@ -44,10 +44,10 @@ static func blank_state(species_key: String, karma: float, pa: float) -> Diction
 	}
 
 
-static func new_run(species_key: String, carry_karma := 0.0, carry_pa := 0.0, carry_saplings := 0, rng: RandomNumberGenerator = null) -> Dictionary:
-	var r := rng if rng != null else KarmaUtils.rng()
-	var state := blank_state(species_key, carry_karma, carry_pa)
-	var roll := KarmaCensus.roll(r, species_key)
+static func new_run(species_key: String, carry_karma: float = 0.0, carry_pa: float = 0.0, carry_saplings: int = 0, rng: RandomNumberGenerator = null) -> Dictionary:
+	var r: RandomNumberGenerator = rng if rng != null else KarmaUtils.rng()
+	var state: Dictionary = blank_state(species_key, carry_karma, carry_pa)
+	var roll: Dictionary = KarmaCensus.roll(r, species_key)
 	state["census"] = roll
 	seed_food(state, carry_saplings, r)
 	seed_fauna(state, r)
@@ -68,16 +68,16 @@ static func _year_name(theme: String) -> String:
 static func seed_waters(state: Dictionary, rng: RandomNumberGenerator) -> void:
 	state["waters"] = []
 	for pt in KarmaUtils.scatter(KarmaUtils.scaled_count(int(KarmaData.TUNING["charcoCount"])), rng):
-		var ccap := water_cap_for("charco")
+		var ccap: float = water_cap_for("charco")
 		(state["waters"] as Array).append({"kind": "charco", "x": pt["x"], "y": pt["y"], "r": float(KarmaData.TUNING["charcoR"]), "level": ccap, "cap": ccap})
 	for pt in KarmaUtils.scatter(KarmaUtils.scaled_count(int(KarmaData.TUNING["lagoCount"])), rng):
-		var lcap := water_cap_for("lago")
+		var lcap: float = water_cap_for("lago")
 		(state["waters"] as Array).append({"kind": "lago", "x": pt["x"], "y": pt["y"], "r": float(KarmaData.TUNING["lagoR"]), "level": lcap, "cap": lcap})
 
 
 static func water_cap_for(kind: String) -> float:
-	var r := float(KarmaData.TUNING["lagoR"]) if kind == "lago" else float(KarmaData.TUNING["charcoR"])
-	var ratio := r / float(KarmaData.TUNING["charcoR"])
+	var r: float = float(KarmaData.TUNING["lagoR"]) if kind == "lago" else float(KarmaData.TUNING["charcoR"])
+	var ratio: float = r / float(KarmaData.TUNING["charcoR"])
 	return float(KarmaData.TUNING["waterCapCharco"]) * ratio * ratio
 
 
@@ -88,10 +88,10 @@ static func seed_food(state: Dictionary, carry_saplings: int, rng: RandomNumberG
 	# plants during play; a world seeded exactly at cap could never grow.
 	# Draws keep the old counts so the rng stream (and every downstream
 	# spawn) is unchanged; only the kept prefix shrinks.
-	var headroom := int(KarmaData.TUNING.get("floraHeadroom", 2))
+	var headroom: int = int(KarmaData.TUNING.get("floraHeadroom", 2))
 	state["bushes"] = []
-	var i := 0
-	var bush_pts := KarmaUtils.scatter_dry(state, flora_cap("berries") + extra, rng)
+	var i: int = 0
+	var bush_pts: Array[Dictionary] = KarmaUtils.scatter_dry(state, flora_cap("berries") + extra, rng)
 	for pt in bush_pts.slice(0, maxi(1, flora_cap("berries") - headroom) + extra):
 		(state["bushes"] as Array).append(KarmaUtils.mk_patch("berries", pt["x"], pt["y"], 3, {"mimic": i % 3 == 2, "mimicEaten": false}))
 		i += 1
@@ -124,12 +124,12 @@ static func seed_foes(state: Dictionary, sp: Dictionary, rng: RandomNumberGenera
 	# has no fauna equivalent) spawns here, counted against sapo in seed_fauna.
 	if int(sp["tier"]) != 0:
 		return
-	var pt := distant_pt(state, rng)
+	var pt: Dictionary = distant_pt(state, rng)
 	(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, "saponpc", float(pt["x"]), float(pt["y"]), 0)))
 
 
 static func mk_agent(a: Dictionary) -> Dictionary:
-	var base := {"brain": "AI", "kind": "grazer", "hp": 60.0, "hambre": 100.0, "sed": 100.0, "edad": 0.0,
+	var base: Dictionary = {"brain": "AI", "kind": "grazer", "hp": 60.0, "hambre": 100.0, "sed": 100.0, "edad": 0.0,
 		"larder": 0, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": [], "verbCds": [0.0, 0.0, 0.0, 0.0, 0.0]}
 	for k in a:
 		base[k] = a[k]
@@ -181,7 +181,7 @@ static func fauna_count(k: String) -> int:
 
 static func spawn_fauna(state: Dictionary, k: String, x: float, y: float) -> Dictionary:
 	var carnivore: bool = (KarmaData.DIET[k] as Array).has("mates")
-	var a := mk_agent({"role": "fauna", "speciesKey": k, "hp": float(KarmaData.SPECIES[k]["maxHp"]), "x": x, "y": y,
+	var a: Dictionary = mk_agent({"role": "fauna", "speciesKey": k, "hp": float(KarmaData.SPECIES[k]["maxHp"]), "x": x, "y": y,
 		"face": {"x": 1.0, "y": 0.0}, "kind": "hunter" if carnivore else "grazer"})
 	if carnivore:
 		a["type"] = k
@@ -207,17 +207,17 @@ static func seed_fauna(state: Dictionary, rng: RandomNumberGenerator) -> void:
 		return
 	var counts: Dictionary = (state["census"] as Dictionary)["counts"]
 	for k in counts:
-		var n := int(counts[k])
+		var n: int = int(counts[k])
 		if str(k) == "sapo" and int(state["sp"]["tier"]) == 0:
 			n -= 1 # the saponpc pressure hunter spawns in seed_foes instead
 		if str(k) in ["halcon", "zorro", "lobo"]:
 			for i in n:
-				var far := distant_pt(state, rng)
+				var far: Dictionary = distant_pt(state, rng)
 				spawn_fauna(state, str(k), float(far["x"]), float(far["y"]))
 			continue
-		var anchor := community_anchor(state, str(k), rng)
+		var anchor: Dictionary = community_anchor(state, str(k), rng)
 		for i in n:
-			var mp := member_pt(state, anchor, i, rng)
+			var mp: Dictionary = member_pt(state, anchor, i, rng)
 			if str(k) == str(state["speciesKey"]):
 				spawn_company(state, float(mp["x"]), float(mp["y"]))
 			else:
@@ -225,7 +225,7 @@ static func seed_fauna(state: Dictionary, rng: RandomNumberGenerator) -> void:
 
 
 static func community_anchor(state: Dictionary, species_key: String, rng: RandomNumberGenerator) -> Dictionary:
-	var spots := []
+	var spots: Array = []
 	match species_key:
 		"oruga":
 			spots = state.get("clumps", [])
@@ -243,10 +243,10 @@ static func community_anchor(state: Dictionary, species_key: String, rng: Random
 
 
 static func member_pt(state: Dictionary, anchor: Dictionary, i: int, rng: RandomNumberGenerator) -> Dictionary:
-	var pt := {"x": float(anchor["x"]), "y": float(anchor["y"])}
+	var pt: Dictionary = {"x": float(anchor["x"]), "y": float(anchor["y"])}
 	if i == 1:
 		# Hearth pair: guarantees two congeners start within social-verb range.
-		var ang := rng.randf() * TAU
+		var ang: float = rng.randf() * TAU
 		pt = {"x": float(anchor["x"]) + cos(ang) * 20.0, "y": float(anchor["y"]) + sin(ang) * 20.0}
 	elif i > 1:
 		pt = {"x": float(anchor["x"]) + rng.randf() * 500.0 - 250.0,
@@ -261,10 +261,10 @@ static func spawn_company(state: Dictionary, x: float, y: float) -> void:
 
 static func distant_pt(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
 	var best: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
-	var bd := -1.0
+	var bd: float = -1.0
 	for i in 5:
 		var pt: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
-		var d := Vector2(float(pt["x"]), float(pt["y"])).distance_to(Vector2(float(state["px"]), float(state["py"])))
+		var d: float = Vector2(float(pt["x"]), float(pt["y"])).distance_to(Vector2(float(state["px"]), float(state["py"])))
 		for h in all_hunters(state):
 			d = minf(d, Vector2(float(pt["x"]), float(pt["y"])).distance_to(Vector2(float(h["x"]), float(h["y"]))))
 		if d > bd:
@@ -277,25 +277,25 @@ static func respawn_missing(state: Dictionary, rng: RandomNumberGenerator) -> vo
 	# Tier-0 worlds keep one scripted pressure hunter (saponpc). Rebuild it before
 	# the census top-up so it fills the reserved sapo slot instead of a grazer.
 	if int(state["sp"]["tier"]) == 0 and hunter_agents(state).is_empty():
-		var ph := distant_pt(state, rng)
+		var ph: Dictionary = distant_pt(state, rng)
 		(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, "saponpc", float(ph["x"]), float(ph["y"]), 0)))
-	var targets := {}
+	var targets: Dictionary = {}
 	if state.has("census"):
 		targets = ((state["census"] as Dictionary)["counts"] as Dictionary).duplicate()
 	else:
 		for fk in (KarmaData.POP["faunaFloor"] as Dictionary):
 			targets[str(fk)] = fauna_count(str(fk))
 	for k in targets:
-		var n := (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == str(k)).size()
+		var n: int = (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == str(k)).size()
 		if str(state["speciesKey"]) == str(k):
 			n += 1
 		if n < int(targets[k]):
-			var pt := distant_pt(state, rng)
+			var pt: Dictionary = distant_pt(state, rng)
 			spawn_fauna(state, str(k), float(pt["x"]), float(pt["y"]))
 
 
 static func eff_speed(state: Dictionary) -> float:
-	var swift := 1.15 if KarmaShop.has_adapt(state, "swift") else 1.0
+	var swift: float = 1.15 if KarmaShop.has_adapt(state, "swift") else 1.0
 	return float(state["sp"]["speed"]) * swift * KarmaData.speed_mult_for(str(state.get("speciesKey", "raton")), float(state.get("edad", 0.0)))
 
 
@@ -350,9 +350,9 @@ static func tracked_carrion(state: Dictionary) -> Variant:
 static func reincarnate(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
 	if not bool(state.get("dead", false)):
 		return state
-	var next := str(state.get("pendingNext", "raton"))
-	var carry_karma := roundf(float(state.get("karma", 0.0)) * 0.2)
-	var carry_pa := float(state.get("pa", 0.0))
+	var next: String = str(state.get("pendingNext", "raton"))
+	var carry_karma: float = roundf(float(state.get("karma", 0.0)) * 0.2)
+	var carry_pa: float = float(state.get("pa", 0.0))
 	return possess_or_spawn(state, next, carry_karma, carry_pa, int(state.get("saplings", 0)), rng)
 
 
@@ -371,9 +371,9 @@ static func possess_or_spawn(state: Dictionary, next: String, carry_karma: float
 		at = KarmaUtils.scatter_dry(state, 1, rng)[0]
 		if not KarmaUtils.skips_water(next, false):
 			KarmaUtils.nudge_dry(state, at)
-	var keep := ["bushes", "shrubs", "patches", "clusters", "clumps", "oaks", "insects",
+	var keep: Array[String] = ["bushes", "shrubs", "patches", "clusters", "clumps", "oaks", "insects",
 		"refuges", "carrions", "agents", "seedlings", "rocks", "waters"]
-	var fresh := blank_state(next, carry_karma, carry_pa)
+	var fresh: Dictionary = blank_state(next, carry_karma, carry_pa)
 	for k in keep:
 		fresh[k] = state[k]
 	if state.has("census"):
@@ -405,7 +405,7 @@ static func toggle_hide(state: Dictionary) -> bool:
 		state["hideRef"] = null
 		add_log(state, null, "Sales del escondite")
 		return true
-	var near := (state["refuges"] as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= float(KarmaData.TUNING["hideRange"]))
+	var near: Array = (state["refuges"] as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= float(KarmaData.TUNING["hideRange"]))
 	if near.is_empty():
 		return false
 	var fit: Variant = null
@@ -440,7 +440,7 @@ static func try_shout(state: Dictionary) -> bool:
 	return true
 
 
-static func add_karma(state: Dictionary, agent: Variant, n: float, msg := "") -> void:
+static func add_karma(state: Dictionary, agent: Variant, n: float, msg: String = "") -> void:
 	var t: Dictionary = agent if agent != null else state
 	t["karma"] = clampf(float(t.get("karma", 0.0)) + n, -100.0, 100.0)
 	if msg.is_empty():
@@ -473,7 +473,7 @@ static func ai_try_shout(state: Dictionary, agent: Dictionary) -> bool:
 		return false
 	agent["shoutCd"] = float(KarmaData.TUNING["shoutCooldown"])
 	agent["lureTimer"] = float(KarmaData.TUNING["aiShoutLureTime"])
-	var label := str(KarmaData.SPECIES.get(str(agent.get("speciesKey", "")), {}).get("name", agent.get("speciesKey", "")))
+	var label: String = str(KarmaData.SPECIES.get(str(agent.get("speciesKey", "")), {}).get("name", agent.get("speciesKey", "")))
 	add_karma(state, agent, float(KarmaData.TUNING["shoutKarma"]), "Grito de %s (+karma)" % label.to_lower())
 	add_pa(state, agent, float(KarmaData.TUNING["shoutPa"]))
 	for m in company_agents(state):

@@ -19,13 +19,13 @@ static func draw_from(pool: Array, rng: RandomNumberGenerator) -> String:
 
 
 static func judge(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
-	var karma := float(state.get("karma", 0.0))
-	var pool := pool_for(karma)
-	var next := draw_from(pool, rng)
+	var karma: float = float(state.get("karma", 0.0))
+	var pool: Array = pool_for(karma)
+	var next: String = draw_from(pool, rng)
 	var names: Array = []
 	for k in pool:
 		names.append(str(KarmaData.SPECIES[k]["name"]))
-	var reason := ""
+	var reason: String = ""
 	if karma <= float(KarmaData.TUNING["tierDownKarma"]):
 		reason = "Karma %d ≤ -50 → involución: los dioses te devuelven como Oruga." % int(karma)
 	elif karma >= float(KarmaData.TUNING["tierUpKarma"]):
@@ -63,7 +63,7 @@ static func has_adapt(t: Dictionary, effect: String) -> bool:
 static func buy_item(state: Dictionary, target: Dictionary, item_id: String) -> Dictionary:
 	if bool(state.get("dead", false)):
 		return {}
-	var item := {}
+	var item: Dictionary = {}
 	for it in catalog_for(str(target.get("speciesKey", state.get("speciesKey", "raton")))):
 		if str(it["id"]) == item_id:
 			item = it

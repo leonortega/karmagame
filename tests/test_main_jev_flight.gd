@@ -89,6 +89,24 @@ func test_busy_poll_notes_skip_without_sending() -> void:
 	assert_bool(((s["jev_poll"] as Dictionary)["sent"] as Dictionary).is_empty()).is_true()
 
 
+func test_multi_species_poll_sends_one_due_species_then_notes_busy_skip() -> void:
+	var s := KarmaState.blank_state("raton", 0.0, 0.0)
+	KarmaState.spawn_fauna(s, "zorro", 500.0, 500.0)
+	KarmaState.spawn_fauna(s, "halcon", 600.0, 600.0)
+	var main := _boot(s)
+	main.set("_jev_last_species", "halcon")
+	main.call("_jev_poll")
+	assert_bool(bool(main.get("_jev_busy"))).is_true()
+	assert_str(str(main.get("_jev_last_species"))).is_equal("zorro")
+	var sent := (s["jev_poll"] as Dictionary)["sent"] as Dictionary
+	assert_int(int(sent.get("zorro", 0))).is_equal(1)
+	assert_int(int(sent.get("halcon", 0))).is_equal(0)
+	main.call("_jev_poll")
+	assert_int(int((s["jev_poll"] as Dictionary)["busy_skip"])).is_equal(1)
+	assert_int(int(sent.get("zorro", 0))).is_equal(1)
+	assert_int(int(sent.get("halcon", 0))).is_equal(0)
+
+
 func test_flush_log_advances_species_counter() -> void:
 	var s := _zorro_ready()
 	var main := _boot(s)

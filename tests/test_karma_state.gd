@@ -166,7 +166,7 @@ func test_lobo_does_not_hunt_t0_agents() -> void:
 	var prey: Dictionary = KarmaState.spawn_fauna(s, "oruga", 550.0, 500.0)
 	var t: Dictionary = KarmaData.PRED["lobo"]
 	var dp := Vector2(float(s["px"]), float(s["py"])).distance_to(Vector2(500.0, 500.0))
-	var hit := KarmaPredators.pick_target(s, lobo, t, dp, false, false, _rng, [])
+	var hit := KarmaPredators.pick_target(s, lobo, t, dp, false, false, _rng, KarmaPredators.stalk_victims(s, lobo))
 	assert_str(str(hit["hunting"])).is_equal("")
 	var dead: Array = []
 	KarmaPredators.step_predator(s, lobo, 0.1, dead, _rng, [])

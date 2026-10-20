@@ -61,10 +61,10 @@ const PRED_FALLBACK := {"name": "Depredador", "speed": 150.0, "perception": 250.
 const T1POOL := ["raton", "ardilla", "topo", "sapo"]
 const T2POOL := ["halcon", "zorro", "lobo"]
 
-static var TUNING := _build_tuning()
+static var TUNING: Dictionary = _build_tuning()
 
 static func _build_tuning() -> Dictionary:
-	var hunger := 160.0 / (30.0 * 60.0 * 0.7)
+	var hunger: float = 160.0 / (30.0 * 60.0 * 0.7)
 	return {
 		"hungerPerSec": hunger,
 		"vidaRegenPerSec": hunger * 2.0,
@@ -286,8 +286,8 @@ static func senescence_row(species_key: String) -> Dictionary:
 
 
 static func age_stage(species_key: String, secs: float) -> String:
-	var row := senescence_row(species_key)
-	var years := animal_years(species_key, secs)
+	var row: Dictionary = senescence_row(species_key)
+	var years: float = animal_years(species_key, secs)
 	if years < float(row["prime"]):
 		return "prime"
 	if years < float(row["frail"]):
@@ -296,16 +296,16 @@ static func age_stage(species_key: String, secs: float) -> String:
 
 
 static func _senescence_t(species_key: String, secs: float) -> float:
-	var row := senescence_row(species_key)
-	var years := animal_years(species_key, secs)
-	var span := float(row["frail"]) - float(row["prime"])
+	var row: Dictionary = senescence_row(species_key)
+	var years: float = animal_years(species_key, secs)
+	var span: float = float(row["frail"]) - float(row["prime"])
 	if span <= 0.0:
 		return 1.0
 	return clampf((years - float(row["prime"])) / span, 0.0, 1.0)
 
 
 static func speed_mult_for(species_key: String, secs: float) -> float:
-	var row := senescence_row(species_key)
+	var row: Dictionary = senescence_row(species_key)
 	return 1.0 - _senescence_t(species_key, secs) * (1.0 - float(row["speed"]))
 
 
@@ -315,17 +315,17 @@ static func aged_speed(species_key: String, base: float, secs: float) -> float:
 
 
 static func force_mult_for(species_key: String, secs: float) -> float:
-	var row := senescence_row(species_key)
+	var row: Dictionary = senescence_row(species_key)
 	return 1.0 - _senescence_t(species_key, secs) * (1.0 - float(row["force"]))
 
 
 static func regen_mult_for(species_key: String, secs: float) -> float:
-	var row := senescence_row(species_key)
+	var row: Dictionary = senescence_row(species_key)
 	return 1.0 - _senescence_t(species_key, secs) * (1.0 - float(row["regen"]))
 
 
 static func action_time_mult_for(species_key: String, secs: float) -> float:
-	var row := senescence_row(species_key)
+	var row: Dictionary = senescence_row(species_key)
 	return 1.0 + _senescence_t(species_key, secs) * (float(row["action"]) - 1.0)
 
 
@@ -334,7 +334,7 @@ static func aged_time(actor: Dictionary, base: float) -> float:
 
 
 static func frailty_mult_for(species_key: String, secs: float) -> float:
-	var row := senescence_row(species_key)
+	var row: Dictionary = senescence_row(species_key)
 	return 1.0 + _senescence_t(species_key, secs) * (float(row["frailty"]) - 1.0)
 
 
@@ -343,6 +343,6 @@ static func is_natural_death(species_key: String, secs: float) -> bool:
 
 
 static func scaled_damage(base: float, attacker: Dictionary, victim: Dictionary) -> float:
-	var atk_force := force_mult_for(str(attacker.get("speciesKey", "raton")), float(attacker.get("edad", 0.0)))
-	var vic_frailty := frailty_mult_for(str(victim.get("speciesKey", "raton")), float(victim.get("edad", 0.0)))
+	var atk_force: float = force_mult_for(str(attacker.get("speciesKey", "raton")), float(attacker.get("edad", 0.0)))
+	var vic_frailty: float = frailty_mult_for(str(victim.get("speciesKey", "raton")), float(victim.get("edad", 0.0)))
 	return base * atk_force * vic_frailty

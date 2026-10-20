@@ -46,6 +46,8 @@ const HP_LOW := Color("#ef5350")
 # Display-only world dressing step (gameplay counts stay in TUNING).
 const GRID_STEP := 160.0
 
+static var _species_colors: Dictionary = {}
+
 
 static func species_icon(form: String) -> String:
 	return str(SPECIES_ICON.get(form, "❓"))
@@ -84,15 +86,18 @@ static func carrion_look(stage: String) -> Dictionary:
 
 
 static func water_disc(w: Dictionary) -> Dictionary:
-	var r := float(w["r"])
-	var cap := float(w.get("cap", 0.0))
-	var frac := 1.0 if cap <= 0.0 else clampf(float(w.get("level", cap)) / cap, 0.0, 1.0)
+	var r: float = float(w["r"])
+	var cap: float = float(w.get("cap", 0.0))
+	var frac: float = 1.0 if cap <= 0.0 else clampf(float(w.get("level", cap)) / cap, 0.0, 1.0)
 	return {"r": r, "fill": r * sqrt(frac), "dry": frac <= 0.0,
 		"color": WATER_LAGO if str(w.get("kind", "")) == "lago" else WATER_CHARCO}
 
 
 static func species_medal(form: String) -> Color:
-	return Color(str(KarmaData.SPECIES.get(form, {"color": "#ffffff"})["color"]))
+	if _species_colors.is_empty():
+		for key in KarmaData.SPECIES:
+			_species_colors[key] = Color(str((KarmaData.SPECIES[key] as Dictionary)["color"]))
+	return _species_colors.get(form, Color("#ffffff"))
 
 
 static func food_medal(kind: String) -> Color:

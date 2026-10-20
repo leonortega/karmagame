@@ -9,6 +9,10 @@ func test_species_medal_matches_species_color() -> void:
 		assert_str(KarmaDraw.species_medal(str(k)).to_html()).is_equal(Color(str((KarmaData.SPECIES[k] as Dictionary)["color"])).to_html())
 
 
+func test_species_medal_unknown_form_falls_back_to_white() -> void:
+	assert_str(KarmaDraw.species_medal("nope").to_html()).is_equal(Color("#ffffff").to_html())
+
+
 func test_food_medals_are_distinct_per_kind() -> void:
 	var seen := {}
 	for kind in ["berries", "apples", "carrots", "mushrooms", "nuts", "leaves", "insects", "carrion"]:

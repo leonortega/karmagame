@@ -16,10 +16,10 @@ static func karma_sight_mult(karma: float) -> float:
 
 static func nearest_victim_karma_aware(ax: float, ay: float, list: Array, max_d: float) -> Variant:
 	var best: Variant = null
-	var be := max_d
+	var be: float = max_d
 	for o in list:
-		var d := Vector2(ax, ay).distance_to(Vector2(float(o["x"]), float(o["y"])))
-		var e := d / karma_sight_mult(float(o.get("karma", 0.0)))
+		var d: float = Vector2(ax, ay).distance_to(Vector2(float(o["x"]), float(o["y"])))
+		var e: float = d / karma_sight_mult(float(o.get("karma", 0.0)))
 		if e < be:
 			be = e
 			best = o
@@ -33,7 +33,7 @@ static func ai_pred_row(a: Dictionary) -> Dictionary:
 
 
 static func nearest_ai_prey(state: Dictionary, a: Dictionary, rnge: float) -> Variant:
-	var prey := (state["agents"] as Array).filter(func(v):
+	var prey: Array = (state["agents"] as Array).filter(func(v):
 		if v == a or str(v.get("brain", "")) == "PLAYER" or str(v.get("role", "")) == "hunter" or bool(v.get("hidden", false)):
 			return false
 		if str(a.get("speciesKey", "")) == "halcon":
@@ -43,15 +43,15 @@ static func nearest_ai_prey(state: Dictionary, a: Dictionary, rnge: float) -> Va
 
 
 static func ai_hunt_eat(state: Dictionary, a: Dictionary, prey: Dictionary, dt: float) -> bool:
-	var d := Vector2(float(prey["x"]), float(prey["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
+	var d: float = Vector2(float(prey["x"]), float(prey["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
 	if d == 0.0:
 		d = 1.0
-	var kill_range := 60.0 if str(a.get("speciesKey", "")) == "halcon" else 20.0
+	var kill_range: float = 60.0 if str(a.get("speciesKey", "")) == "halcon" else 20.0
 	if d <= kill_range:
 		if str(a.get("speciesKey", "")) == "halcon":
 			a["x"] = float(prey["x"])
 			a["y"] = float(prey["y"])
-		var lethal := KarmaEat.resolve_strike(state, a, prey, KarmaState.eff_max_hp_for(prey))
+		var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaState.eff_max_hp_for(prey))
 		if lethal and str(a.get("speciesKey", "")) == "zorro":
 			a["satedT"] = float(KarmaData.TUNING["satedTime"])
 		if lethal:
@@ -62,19 +62,32 @@ static func ai_hunt_eat(state: Dictionary, a: Dictionary, prey: Dictionary, dt: 
 	return false
 
 
+static func _hunter_within(state: Dictionary, a: Dictionary, max_d: float, include_kind: bool = false) -> bool:
+	var ax: float = float(a["x"])
+	var ay: float = float(a["y"])
+	for o in state["agents"]:
+		var is_hunter: bool = str(o.get("role", "")) == "hunter"
+		if include_kind and not is_hunter:
+			is_hunter = str(o.get("kind", "")) == "hunter"
+		if not is_hunter:
+			continue
+		if Vector2(ax, ay).distance_to(Vector2(float(o["x"]), float(o["y"]))) < max_d:
+			return true
+	return false
+
+
 static func ai_flee(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	if not KarmaData.PRED.has(str(a.get("speciesKey", ""))):
 		return false
 	var fears: Array = (KarmaData.PRED[str(a["speciesKey"])] as Dictionary).get("fears", [])
 	if fears.is_empty():
 		return false
-	var fear: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter") and str(o.get("type", "")) in fears), 200.0)
+	var fear: Variant = KarmaUtils.nearest_hunter_in_fears(float(a["x"]), float(a["y"]), state["agents"], fears, 200.0)
 	if fear == null:
 		return false
-	var dx := float(a["x"]) - float((fear as Dictionary)["x"])
-	var dy := float(a["y"]) - float((fear as Dictionary)["y"])
-	var d := Vector2(dx, dy).length()
+	var dx: float = float(a["x"]) - float((fear as Dictionary)["x"])
+	var dy: float = float(a["y"]) - float((fear as Dictionary)["y"])
+	var d: float = Vector2(dx, dy).length()
 	if d == 0.0:
 		d = 1.0
 	dx /= d
@@ -85,13 +98,13 @@ static func ai_flee(state: Dictionary, a: Dictionary, dt: float) -> bool:
 			cover = r
 			break
 	if cover != null:
-		var cd := Vector2(float((cover as Dictionary)["x"]), float((cover as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
+		var cd: float = Vector2(float((cover as Dictionary)["x"]), float((cover as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
 		if cd == 0.0:
 			cd = 1.0
-		var cover_w := float(KarmaData.TUNING["frailCoverBias"]) if is_senesced(a) else 0.4
+		var cover_w: float = float(KarmaData.TUNING["frailCoverBias"]) if is_senesced(a) else 0.4
 		dx = dx * (1.0 - cover_w) + (float((cover as Dictionary)["x"]) - float(a["x"])) / cd * cover_w
 		dy = dy * (1.0 - cover_w) + (float((cover as Dictionary)["y"]) - float(a["y"])) / cd * cover_w
-	var dl := Vector2(dx, dy).length()
+	var dl: float = Vector2(dx, dy).length()
 	if dl == 0.0:
 		dl = 1.0
 	KarmaGame.move_toward(state, a, float(a["x"]) + dx / dl * 100.0, float(a["y"]) + dy / dl * 100.0, 1.0, dt)
@@ -103,8 +116,7 @@ static func ai_shout_if_ready(state: Dictionary, a: Dictionary) -> bool:
 		return false
 	if float(a.get("shoutCd", 0.0)) > 0.0:
 		return false
-	if KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"])) == null:
+	if not _hunter_within(state, a, float(KarmaData.TUNING["shoutLureRange"])):
 		return false
 	return KarmaState.ai_try_shout(state, a)
 
@@ -126,7 +138,7 @@ static func ai_base(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if float(a.get("lureTimer", 0.0)) > 0.0:
 		var p: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), KarmaState.all_hunters(state), float(KarmaData.TUNING["shoutLureRange"]))
 		if p != null:
-			var d := Vector2(float(a["x"]), float(a["y"])).distance_to(Vector2(float((p as Dictionary)["x"]), float((p as Dictionary)["y"])))
+			var d: float = Vector2(float(a["x"]), float(a["y"])).distance_to(Vector2(float((p as Dictionary)["x"]), float((p as Dictionary)["y"])))
 			if d == 0.0:
 				d = 1.0
 			(p as Dictionary)["x"] = float((p as Dictionary)["x"]) + (float(a["x"]) - float((p as Dictionary)["x"])) / d * 60.0 * dt
@@ -143,18 +155,18 @@ static func ai_strike(state: Dictionary, a: Dictionary, p: Dictionary) -> void:
 
 
 static func ai_buy_adaptation(state: Dictionary, a: Dictionary) -> bool:
-	var cat := KarmaShop.catalog_for(str(a.get("speciesKey", "")))
+	var cat: Array = KarmaShop.catalog_for(str(a.get("speciesKey", "")))
 	if cat.is_empty():
 		return false
 	var owned: Dictionary = a.get("owned", {})
-	var all_owned := true
+	var all_owned: bool = true
 	for it in cat:
 		if not bool(owned.get(str(it["id"]), false)):
 			all_owned = false
 			break
 	if all_owned:
 		return false
-	var max_hp := KarmaState.eff_max_hp_for(a)
+	var max_hp: float = KarmaState.eff_max_hp_for(a)
 	var want: Variant = null
 	if float(a.get("hp", max_hp)) < max_hp / 2.0:
 		for it in cat:
@@ -185,14 +197,14 @@ static func is_senesced(a: Dictionary) -> bool:
 
 
 static func prefer_carrion(a: Dictionary) -> bool:
-	var max_hp := ai_max_hp(a)
+	var max_hp: float = ai_max_hp(a)
 	if float(a.get("hp", max_hp)) < float(KarmaData.TUNING["scavengeHpFrac"]) * max_hp:
 		return true
 	return is_senesced(a)
 
 
 static func fear_range_for(a: Dictionary) -> float:
-	var base := float(KarmaData.TUNING["aiFearRange"])
+	var base: float = float(KarmaData.TUNING["aiFearRange"])
 	return base * (float(KarmaData.TUNING["frailFearMult"]) if is_senesced(a) else 1.0)
 
 
@@ -213,7 +225,7 @@ static func ai_forage(state: Dictionary, a: Dictionary, dt: float) -> bool:
 		return false
 	var rnge: float = float(KarmaData.SPECIES[str(a["speciesKey"])]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
 	var target: Variant = null
-	var bd := rnge
+	var bd: float = rnge
 	if (KarmaData.DIET[str(a["speciesKey"])] as Array).has("insects"):
 		var ins: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("insects", []), rnge)
 		if ins != null:
@@ -232,9 +244,9 @@ static func ai_urgent_seek(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	if float(a.get("hambre", 100.0)) > float(KarmaData.TUNING["regenHambre"]):
 		return false
 	var diet: Array = KarmaData.DIET.get(str(a.get("speciesKey", "raton")), [])
-	var seek := float(KarmaData.TUNING["wanderSeekRange"])
-	var ax := float(a["x"])
-	var ay := float(a["y"])
+	var seek: float = float(KarmaData.TUNING["wanderSeekRange"])
+	var ax: float = float(a["x"])
+	var ay: float = float(a["y"])
 	var target: Variant = null
 	if diet.has("carrion"):
 		target = KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), seek)
@@ -249,7 +261,7 @@ static func ai_urgent_seek(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	return true
 
 
-static func ai_drink(state: Dictionary, a: Dictionary, rnge := -1.0) -> bool:
+static func ai_drink(state: Dictionary, a: Dictionary, rnge: float = -1.0) -> bool:
 	var r: float = rnge if rnge >= 0.0 else float(KarmaData.TUNING["drinkRange"])
 	var w: Variant = KarmaUtils.nearest_water_for(state, float(a["x"]), float(a["y"]), r)
 	return w != null and KarmaEat.drink_water(state, w, a)
@@ -263,9 +275,9 @@ static func ai_seek_water(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	var rnge: float = float(KarmaData.SPECIES[str(a["speciesKey"])]["vision"]) * float(KarmaData.TUNING["forageRangeMult"])
 	var wet: Array = (state.get("waters", []) as Array).filter(func(w): return float(w.get("level", 1.0)) > 0.0)
 	var best: Variant = null
-	var bd := rnge
+	var bd: float = rnge
 	for w in wet:
-		var d := Vector2(float(w["x"]), float(w["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) - float(w["r"])
+		var d: float = Vector2(float(w["x"]), float(w["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) - float(w["r"])
 		if d < bd:
 			bd = d
 			best = w
@@ -317,11 +329,10 @@ static func ai_maybe_verb(state: Dictionary, a: Dictionary, dt: float) -> bool:
 		"ardilla":
 			if bool(a.get("carriedNut", false)) and is_hungry(a):
 				a["carriedNut"] = false
-			var danger: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
-			if danger != null and float(a.get("shoutCd", 0.0)) > 0.0 and KarmaGame.cast_verb_for(state, a, 1):
+			var danger: bool = _hunter_within(state, a, float(KarmaData.TUNING["shoutLureRange"]))
+			if danger and float(a.get("shoutCd", 0.0)) > 0.0 and KarmaGame.cast_verb_for(state, a, 1):
 				return true
-			if danger != null and KarmaGame.cast_verb_for(state, a, 3):
+			if danger and KarmaGame.cast_verb_for(state, a, 3):
 				return true
 			if bool(a.get("carriedNut", false)):
 				return KarmaGame.cast_verb_for(state, a, 2)
@@ -340,15 +351,11 @@ static func ai_maybe_verb(state: Dictionary, a: Dictionary, dt: float) -> bool:
 				return true
 			if KarmaGame.cast_verb_for(state, a, 2):
 				return true
-			var pressure: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"]))
-			if pressure != null:
+			if _hunter_within(state, a, float(KarmaData.TUNING["aiFearRange"])):
 				return KarmaGame.cast_verb_for(state, a, 3)
 			return KarmaGame.cast_verb_for(state, a, 5)
 		"oruga":
-			var h: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), 150.0)
-			if h != null:
+			if _hunter_within(state, a, 150.0, true):
 				return KarmaGame.cast_verb_for(state, a, 2)
 			return KarmaGame.cast_verb_for(state, a, 4)
 		"lobo":
@@ -363,7 +370,7 @@ static func ai_maybe_verb(state: Dictionary, a: Dictionary, dt: float) -> bool:
 static func ai_try_hide(state: Dictionary, a: Dictionary) -> bool:
 	if bool(a.get("hidden", false)):
 		return true
-	var near := (state["refuges"] as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) <= float(KarmaData.TUNING["hideRange"]))
+	var near: Array = (state["refuges"] as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) <= float(KarmaData.TUNING["hideRange"]))
 	for r in near:
 		if refuge_fits_size(KarmaData.SPECIES[str(a["speciesKey"])], r, str(a["speciesKey"])):
 			a["hidden"] = true
@@ -384,17 +391,26 @@ static func refuge_fits_size(sp: Dictionary, r: Dictionary, key: String) -> bool
 
 
 static func is_hunted(state: Dictionary, a: Dictionary) -> bool:
-	return KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" and KarmaPredators.edible_for(str(o.get("type", "")), str(a.get("speciesKey", "")), 1e9)), fear_range_for(a)) != null
+	var ax: float = float(a["x"])
+	var ay: float = float(a["y"])
+	var max_d: float = fear_range_for(a)
+	var species: String = str(a.get("speciesKey", ""))
+	for o in state["agents"]:
+		if str(o.get("role", "")) != "hunter":
+			continue
+		if not KarmaPredators.edible_for(str(o.get("type", "")), species, 1e9):
+			continue
+		if Vector2(ax, ay).distance_to(Vector2(float(o["x"]), float(o["y"]))) < max_d:
+			return true
+	return false
 
 
 static func ai_hide_tick(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	if not bool(a.get("hidden", false)):
 		return false
 	a["hideT"] = float(a.get("hideT", 0.0)) - dt
-	var danger: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(ai_pred_row(a).get("perception", 200.0)))
-	if float(a.get("hideT", 0.0)) <= 0.0 or danger == null:
+	var danger: bool = _hunter_within(state, a, float(ai_pred_row(a).get("perception", 200.0)))
+	if float(a.get("hideT", 0.0)) <= 0.0 or not danger:
 		a["hidden"] = false
 		a["hideRef"] = null
 	return true
@@ -406,7 +422,7 @@ static func ai_seek_carrion(state: Dictionary, a: Dictionary, dt: float) -> bool
 		(state.get("carrions", []) as Array).filter(func(k): return not bool(k.get("ceded", false)) or is_hungry(a)), percept)
 	if c == null:
 		return false
-	var d := Vector2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
+	var d: float = Vector2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
 	if d == 0.0:
 		d = 1.0
 	if d > float(KarmaData.TUNING["eatRange"]):
