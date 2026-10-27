@@ -84,11 +84,6 @@ func test_all_agents_filters_species_and_player() -> void:
 	assert_that(KarmaJevBridge.all_agents(state, "raton")).is_equal([{"speciesKey": "raton", "brain": "AI"}])
 
 
-func test_max_hp_delegates_to_karma_ai() -> void:
-	var a := _agent()
-	assert_float(KarmaJevBridge.max_hp(a)).is_equal(KarmaAI.ai_max_hp(a))
-
-
 func test_build_batch_filters_species_and_shapes_entries() -> void:
 	var state := {"agents": [
 		{"speciesKey": "raton", "brain": "AI", "instance_id": 5},

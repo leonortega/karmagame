@@ -58,15 +58,15 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var hunted := KarmaAI.is_hunted(state, a)
 	var cache_range := 300.0 if KarmaShop.has_adapt(a, "cachePlus") else 150.0
 	var lurker: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" and KarmaPredators.edible_for(str(o.get("type", "")), "ardilla", float(KarmaData.TUNING["aiFearRange"]))), cache_range)
+		(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", ""))) and KarmaPredators.can_eat(str(o.get("speciesKey", "")), "ardilla", float(KarmaData.TUNING["aiFearRange"]))), cache_range)
 	if lurker != null and KarmaJevBridge.verb_ready(a, 3):
 		menu.append({"kind": "falsecache", "label": "False cache (hunted!)", "x": float((lurker as Dictionary)["x"]), "y": float((lurker as Dictionary)["y"]), "target": lurker})
 	var danger: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"]))
+		(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), float(KarmaData.TUNING["aiFearRange"]))
 	if danger != null and KarmaJevBridge.verb_ready(a, 1):
 		var tf_label := "Tail flick (hunted!)" if hunted else "Tail flick"
 		menu.append({"kind": "tailflick", "label": tf_label, "x": float((danger as Dictionary)["x"]), "y": float((danger as Dictionary)["y"]), "target": danger})
-	var groom_mate: Variant = KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), float(KarmaData.TUNING["groomRange"]))
+	var groom_mate: Variant = KarmaState.nearest_company(ax, ay, state, float(KarmaData.TUNING["groomRange"]), a)
 	if groom_mate != null and KarmaJevBridge.verb_ready(a, 5):
 		menu.append({"kind": "groom", "label": "Groom mate", "x": float((groom_mate as Dictionary)["x"]), "y": float((groom_mate as Dictionary)["y"]), "target": groom_mate})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
@@ -74,8 +74,9 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	if hunted:
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["ardilla"], r, "ardilla") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["ardilla"], r, "ardilla") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge (hunted!)", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
@@ -83,7 +84,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaAI.ai_max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var eat_range := float(KarmaData.TUNING["eatRange"])

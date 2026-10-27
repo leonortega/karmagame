@@ -148,3 +148,44 @@ func test_no_player_only_verbs_remain() -> void:
 		if str(c[0]) == "lobo" and int(c[1]) == 1:
 			(s["agents"] as Array).append(KarmaState.mk_agent({"role": "company", "speciesKey": "lobo", "hp": 100.0, "x": 510.0, "y": 500.0}))
 			assert_bool(KarmaGame.cast_verb_for(s, a, 1)).is_true()
+
+
+# Max-HP rule: stomach-adapted agents heal up to their adapted max (base + 25),
+# never clamped at the base species maxHp.
+
+func test_groom_heals_mate_to_adapted_max() -> void:
+	var s := _fresh("raton")
+	var a := _agent(s, "raton")
+	var m := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "hambre": 10.0, "x": 510.0, "y": 500.0, "owned": {"stomach": true}})
+	(s["agents"] as Array).append(m)
+	assert_bool(KarmaGame.call_verb(s, a, "groom")).is_true()
+	assert_float(float(m["hp"])).is_equal(105.0)
+
+
+func test_larder_heals_hungry_mate_to_adapted_max() -> void:
+	var s := _fresh("raton")
+	var a := _agent(s, "raton")
+	a["larder"] = 1
+	var m := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "hambre": 10.0, "x": 510.0, "y": 500.0, "owned": {"stomach": true}})
+	(s["agents"] as Array).append(m)
+	assert_bool(KarmaGame.call_verb(s, a, "larder")).is_true()
+	assert_float(float(m["hp"])).is_equal(112.0)
+
+
+func test_share_heals_hungry_mate_to_adapted_max() -> void:
+	var s := _fresh("raton")
+	var a := _agent(s, "raton")
+	var m := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "hambre": 10.0, "x": 510.0, "y": 500.0, "owned": {"stomach": true}})
+	(s["agents"] as Array).append(m)
+	assert_bool(KarmaGame.call_verb(s, a, "share")).is_true()
+	assert_float(float(m["hp"])).is_equal(115.0)
+	assert_float(float(a["hp"])).is_equal(65.0)
+
+
+func test_regurg_heals_hungry_mate_to_adapted_max() -> void:
+	var s := _fresh("raton")
+	var a := _agent(s, "raton")
+	var m := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "hambre": 10.0, "x": 510.0, "y": 500.0, "owned": {"stomach": true}})
+	(s["agents"] as Array).append(m)
+	assert_bool(KarmaGame.call_verb(s, a, "regurg")).is_true()
+	assert_float(float(m["hp"])).is_equal(108.0)

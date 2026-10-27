@@ -16,32 +16,6 @@ static func _flavor(a: Dictionary) -> String:
 	return " [" + e + "]" if e != "" else ""
 
 
-static func zorro_definition() -> Dictionary:
-	var defs: Array = KarmaData.VERB_DEFS["zorro"]
-	return {
-		"schema": SCHEMA_VERSION,
-		"species": KarmaData.SPECIES["zorro"],
-		"diet": KarmaData.DIET["zorro"],
-		"pred": KarmaData.PRED["zorro"],
-		"verbs": defs,
-		"shop": KarmaData.SHOP_BY_SPECIES["zorro"],
-		"tuning": {
-			"eatRange": float(KarmaData.TUNING["eatRange"]),
-			"drinkRange": float(KarmaData.TUNING["drinkRange"]),
-			"pounceRange": float(KarmaData.TUNING["pounceRange"]),
-			"pounceCd": float(KarmaData.TUNING["pounceCd"]),
-			"strikeCd": float(KarmaData.TUNING["strikeCd"]),
-			"cedeKarma": float(KarmaData.TUNING["cedeKarma"]),
-			"forageRangeMult": float(KarmaData.TUNING["forageRangeMult"]),
-			"hungerPriority": float(KarmaData.TUNING["hungerPriority"]),
-			"aiFearRange": float(KarmaData.TUNING["aiFearRange"]),
-			"aiCoverRange": float(KarmaData.TUNING["aiCoverRange"]),
-			"wastefulHpFrac": float(KarmaData.TUNING["wastefulHpFrac"]),
-			"regenSed": float(KarmaData.TUNING["regenSed"]),
-		},
-	}
-
-
 static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var menu: Array = []
 	var ax := float(a["x"])
@@ -49,11 +23,11 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var eat_range := float(KarmaData.TUNING["eatRange"])
 	var pounce_range := float(KarmaData.TUNING["pounceRange"])
 	var perception := float(KarmaAI.ai_pred_row(a).get("perception", 200.0))
-	var max_hp := KarmaJevBridge.max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var defs: Array = KarmaData.VERB_DEFS["zorro"]
 	var dendig_cost := float(defs[3]["costHp"])
 	var scavenge := KarmaAI.prefer_carrion(a) and KarmaUtils.nearest_from(ax, ay, state.get("carrions", []), perception) != null
-	var mate: Variant = KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), pounce_range)
+	var mate: Variant = KarmaAI.nearest_ai_prey(state, a, pounce_range)
 	if not scavenge and float(a.get("pounceCd", 0.0)) <= 0.0 and mate != null:
 		menu.append({"kind": "pounce", "label": "Pounce raton", "x": float((mate as Dictionary)["x"]), "y": float((mate as Dictionary)["y"]), "target": mate})
 	if not scavenge and KarmaAI.nearest_ai_prey(state, a, perception) != null:
@@ -75,8 +49,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 			menu.append({"kind": "seek_carrion", "label": "Seek carrion", "x": float((far as Dictionary)["x"]), "y": float((far as Dictionary)["y"]), "target": far})
 	if float(a.get("hp", max_hp)) > dendig_cost and KarmaJevBridge.verb_ready(a, 4):
 		menu.append({"kind": "dendig", "label": "Dig den", "x": ax, "y": ay})
-	var threat: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
+	var threat: Variant = KarmaState.nearest_hunter(ax, ay, state, 60.0, a)
 	if threat != null and float(a.get("strikeCd", 0.0)) <= 0.0 and KarmaJevBridge.verb_ready(a, 5):
 		menu.append({"kind": "strike", "label": "Strike predator", "x": float((threat as Dictionary)["x"]), "y": float((threat as Dictionary)["y"]), "target": threat})
 	if float(a.get("sed", 100.0)) < KarmaAI.water_threshold(a):
@@ -85,10 +58,11 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	var fear: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" and str(o.get("type", "")) in (KarmaData.PRED["zorro"] as Dictionary).get("fears", [])), float(KarmaData.TUNING["aiFearRange"]))
+		(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", ""))) and str(o.get("speciesKey", "")) in (KarmaData.PRED["zorro"] as Dictionary).get("fears", [])), float(KarmaData.TUNING["aiFearRange"]))
 	if fear != null:
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["zorro"], r, "zorro") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["zorro"], r, "zorro") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
@@ -96,7 +70,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaJevBridge.max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var perception := float(KarmaAI.ai_pred_row(a).get("perception", 200.0))

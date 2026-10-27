@@ -60,7 +60,7 @@ func test_prime_speed_is_base_speed() -> void:
 func test_frail_raton_slower_than_prime() -> void:
 	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
 	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
-	frail["edad"] = 140.0
+	KarmaState.player(frail)["edad"] = 140.0
 	assert_bool(KarmaState.eff_speed(frail) < KarmaState.eff_speed(prime)).is_true()
 	assert_bool(abs(KarmaState.eff_speed(frail) - float(KarmaData.SPECIES["raton"]["speed"]) * 0.55) < 1.0).is_true()
 
@@ -74,14 +74,14 @@ func test_prime_zorro_chase_still_closes_on_prime_raton() -> void:
 func test_frail_regenerates_less_than_prime() -> void:
 	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
 	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
-	prime["hp"] = 50.0
-	frail["hp"] = 50.0
-	frail["edad"] = 140.0
-	var max_hp := KarmaState.eff_max_hp(prime)
+	KarmaState.player(prime)["hp"] = 50.0
+	KarmaState.player(frail)["hp"] = 50.0
+	KarmaState.player(frail)["edad"] = 140.0
+	var max_hp := KarmaState.eff_max_hp_for(prime)
 	KarmaUtils.update_needs(prime, max_hp, 10.0)
 	KarmaUtils.update_needs(frail, max_hp, 10.0)
-	assert_bool(float(frail["hp"]) < float(prime["hp"])).is_true()
-	assert_bool(float(prime["hp"]) > 50.0).is_true()
+	assert_bool(float(KarmaState.player(frail)["hp"]) < float(KarmaState.player(prime)["hp"])).is_true()
+	assert_bool(float(KarmaState.player(prime)["hp"]) > 50.0).is_true()
 
 
 func test_natural_death_kills_fed_sheltered_agent() -> void:
@@ -113,7 +113,7 @@ func test_player_old_age_judged_vejez() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	var s := KarmaState.blank_state("raton", 0.0, 0.0)
-	s["edad"] = 200.0
+	KarmaState.player(s)["edad"] = 200.0
 	KarmaGame.update(s, 0.001, rng)
 	assert_bool(bool(s["dead"])).is_true()
 	assert_str(str(s["judgeReason"])).contains("Vejez")
@@ -153,7 +153,7 @@ func test_predator_dict_feeds_scaled_damage() -> void:
 	var s := KarmaState.blank_state("oruga", 0.0, 0.0)
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	p["edad"] = 285.0
-	s["edad"] = 0.0
+	KarmaState.player(s)["edad"] = 0.0
 	assert_bool(KarmaData.scaled_damage(28.0, p, s) < 28.0).is_true()
 
 
@@ -161,15 +161,15 @@ func test_contact_bite_prime_pair_uses_base() -> void:
 	var s := KarmaState.blank_state("raton", 0.0, 0.0)
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
-	assert_bool(abs(float(s["hp"]) - (100.0 - 28.0)) < 0.01).is_true()
+	assert_bool(abs(float(KarmaState.player(s)["hp"]) - (100.0 - 28.0)) < 0.01).is_true()
 
 
 func test_contact_bite_frail_victim_takes_more() -> void:
 	var s := KarmaState.blank_state("raton", 0.0, 0.0)
-	s["edad"] = 120.0
+	KarmaState.player(s)["edad"] = 120.0
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
-	assert_bool(abs(float(s["hp"]) - (100.0 - 28.0 * 1.6)) < 0.01).is_true()
+	assert_bool(abs(float(KarmaState.player(s)["hp"]) - (100.0 - 28.0 * 1.6)) < 0.01).is_true()
 
 
 func test_contact_bite_old_attacker_deals_less() -> void:
@@ -177,37 +177,37 @@ func test_contact_bite_old_attacker_deals_less() -> void:
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	p["edad"] = 285.0
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
-	assert_bool(abs(float(s["hp"]) - (100.0 - 28.0 * 0.5)) < 0.01).is_true()
+	assert_bool(abs(float(KarmaState.player(s)["hp"]) - (100.0 - 28.0 * 0.5)) < 0.01).is_true()
 
 
 func test_contact_curl_halves_scaled_result() -> void:
 	var s := KarmaState.blank_state("oruga", 0.0, 0.0)
-	s["stillT"] = 1.0
-	s["curlCd"] = 0.0
-	s["moved"] = false
+	KarmaState.player(s)["stillT"] = 1.0
+	KarmaState.player(s)["curlCd"] = 0.0
+	KarmaState.player(s)["moved"] = false
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
-	assert_bool(abs(float(s["hp"]) - (60.0 - ceil(28.0 / 2.0))) < 0.01).is_true()
+	assert_bool(abs(float(KarmaState.player(s)["hp"]) - (60.0 - ceil(28.0 / 2.0))) < 0.01).is_true()
 
 
 func test_contact_bristle_reflects_scaled_result() -> void:
 	var s := KarmaState.blank_state("oruga", 0.0, 0.0)
-	s["bristled"] = true
+	KarmaState.player(s)["bristled"] = true
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
-	assert_bool(abs(float(s["hp"]) - 60.0) < 0.01).is_true()
+	assert_bool(abs(float(KarmaState.player(s)["hp"]) - 60.0) < 0.01).is_true()
 	assert_bool(abs(float(p["hp"]) - (120.0 - 28.0)) < 0.01).is_true()
 
 
 # Failed kill verbs wound, burn cooldown, and open a decision-gated escape window.
 
-func _predator_prey_setup(species: String, edad: float, prey_hp: float) -> Array:
+func _predator_prey_setup(species: String, edad: float, prey_hp: float, prey_species: String = "") -> Array:
 	var s := KarmaState.blank_state(species, 0.0, 0.0)
 	var z := KarmaState.spawn_fauna(s, species, 500.0, 500.0)
 	z["edad"] = edad
 	z["hp"] = 50.0
 	s["agents"] = (s["agents"] as Array).filter(func(o): return o == z)
-	var prey := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": prey_hp, "x": 510.0, "y": 500.0})
+	var prey := KarmaState.mk_agent({"speciesKey": prey_species if prey_species != "" else species, "hp": prey_hp, "x": 510.0, "y": 500.0})
 	(s["agents"] as Array).append(prey)
 	return [s, z, prey]
 
@@ -220,7 +220,7 @@ func test_failed_pounce_wounds_prime_prey_alive() -> void:
 	var carrion_n := (s["carrions"] as Array).size()
 	KarmaGame._verb_pounce(s, z)
 	assert_bool((s["agents"] as Array).has(prey)).is_true()
-	assert_bool(abs(float(prey["hp"]) - 50.0) < 0.01).is_true()
+	assert_bool(abs(float(prey["hp"]) - 40.0) < 0.01).is_true()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n)
 
 
@@ -267,56 +267,56 @@ func test_lethal_pounce_still_kills_and_heals() -> void:
 
 
 func test_failed_dive_wounds_prime_prey_alive() -> void:
-	var t := _predator_prey_setup("halcon", 285.0, 100.0)
+	var t := _predator_prey_setup("halcon", 285.0, 100.0, "raton")
 	var s: Dictionary = t[0]
 	var z: Dictionary = t[1]
 	var prey: Dictionary = t[2]
 	var carrion_n := (s["carrions"] as Array).size()
 	KarmaGame._verb_dive(s, z)
 	assert_bool((s["agents"] as Array).has(prey)).is_true()
-	assert_bool(abs(float(prey["hp"]) - 40.0) < 0.01).is_true()
+	var expected := 100.0 - KarmaData.scaled_damage(KarmaState.eff_max_hp_for(prey), z, prey)
+	assert_bool(abs(float(prey["hp"]) - expected) < 0.01).is_true()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n)
 
 
-# Hunter mortality: role-hunters run the shared needs+age drain, once per tick.
+# Lone hunters run the shared needs+age drain through the one agent pipeline.
 
-func _role_hunter(species: String = "zorro") -> Array:
+func _lone_hunter(species: String = "zorro") -> Array:
 	var s := KarmaState.blank_state("raton", 0.0, 0.0)
 	var h := KarmaState.mk_agent(KarmaPredators.mk_predator(s, species, 500.0, 500.0, 1))
 	s["agents"] = [h]
 	return [s, h]
 
 
-func test_role_hunter_vida_drains_from_needs() -> void:
-	var t := _role_hunter()
+func test_lone_hunter_vida_drains_from_needs() -> void:
+	var t := _lone_hunter()
 	var s: Dictionary = t[0]
 	var h: Dictionary = t[1]
 	h["hambre"] = 0.0
 	h["sed"] = 0.0
 	h["hp"] = 120.0
-	KarmaPredators.step_predator(s, h, 1.0, [], _rng, [])
+	KarmaGame.step_agent(s, h, 1.0)
 	assert_bool(float(h["hp"]) < 120.0).is_true()
 
 
-func test_role_hunter_dies_of_old_age_in_predator_step() -> void:
-	var t := _role_hunter()
+func test_lone_hunter_dies_of_old_age_in_one_step() -> void:
+	var t := _lone_hunter()
 	var s: Dictionary = t[0]
 	var h: Dictionary = t[1]
 	h["hambre"] = 100.0
 	h["sed"] = 100.0
 	h["hp"] = 120.0
 	h["edad"] = 99999.0
-	KarmaPredators.step_predator(s, h, 0.1, [], _rng, [])
+	KarmaGame.step_agent(s, h, 0.1)
 	assert_bool(float(h["hp"]) <= 0.0).is_true()
 
 
-func test_role_hunter_ages_once_per_tick() -> void:
-	# Pressure hunters must not be stepped by both update_predators and
-	# update_agents: edad advances exactly once per tick.
+func test_world_tick_ages_each_hunter_once() -> void:
+	# Every animal goes through one step_agent: edad advances exactly once.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 11
 	var s := KarmaState.new_run("oruga", 0.0, 0.0, 0, rng)
-	var hunters := KarmaState.hunter_agents(s)
+	var hunters := KarmaState.predator_agents(s)
 	assert_bool(hunters.size() > 0).is_true()
 	if hunters.is_empty():
 		return
@@ -340,9 +340,7 @@ func test_fauna_hunter_ages_once_per_tick() -> void:
 	assert_bool(abs((e1 - e0) - 0.1) < 0.01).is_true()
 
 
-# Predator-wave respawn: hunters regenerate to their census floor, and the
-# tier-0 pressure role-hunter (saponpc) is rebuilt rather than silently
-# replaced by a plain sapo grazer.
+# Predator-wave respawn: rolled carnivores regenerate to their census count.
 
 func _count_species(s: Dictionary, k: String) -> int:
 	var n := 0
@@ -355,35 +353,9 @@ func _count_species(s: Dictionary, k: String) -> int:
 func _wipe_hunters(s: Dictionary) -> void:
 	var survivors: Array = []
 	for a in (s["agents"] as Array):
-		if str((a as Dictionary).get("kind", "")) != "hunter":
+		if not KarmaData.PRED.has(str((a as Dictionary).get("speciesKey", ""))):
 			survivors.append(a)
 	s["agents"] = survivors
-
-
-func test_oruga_run_seeds_one_pressure_role_hunter() -> void:
-	var s := KarmaState.new_run("oruga", 0.0, 0.0, 0, _rng)
-	var hunters := KarmaState.hunter_agents(s)
-	assert_int(hunters.size()).is_equal(1)
-	if hunters.is_empty():
-		return
-	assert_str(str((hunters[0] as Dictionary)["type"])).is_equal("saponpc")
-
-
-func test_respawn_rebuilds_pressure_role_hunter() -> void:
-	var s := KarmaState.new_run("oruga", 0.0, 0.0, 0, _rng)
-	_wipe_hunters(s)
-	KarmaState.respawn_missing(s, _rng)
-	var hunters := KarmaState.hunter_agents(s)
-	assert_int(hunters.size()).is_equal(1)
-	if hunters.is_empty():
-		return
-	assert_str(str((hunters[0] as Dictionary)["type"])).is_equal("saponpc")
-
-
-func test_respawn_does_not_duplicate_pressure_hunter() -> void:
-	var s := KarmaState.new_run("oruga", 0.0, 0.0, 0, _rng)
-	KarmaState.respawn_missing(s, _rng)
-	assert_int(KarmaState.hunter_agents(s).size()).is_equal(1)
 
 
 func test_respawn_keeps_sapo_at_census() -> void:
@@ -408,7 +380,9 @@ func test_respawn_restores_hunter_wave() -> void:
 
 func _topo(edad: float) -> Dictionary:
 	var s := KarmaState.blank_state("topo", 0.0, 0.0)
-	s["edad"] = edad
+	(s["agents"] as Array).append(KarmaState.mk_agent({"speciesKey": "topo", "brain": "AI", "hp": 60.0, "x": 0.0, "y": 0.0}))
+	KarmaState.possess_member(s)
+	KarmaState.player(s)["edad"] = edad
 	return s
 
 
@@ -426,8 +400,8 @@ func test_frail_topo_dig_cd_longer_than_prime() -> void:
 	var frail := _topo(150.0)
 	KarmaEat.dig_burrow(prime, null)
 	KarmaEat.dig_burrow(frail, null)
-	assert_bool(float(frail["digCd"]) > float(prime["digCd"])).is_true()
-	assert_bool(abs(float(prime["digCd"]) - float(KarmaData.TUNING["digCd"])) < 0.01).is_true()
+	assert_bool(float(KarmaState.player(frail)["digCd"]) > float(KarmaState.player(prime)["digCd"])).is_true()
+	assert_bool(abs(float(KarmaState.player(prime)["digCd"]) - float(KarmaData.TUNING["digCd"])) < 0.01).is_true()
 
 
 func test_frail_topo_tremor_cd_longer_than_prime() -> void:
@@ -435,18 +409,18 @@ func test_frail_topo_tremor_cd_longer_than_prime() -> void:
 	var frail := _topo(150.0)
 	KarmaEat.sense_pulse(prime)
 	KarmaEat.sense_pulse(frail)
-	assert_bool(float(frail["senseCd"]) > float(prime["senseCd"])).is_true()
+	assert_bool(float(KarmaState.player(frail)["senseCd"]) > float(KarmaState.player(prime)["senseCd"])).is_true()
 
 
 func test_frail_halcon_thermal_lasts_longer_than_prime() -> void:
 	var prime := KarmaState.blank_state("halcon", 0.0, 0.0)
 	var frail := KarmaState.blank_state("halcon", 0.0, 0.0)
-	frail["edad"] = 300.0
-	KarmaState.spawn_fauna(prime, "raton", float(prime["px"]) + 10.0, float(prime["py"]))
-	KarmaState.spawn_fauna(frail, "raton", float(frail["px"]) + 10.0, float(frail["py"]))
+	KarmaState.player(frail)["edad"] = 300.0
+	KarmaState.spawn_fauna(prime, "raton", float(KarmaState.px(prime)) + 10.0, float(KarmaState.py(prime)))
+	KarmaState.spawn_fauna(frail, "raton", float(KarmaState.px(frail)) + 10.0, float(KarmaState.py(frail)))
 	KarmaGame._verb_thermal(prime, null)
 	KarmaGame._verb_thermal(frail, null)
-	assert_bool(float(frail["thermalT"]) > float(prime["thermalT"])).is_true()
+	assert_bool(float(KarmaState.player(frail)["thermalT"]) > float(KarmaState.player(prime)["thermalT"])).is_true()
 
 
 # Locomotion aging: displacement scales by age, gait envelope shape unchanged.
@@ -472,9 +446,9 @@ func test_old_hunter_closes_slower_than_prime() -> void:
 	var prime := KarmaPredators.mk_predator(s, "zorro", 100.0, 100.0, 1)
 	var old := KarmaPredators.mk_predator(s, "zorro", 100.0, 100.0, 1)
 	old["edad"] = 285.0
-	var hit := {"tx": 1000.0, "ty": 100.0, "hunting": "player"}
-	KarmaPredators.chase(prime, KarmaData.PRED["zorro"], hit, false, 1.0)
-	KarmaPredators.chase(old, KarmaData.PRED["zorro"], hit, false, 1.0)
+	var prey := {"speciesKey": "raton", "x": 1000.0, "y": 100.0, "hp": 60.0}
+	KarmaAI.ai_hunt_eat(s, prime, prey, 1.0)
+	KarmaAI.ai_hunt_eat(s, old, prey, 1.0)
 	assert_bool(float(old["x"]) < float(prime["x"])).is_true()
 
 

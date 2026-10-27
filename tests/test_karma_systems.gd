@@ -20,9 +20,9 @@ func test_sustainable_eat_pays() -> void:
 	bush["amount"] = 3
 	bush["alive"] = true
 	bush["mimic"] = false
-	s["hp"] = 10.0
+	KarmaState.player(s)["hp"] = 10.0
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_true()
-	assert_float(s["hp"]).is_equal(25.0) # +15 berries
+	assert_float(KarmaState.player(s)["hp"]).is_equal(25.0) # +15 berries
 	assert_float(s["pa"]).is_equal(5.0)
 
 
@@ -59,12 +59,13 @@ func test_carrion_lifecycle() -> void:
 	assert_str(KarmaEat.carrion_stage(c)).is_equal("rotten")
 
 
-func test_edible_for_chain() -> void:
-	assert_bool(KarmaPredators.edible_for("zorro", "raton", 10.0)).is_true()
-	assert_bool(KarmaPredators.edible_for("zorro", "lobo", 10.0)).is_false()
-	assert_bool(KarmaPredators.edible_for("lobo", "zorro", 10.0)).is_true() # zorro is tier 2 in lobo huntsTiers; edible_agent_for delegates here (no separate zorro rule)
-	assert_bool(KarmaPredators.edible_for("saponpc", "oruga", 10.0)).is_true()
-	assert_bool(KarmaPredators.edible_for("saponpc", "raton", 10.0)).is_false()
+func test_can_eat_chain() -> void:
+	assert_bool(KarmaPredators.can_eat("zorro", "raton", 10.0)).is_true()
+	assert_bool(KarmaPredators.can_eat("zorro", "lobo", 10.0)).is_false()
+	assert_bool(KarmaPredators.can_eat("lobo", "zorro", 10.0)).is_true()
+	assert_bool(KarmaPredators.can_eat("halcon", "raton", 10.0)).is_true()
+	assert_bool(KarmaPredators.can_eat("halcon", "lobo", 10.0)).is_false()
+	assert_bool(KarmaPredators.can_eat("sapo", "oruga", 10.0)).is_false()
 
 
 func test_buy_rejects_debt_and_stacking() -> void:
@@ -80,10 +81,10 @@ func test_buy_rejects_debt_and_stacking() -> void:
 
 func test_cast_verb_cooldown_and_cost() -> void:
 	var s := _fresh("topo")
-	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(s["px"]) + 5.0, "y": float(s["py"]), "dug": true})
-	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(s["px"]) + 10.0, "y": float(s["py"]), "dug": true}) # tunneline links two burrows
+	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(KarmaState.px(s)) + 5.0, "y": float(KarmaState.py(s)), "dug": true})
+	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(KarmaState.px(s)) + 10.0, "y": float(KarmaState.py(s)), "dug": true}) # tunneline links two burrows
 	assert_bool(KarmaGame.cast_verb(s, 2)).is_true() # tunneline refuerza
-	assert_float((s["verbCds"] as Array)[1]).is_equal(25.0)
+	assert_float((KarmaState.player(s)["verbCds"] as Array)[1]).is_equal(25.0)
 	assert_bool(KarmaGame.cast_verb(s, 2)).is_false() # on cooldown
 
 
@@ -216,7 +217,7 @@ func test_raton_wander_travels_to_distant_patch() -> void:
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
 	var d0 := _trek_distance(s, a, 800.0, 500.0)
 	for i in 10:
-		KarmaAI._ai_raton(s, a, 0.1)
+		KarmaAIRaton.step(s, a, 0.1)
 	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
 
 
@@ -230,7 +231,7 @@ func test_zorro_wander_travels_to_water() -> void:
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
 	var d0 := _trek_distance(s, a, 800.0, 500.0)
 	for i in 10:
-		KarmaAI._ai_zorro(s, a, 0.1)
+		KarmaAIZorro.step(s, a, 0.1)
 	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
 
 
@@ -245,7 +246,7 @@ func test_halcon_wander_travels_to_water() -> void:
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
 	var d0 := _trek_distance(s, a, 800.0, 500.0)
 	for i in 10:
-		KarmaAI._ai_halcon(s, a, 0.1)
+		KarmaAIHalcon.step(s, a, 0.1)
 	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
 
 
@@ -257,7 +258,7 @@ func test_ardilla_wander_travels_to_distant_patch() -> void:
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 30.0}
 	var d0 := _trek_distance(s, a, 800.0, 500.0)
 	for i in 10:
-		KarmaAI._ai_ardilla(s, a, 0.1)
+		KarmaAIArdilla.step(s, a, 0.1)
 	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
 
 
@@ -269,7 +270,7 @@ func test_topo_ladder_wander_travels_to_distant_patch() -> void:
 	(s["patches"] as Array).append(KarmaUtils.mk_patch("carrots", 800.0, 500.0, 3))
 	var d0 := _trek_distance(s, a, 800.0, 500.0)
 	for i in 10:
-		KarmaAI._ai_topo(s, a, 0.1)
+		KarmaAITopo.step(s, a, 0.1)
 	assert_bool(d0 - _trek_distance(s, a, 800.0, 500.0) > 50.0).is_true()
 
 
@@ -277,8 +278,16 @@ func test_mates_drift_toward_player() -> void:
 	var s := _bare_world("raton")
 	var m := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 500.0, "y": 500.0})
 	(s["agents"] as Array).append(m)
-	var d0 := Vector2(500.0, 500.0).distance_to(Vector2(float(s["px"]), float(s["py"])))
+	var d0 := Vector2(500.0, 500.0).distance_to(Vector2(float(KarmaState.px(s)), float(KarmaState.py(s))))
 	for i in 10:
 		KarmaGame.wander_mates(s, 0.1, _rng)
-	var d1 := Vector2(float(m["x"]), float(m["y"])).distance_to(Vector2(float(s["px"]), float(s["py"])))
+	var d1 := Vector2(float(m["x"]), float(m["y"])).distance_to(Vector2(float(KarmaState.px(s)), float(KarmaState.py(s))))
 	assert_bool(d0 - d1 > 50.0).is_true()
+
+
+func test_strike_heals_attacker_to_adapted_max() -> void:
+	var s := _fresh("raton")
+	var a := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 500.0, "y": 500.0, "owned": {"stomach": true}})
+	(s["agents"] as Array).append(a)
+	KarmaAI.ai_strike(s, a, {"type": "zorro", "x": 560.0, "y": 500.0})
+	assert_float(float(a["hp"])).is_equal(110.0)

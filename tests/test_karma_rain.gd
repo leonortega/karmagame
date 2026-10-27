@@ -65,8 +65,8 @@ func test_short_rain_leaves_partial() -> void:
 func test_rain_revives_dry_body() -> void:
 	var s := _fresh("raton")
 	s["waters"] = [_body(0.0)]
-	s["px"] = 500.0
-	s["py"] = 500.0
+	KarmaState.player(s)["x"] = 500.0
+	KarmaState.player(s)["y"] = 500.0
 	assert_bool(KarmaEat.try_drink(s)).is_false()
 	KarmaGame.rain_refill(s, float(KarmaData.TUNING["rainFillTime"]))
 	assert_bool(KarmaEat.try_drink(s)).is_true()

@@ -5,7 +5,6 @@ extends RefCounted
 # Zorro logic lives in KarmaJevZorro, halcon in KarmaJevHalcon,
 # raton in KarmaJevRaton. This file keeps the old API stable.
 
-const SCHEMA_VERSION := "jev-zorro/v1"
 const USE_JEV := true
 const USE_JEV_HALCON := true
 const USE_JEV_RATON := true
@@ -24,7 +23,6 @@ static var LOG_JEV_LOBO := false
 static var LOG_JEV_ORUGA := false
 const JEV_URL := "http://192.168.100.80:8766/api/evaluate"
 const JEV_LOG_CAP := 200
-const JEV_LOG_PATH := "user://logs/jev_zorro.log"
 const MACRO_EVERY := 1.0
 const MACRO_EVERY_FAR := 3.0
 
@@ -115,7 +113,7 @@ static func stage_of(o: Variant) -> String:
 
 
 static func nearest_hunter_stage(state: Dictionary, a: Dictionary) -> String:
-	return stage_of(KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), KarmaState.hunter_agents(state), KarmaAI.fear_range_for(a)))
+	return stage_of(KarmaState.nearest_hunter(float(a["x"]), float(a["y"]), state, KarmaAI.fear_range_for(a), a))
 
 
 static func nearest_prey_stage(state: Dictionary, a: Dictionary, rnge: float) -> String:
@@ -147,6 +145,60 @@ static func intent_tick(a: Dictionary, dt: float) -> void:
 	(a["jev_intent"] as Dictionary)["ttl"] = float((a["jev_intent"] as Dictionary).get("ttl", 0.0)) - dt
 
 
+static func steer_intent(state: Dictionary, a: Dictionary, dt: float, hunt_kinds: Array, chase_key: String, flee_moves: bool) -> bool:
+	var intent_v: Variant = KarmaAI.live_jev_intent(a)
+	if intent_v == null:
+		return false
+	var intent := intent_v as Dictionary
+	var kind := str(intent.get("kind", "wander"))
+	if kind == "eat" or kind == "seek_carrion":
+		var c: Variant = intent.get("target", null)
+		var eat_range: float = float(KarmaData.TUNING["eatRange"])
+		if c != null and (state["carrions"] as Array).has(c):
+			if KarmaUtils.dist2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"]), float(a["x"]), float(a["y"])) <= eat_range * eat_range:
+				return KarmaEat.eat_carrion(state, c, a)
+			KarmaGame.move_toward(state, a, float((c as Dictionary)["x"]), float((c as Dictionary)["y"]), 1.0, dt)
+			return true
+		var near: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), eat_range)
+		if near != null:
+			return KarmaEat.eat_carrion(state, near, a)
+		KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
+		return true
+	if kind in hunt_kinds:
+		var prey: Variant = intent.get("target", null)
+		if prey == null or not (state["agents"] as Array).has(prey) or bool((prey as Dictionary).get("hidden", false)):
+			a["jev_intent"] = {}
+			return false
+		var kill_range: float = 20.0
+		if KarmaUtils.dist2(float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]), float(a["x"]), float(a["y"])) <= kill_range * kill_range:
+			return KarmaAI.ai_hunt_eat(state, a, prey, dt)
+		KarmaGame.move_toward(state, a, float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]), float(KarmaData.TUNING[chase_key]), dt)
+		return true
+	if kind == "drink" or (flee_moves and kind == "flee"):
+		if kind == "drink" and KarmaAI.ai_drink(state, a, float(KarmaData.TUNING["drinkRange"])):
+			return true
+		KarmaGame.move_toward(state, a, float(intent.get("x", float(a["x"]))), float(intent.get("y", float(a["y"]))), 1.0, dt)
+		return true
+	if KarmaAI.ai_maybe_verb(state, a, dt):
+		return true
+	if KarmaAI.is_hungry(a) and KarmaAI.ai_seek_carrion(state, a, dt):
+		return true
+	var quarry: Variant = KarmaAI.nearest_ai_prey(state, a, float(KarmaAI.ai_pred_row(a)["perception"]))
+	if quarry != null:
+		KarmaAI.ai_hunt_eat(state, a, quarry, dt)
+		return true
+	var meal: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
+	if meal != null:
+		return KarmaEat.eat_carrion(state, meal, a)
+	var poi: Variant = KarmaGame.wander_poi(state, a)
+	if poi != null:
+		KarmaGame.move_toward(state, a, float((poi as Dictionary)["x"]), float((poi as Dictionary)["y"]), 1.0, dt)
+	else:
+		a["x"] = float(a["x"]) + (randf() - 0.5) * 60.0 * dt
+		a["y"] = float(a["y"]) + (randf() - 0.5) * 60.0 * dt
+	return true
+
+
 static func format_jev_error(code: int, body_text: String) -> String:
 	var snippet := body_text.strip_edges().left(300)
 	return "JEV request failed code=%d body=%s" % [code, snippet]
@@ -164,7 +216,7 @@ static func ensure_log_ready(path: String) -> bool:
 
 
 static func lod_interval(state: Dictionary, a: Dictionary, view_diag: float) -> float:
-	var d := Vector2(float(a["x"]), float(a["y"])).distance_to(Vector2(float(state["px"]), float(state["py"])))
+	var d := Vector2(float(a["x"]), float(a["y"])).distance_to(Vector2(float(KarmaState.px(state)), float(KarmaState.py(state))))
 	return MACRO_EVERY_FAR if d > view_diag * 0.5 else MACRO_EVERY
 
 
@@ -280,10 +332,6 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 	return KarmaJevZorro.build_state(state, a)
 
 
-static func build_batch(state: Dictionary) -> Array:
-	return KarmaJevZorro.build_batch(state)
-
-
 static func mock_choice(menu: Array) -> int:
 	return KarmaJevZorro.mock_choice(menu)
 
@@ -302,10 +350,6 @@ static func all_jev_zorros(state: Dictionary) -> Array:
 
 static func candidate_ids(menu: Array) -> Array:
 	return KarmaJevZorro.candidate_ids(menu)
-
-
-static func state_text(state: Dictionary, a: Dictionary) -> String:
-	return KarmaJevZorro.state_text(state, a)
 
 
 static func build_http_body(state: Dictionary) -> Dictionary:

@@ -34,13 +34,22 @@ static func scaled_count(base: int) -> int:
 	return maxi(1, roundi(float(base) * area_scale()))
 
 
+# Squared distance between two points. Use for range comparisons to skip the sqrt.
+static func dist2(ax: float, ay: float, bx: float, by: float) -> float:
+	var dx: float = ax - bx
+	var dy: float = ay - by
+	return dx * dx + dy * dy
+
+
 static func nearest_from(ax: float, ay: float, list: Array, max_d: float) -> Variant:
 	var best: Variant = null
-	var bd: float = max_d
+	var bd: float = max_d * max_d
 	for o in list:
 		if o == null:
 			continue
-		var d: float = Vector2(ax, ay).distance_to(Vector2(float(o["x"]), float(o["y"])))
+		var dx: float = ax - float(o["x"])
+		var dy: float = ay - float(o["y"])
+		var d: float = dx * dx + dy * dy
 		if d < bd:
 			bd = d
 			best = o
@@ -49,13 +58,15 @@ static func nearest_from(ax: float, ay: float, list: Array, max_d: float) -> Var
 
 static func nearest_hunter_in_fears(ax: float, ay: float, list: Array, fears: Array, max_d: float) -> Variant:
 	var best: Variant = null
-	var bd: float = max_d
+	var bd: float = max_d * max_d
 	for o in list:
 		if o == null:
 			continue
-		if not ((str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter") and str(o.get("type", "")) in fears):
+		if not str(o.get("speciesKey", "")) in fears:
 			continue
-		var d: float = Vector2(ax, ay).distance_to(Vector2(float(o["x"]), float(o["y"])))
+		var dx: float = ax - float(o["x"])
+		var dy: float = ay - float(o["y"])
+		var d: float = dx * dx + dy * dy
 		if d < bd:
 			bd = d
 			best = o
@@ -68,10 +79,6 @@ static func fmt_time(s: float) -> String:
 	return "%d:%02d" % [m, ss]
 
 
-static func eff_age_mult() -> float:
-	return 1.0
-
-
 static func thirstier(t: Dictionary) -> bool:
 	return (100.0 - float(t.get("sed", 100.0))) >= (100.0 - float(t.get("hambre", 100.0)))
 
@@ -82,16 +89,25 @@ static func nearest_water_for(state: Dictionary, ax: float, ay: float, max_d: fl
 	for w in state.get("waters", []):
 		if float(w.get("level", 1.0)) <= 0.0:
 			continue
-		var d: float = Vector2(ax, ay).distance_to(Vector2(float(w["x"]), float(w["y"]))) - float(w["r"])
-		if d < bd:
-			bd = d
+		var r: float = float(w["r"])
+		var lim: float = bd + r
+		if lim < 0.0:
+			continue
+		var dx: float = ax - float(w["x"])
+		var dy: float = ay - float(w["y"])
+		var d2: float = dx * dx + dy * dy
+		if d2 < lim * lim:
+			bd = sqrt(d2) - r
 			best = w
 	return best
 
 
 static func inside_water(state: Dictionary, x: float, y: float, margin: float = 0.0) -> bool:
 	for w in state.get("waters", []):
-		if Vector2(x, y).distance_to(Vector2(float(w["x"]), float(w["y"]))) < float(w["r"]) + margin:
+		var dx: float = x - float(w["x"])
+		var dy: float = y - float(w["y"])
+		var r: float = float(w["r"]) + margin
+		if dx * dx + dy * dy < r * r:
 			return true
 	return false
 
@@ -146,7 +162,22 @@ static func update_needs(t: Dictionary, max_hp: float, dt: float) -> void:
 		t["hp"] = minf(max_hp, float(t.get("hp", max_hp)) + regen * dt)
 		return
 	var deficit: float = minf((100.0 - float(t["hambre"])) / 100.0 + (100.0 - float(t["sed"])) / 100.0, float(KarmaData.TUNING["deficitMax"]))
-	t["hp"] = float(t.get("hp", max_hp)) - KarmaData.hunger_rate_for(str(t.get("speciesKey", "raton"))) * (1.0 + deficit) * eff_age_mult() * dt
+	t["hp"] = float(t.get("hp", max_hp)) - KarmaData.hunger_rate_for(str(t.get("speciesKey", "raton"))) * (1.0 + deficit) * dt
+
+
+static func tick_cooldowns(t: Dictionary, keys: Array, dt: float) -> void:
+	for k in keys:
+		if float(t.get(k, 0.0)) > 0.0:
+			t[k] = float(t[k]) - dt
+
+
+static func tick_verb_cds(t: Dictionary, dt: float) -> void:
+	if not t.has("verbCds"):
+		return
+	var cds: Array = t["verbCds"]
+	for i in cds.size():
+		if float(cds[i]) > 0.0:
+			cds[i] = float(cds[i]) - dt
 
 
 static func solid_radius(refuge_type: String) -> float:
@@ -162,13 +193,13 @@ static func collect_solids(state: Dictionary) -> Array[Dictionary]:
 		if str(r.get("type", "")) in ["scent-post", "silk-thread", "shadow-disc", "wallow", "foam-ring"]:
 			continue
 		out.append({"x": r["x"], "y": r["y"], "r": solid_radius(str(r["type"]))})
-	for key in ["bushes", "shrubs", "patches", "clusters"]:
+	for key in KarmaState.FLORA_KEYS:
+		if key == "clumps":
+			continue
+		var extra: float = 2.0 if key == "oaks" else 0.0
 		for p in state.get(key, []):
 			if bool(p.get("alive", false)) and int(p.get("amount", 0)) > 0:
-				out.append({"x": p["x"], "y": p["y"], "r": float(KarmaData.TUNING["solidPlant"])})
-	for p in state.get("oaks", []):
-		if bool(p.get("alive", false)) and int(p.get("amount", 0)) > 0:
-			out.append({"x": p["x"], "y": p["y"], "r": float(KarmaData.TUNING["solidPlant"]) + 2.0})
+				out.append({"x": p["x"], "y": p["y"], "r": float(KarmaData.TUNING["solidPlant"]) + extra})
 	for k in state.get("rocks", []):
 		out.append({"x": k["x"], "y": k["y"], "r": float(KarmaData.TUNING["solidRock"]), "rock": true})
 	for w in state.get("waters", []):
@@ -191,11 +222,13 @@ static func resolve_collisions(state: Dictionary, pos: Vector2, radius: float, s
 			continue
 		if skip_water and bool(s.get("water", false)):
 			continue
-		var d: float = p.distance_to(Vector2(float(s["x"]), float(s["y"])))
+		var dx: float = p.x - float(s["x"])
+		var dy: float = p.y - float(s["y"])
+		var d2: float = dx * dx + dy * dy
 		var min_d: float = float(s["r"]) + radius
-		if d >= min_d or d == 0.0:
+		if d2 >= min_d * min_d or d2 == 0.0:
 			continue
-		var dir: Vector2 = (p - Vector2(float(s["x"]), float(s["y"]))) / d
+		var dir: Vector2 = (p - Vector2(float(s["x"]), float(s["y"]))) / sqrt(d2)
 		p = Vector2(float(s["x"]), float(s["y"])) + dir * min_d
 	return p
 
@@ -213,6 +246,8 @@ static func los_blocked(state: Dictionary, fx: float, fy: float, tx: float, ty: 
 			var t: float = float(i) / float(KarmaData.TUNING["losSamples"])
 			var px: float = fx + (tx - fx) * t
 			var py: float = fy + (ty - fy) * t
-			if Vector2(px, py).distance_to(Vector2(float(s["x"]), float(s["y"]))) < float(s["r"]):
+			var dx: float = px - float(s["x"])
+			var dy: float = py - float(s["y"])
+			if dx * dx + dy * dy < float(s["r"]) * float(s["r"]):
 				return true
 	return false

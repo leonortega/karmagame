@@ -39,12 +39,19 @@ static func catalog_for(species_key: String) -> Array:
 	return (KarmaData.SHOP_BY_SPECIES.get(species_key, []) as Array).duplicate()
 
 
-static func adapt_effect(item_id: String) -> String:
+static var _EFFECT_BY_ID: Dictionary = _build_effect_map()
+
+
+static func _build_effect_map() -> Dictionary:
+	var out: Dictionary = {}
 	for k in KarmaData.SHOP_BY_SPECIES:
 		for it in (KarmaData.SHOP_BY_SPECIES[k] as Array):
-			if str(it["id"]) == item_id:
-				return str(it["effect"])
-	return item_id
+			out[str(it["id"])] = str(it["effect"])
+	return out
+
+
+static func adapt_effect(item_id: String) -> String:
+	return str(_EFFECT_BY_ID.get(item_id, item_id))
 
 
 static func has_adapt(t: Dictionary, effect: String) -> bool:

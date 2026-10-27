@@ -8,7 +8,6 @@ const WORLD := {"w": 3200, "h": 2400}
 const BASE_AREA := 1600 * 1200
 
 const POP := {
-	"company": 4,
 	"faunaFloor": {"oruga": 2, "sapo": 2, "raton": 3, "ardilla": 3, "topo": 2, "halcon": 1, "zorro": 2, "lobo": 2},
 }
 
@@ -21,14 +20,14 @@ const CENSUS_THEMES := ["bloom", "rodent", "wet", "lean", "balanced"]
 const CENSUS := {"insectMaxDemand": 7.0, "preyPerHunter": 3.0}
 
 const SPECIES := {
-	"oruga": {"name": "Oruga", "tier": 0, "speed": 80.0, "vision": 130.0, "maxHp": 60.0, "radius": 8.0, "size": 1, "hungerMult": 1.5, "color": "#9ccc65", "desc": "Castigo: lenta, todos te cazan"},
-	"sapo": {"name": "Sapo", "tier": 1, "speed": 110.0, "vision": 170.0, "maxHp": 80.0, "radius": 9.0, "size": 1, "hungerMult": 1.25, "color": "#4db6ac", "desc": "Lengua a 90px, cabe en madrigueras-S"},
-	"raton": {"name": "Ratón", "tier": 1, "speed": 190.0, "vision": 190.0, "maxHp": 100.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "color": "#90caf9", "desc": "Base: equilibrado, puede gritar (Q)"},
-	"ardilla": {"name": "Ardilla", "tier": 1, "speed": 175.0, "vision": 210.0, "maxHp": 90.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "climb": true, "color": "#ffcc80", "desc": "Lateral: rápida, trepa al árbol hueco"},
-	"topo": {"name": "Topo", "tier": 1, "speed": 135.0, "vision": 150.0, "maxHp": 95.0, "radius": 10.0, "size": 2, "hungerMult": 1.1, "color": "#a1887f", "desc": "Cava madrigueras con E, puede gritar"},
-	"halcon": {"name": "Halcón", "tier": 2, "speed": 215.0, "vision": 340.0, "maxHp": 140.0, "radius": 12.0, "size": 3, "hungerMult": 0.8, "color": "#ce93d8", "desc": "Premio: veloz, gran visión, debe aterrizar para comer"},
-	"zorro": {"name": "Zorro", "tier": 2, "speed": 185.0, "vision": 260.0, "maxHp": 120.0, "radius": 11.0, "size": 3, "hungerMult": 0.85, "color": "#ff8a65", "desc": "Depredador jugable: Zarpazo (E), sin grito"},
-	"lobo": {"name": "Lobo", "tier": 2, "speed": 165.0, "vision": 300.0, "maxHp": 160.0, "radius": 14.0, "size": 4, "hungerMult": 0.7, "color": "#4a3b52", "desc": "Ápice jugable: caza T2 y zorros, nadie lo caza"},
+	"oruga": {"name": "Oruga", "tier": 0, "speed": 80.0, "vision": 130.0, "maxHp": 60.0, "radius": 8.0, "size": 1, "hungerMult": 1.5, "color": "#9ccc65"},
+	"sapo": {"name": "Sapo", "tier": 1, "speed": 110.0, "vision": 170.0, "maxHp": 80.0, "radius": 9.0, "size": 1, "hungerMult": 1.25, "color": "#4db6ac"},
+	"raton": {"name": "Ratón", "tier": 1, "speed": 190.0, "vision": 190.0, "maxHp": 100.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "color": "#90caf9"},
+	"ardilla": {"name": "Ardilla", "tier": 1, "speed": 175.0, "vision": 210.0, "maxHp": 90.0, "radius": 10.0, "size": 2, "hungerMult": 1.0, "climb": true, "color": "#ffcc80"},
+	"topo": {"name": "Topo", "tier": 1, "speed": 135.0, "vision": 150.0, "maxHp": 95.0, "radius": 10.0, "size": 2, "hungerMult": 1.1, "color": "#a1887f"},
+	"halcon": {"name": "Halcón", "tier": 2, "speed": 215.0, "vision": 340.0, "maxHp": 140.0, "radius": 12.0, "size": 3, "hungerMult": 0.8, "color": "#ce93d8"},
+	"zorro": {"name": "Zorro", "tier": 2, "speed": 185.0, "vision": 260.0, "maxHp": 120.0, "radius": 11.0, "size": 3, "hungerMult": 0.85, "color": "#ff8a65"},
+	"lobo": {"name": "Lobo", "tier": 2, "speed": 165.0, "vision": 300.0, "maxHp": 160.0, "radius": 14.0, "size": 4, "hungerMult": 0.7, "color": "#4a3b52"},
 }
 
 const DIET := {
@@ -50,14 +49,14 @@ const FOODDEF := {
 
 const PRED := {
 	"zorro": {"name": "Zorro", "speed": 100.0, "perception": 230.0, "damage": 28.0, "body": 26.0, "size": 3,
-		"huntsTiers": [0, 1], "huntsMates": true, "huntsZorro": false, "fears": ["lobo"], "color": "#c8532a"},
+		"preyTiers": [0, 1], "preyMates": true, "snapOnly": true, "fears": ["lobo"], "color": "#c8532a"},
 	"lobo": {"name": "Lobo", "speed": 150.0, "perception": 280.0, "damage": 35.0, "body": 32.0, "size": 4,
-		"huntsTiers": [2], "huntsMates": false, "huntsZorro": true, "fears": [], "color": "#4a3b52"},
-	"saponpc": {"name": "Sapo", "speed": 70.0, "perception": 150.0, "damage": 10.0, "body": 14.0, "size": 1,
-		"huntsForms": ["oruga"], "huntsMates": false, "huntsZorro": false, "fears": ["zorro", "lobo"], "color": "#4db6ac"},
+		"preyTiers": [2], "fears": [], "color": "#4a3b52"},
+	"halcon": {"name": "Halcón", "speed": 215.0, "perception": 340.0, "damage": 15.0, "body": 18.0, "size": 3,
+		"preySizes": [1, 2], "fears": [], "color": "#ce93d8"},
 }
 const PRED_FALLBACK := {"name": "Depredador", "speed": 150.0, "perception": 250.0, "damage": 20.0,
-	"body": 22.0, "size": 3, "huntsTiers": [], "huntsMates": false, "huntsZorro": false, "fears": ["lobo"]}
+	"body": 22.0, "size": 3, "preyTiers": [], "fears": ["lobo"]}
 const T1POOL := ["raton", "ardilla", "topo", "sapo"]
 const T2POOL := ["halcon", "zorro", "lobo"]
 
@@ -71,7 +70,7 @@ static func _build_tuning() -> Dictionary:
 		"paPerSec": 1.0 / 3.0,
 		"lastFruitHp": 20.0, "lastFruitKarma": -15.0,
 		"shoutKarma": 30.0, "shoutPa": 50.0, "shoutCooldown": 10.0, "shoutLureRange": 450.0,
-		"predatorDamage": 28.0, "predatorInvuln": 1.0,
+		"predatorInvuln": 1.0,
 		"tierUpKarma": 50.0, "tierDownKarma": -50.0,
 		"chaseMult": 1.35, "loboChaseMult": 1.3, "chaseMax": 6.0, "restTime": 2.0, "fleeHysteresis": 1.5,
 		"snapRange": 25.0,
@@ -241,8 +240,8 @@ const VERB_DEFS := {
 }
 
 const LOCO := {
-	"sapo": {"mode": "hop", "cadence": 1.1},
-	"oruga": {"mode": "inchworm", "cadence": 1.65},
+	"sapo": {"mode": "hop"},
+	"oruga": {"mode": "inchworm"},
 	"raton": {"mode": "continuous"},
 	"ardilla": {"mode": "continuous"},
 	"topo": {"mode": "continuous"},
@@ -330,7 +329,12 @@ static func action_time_mult_for(species_key: String, secs: float) -> float:
 
 
 static func aged_time(actor: Dictionary, base: float) -> float:
-	return base * action_time_mult_for(str(actor.get("speciesKey", "raton")), float(actor.get("edad", 0.0)))
+	var secs: float = float(actor.get("edad", 0.0))
+	if not actor.has("edad") and actor.has("agents"):
+		var pp: Variant = KarmaState.player(actor)
+		if pp != null:
+			secs = float((pp as Dictionary).get("edad", 0.0))
+	return base * action_time_mult_for(str(actor.get("speciesKey", "raton")), secs)
 
 
 static func frailty_mult_for(species_key: String, secs: float) -> float:

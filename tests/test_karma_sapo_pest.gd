@@ -69,17 +69,17 @@ func test_ai_and_player_pest_pay_the_same() -> void:
 	a["pa"] = 0.0
 	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
 	s["insects"] = [{"x": 520.0, "y": 500.0}, {"x": 521.0, "y": 500.0}]
-	s["hp"] = 10.0
-	s["hambre"] = 50.0
+	KarmaState.player(s)["hp"] = 10.0
+	KarmaState.player(s)["hambre"] = 50.0
 	s["karma"] = 0.0
 	s["pa"] = 0.0
-	s["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
-	s["px"] = 500.0
-	s["py"] = 500.0
+	KarmaState.player(s)["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
+	KarmaState.player(s)["x"] = 500.0
+	KarmaState.player(s)["y"] = 500.0
 	assert_bool(KarmaGame.cast_verb_for(s, a, 2)).is_true()
 	assert_bool(KarmaGame.cast_verb(s, 2)).is_true()
 	assert_float(float(a["hp"])).is_equal(20.0)
-	assert_float(float(s["hp"])).is_equal(20.0)
+	assert_float(float(KarmaState.player(s)["hp"])).is_equal(20.0)
 	assert_float(float(a["karma"])).is_equal(3.0)
 	assert_float(float(s["karma"])).is_equal(3.0)
 

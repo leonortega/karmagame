@@ -592,6 +592,18 @@ func test_steer_wander_falls_through_to_hunt() -> void:
 	assert_bool(float(a["x"]) > x0).is_true()
 
 
+func test_steer_drink_sips_water_before_moving() -> void:
+	var s := _fresh_lobo_state()
+	var a := _ai_lobo(s, 500.0, 500.0)
+	_only(s, a)
+	a["sed"] = 40.0
+	s["waters"] = [{"x": 520.0, "y": 500.0, "r": 20.0, "level": 10.0}]
+	a["jev_intent"] = {"kind": "drink", "x": 520.0, "y": 500.0, "ttl": 5.0}
+	var sed0 := float(a["sed"])
+	assert_bool(KarmaAILobo.steer_intent(s, a, 0.1)).is_true()
+	assert_float(float(a["sed"])).is_equal(sed0 + float(KarmaData.TUNING["sipSed"]))
+
+
 func test_facade_lobo_delegates() -> void:
 	var s := _fresh_lobo_state()
 	var a := _ai_lobo(s, 500.0, 500.0)
@@ -672,7 +684,7 @@ func test_probe_t408_hungry_seek_offered_despite_water() -> void:
 
 
 func _fauna_lobos(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(o): return str(o.get("speciesKey", "")) == "lobo" and str(o.get("role", "")) == "fauna")
+	return (state["agents"] as Array).filter(func(o): return str(o.get("speciesKey", "")) == "lobo" and str(o.get("brain", "")) != "PLAYER")
 
 
 func test_pack_floor_lobo_is_two() -> void:

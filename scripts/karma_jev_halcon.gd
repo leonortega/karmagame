@@ -59,7 +59,7 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 		if far != null:
 			menu.append({"kind": "seek_carrion", "label": "Seek carrion", "x": float((far as Dictionary)["x"]), "y": float((far as Dictionary)["y"]), "target": far})
 	var small: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return o != a and str(o.get("role", "")) == "fauna" and int(KarmaData.SPECIES.get(str(o.get("speciesKey", "raton")), {"size": 9})["size"]) <= 2), 90.0)
+		(state["agents"] as Array).filter(func(o): return o != a and str(o.get("brain", "")) != "PLAYER" and str(o.get("speciesKey", "")) != str(state["speciesKey"]) and int(KarmaData.SPECIES.get(str(o.get("speciesKey", "raton")), {"size": 9})["size"]) <= 2), 90.0)
 	if small != null and KarmaJevBridge.verb_ready(a, 4):
 		menu.append({"kind": "scare", "label": "Scare prey", "x": float((small as Dictionary)["x"]), "y": float((small as Dictionary)["y"]), "target": small})
 	if KarmaJevBridge.verb_ready(a, 5):
@@ -72,8 +72,9 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	if KarmaAI.is_hunted(state, a):
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["halcon"], r, "halcon") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["halcon"], r, "halcon") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
@@ -81,7 +82,7 @@ static func build_halcon_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_halcon_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaJevBridge.max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	return {
 		"schema": SCHEMA_VERSION,
 		"species": "halcon",

@@ -147,7 +147,7 @@ func test_oruga_ladder_treks_constantly_at_floor() -> void:
 	(s["clumps"] as Array).append(KarmaUtils.mk_patch("leaves", 700.0, 500.0, 3))
 	s["insects"] = []
 	var x0 := float(a["x"])
-	KarmaAI._ai_oruga(s, a, 0.1)
+	KarmaAIOruga.step(s, a, 0.1)
 	assert_bool(float(a["x"]) > x0).is_true()
 	assert_float(float(a.get("stillT", 5.0))).is_equal(0.0)
 

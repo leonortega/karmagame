@@ -37,8 +37,8 @@ func _clear_flora(state: Dictionary) -> void:
 		state[list] = []
 
 
-func _hunter_at(state: Dictionary, x: float, y: float, type: String = "zorro") -> Dictionary:
-	var h := KarmaState.mk_agent({"role": "hunter", "type": type, "speciesKey": type, "hp": 100.0, "x": x, "y": y})
+func _hunter_at(state: Dictionary, x: float, y: float, species: String = "zorro") -> Dictionary:
+	var h := KarmaState.mk_agent({"speciesKey": species, "hp": 100.0, "x": x, "y": y})
 	(state["agents"] as Array).append(h)
 	return h
 
@@ -126,7 +126,7 @@ func test_menu_flee_offered_when_hunted() -> void:
 	var s := _fresh_oruga_state()
 	var a := _ai_oruga(s, 500.0, 500.0)
 	_calm_fed(s, a)
-	_hunter_at(s, 600.0, 500.0, "saponpc")
+	_hunter_at(s, 520.0, 500.0)
 	_refuge_at(s, 550.0, 500.0)
 	assert_bool(_menu_kinds(KarmaJevOruga.build_menu(s, a)).has("flee")).is_true()
 
@@ -488,7 +488,7 @@ func test_step_ladder_hides_when_hunted() -> void:
 	var s := _fresh_oruga_state()
 	var a := _ai_oruga(s, 500.0, 500.0)
 	_calm_fed(s, a)
-	_hunter_at(s, 600.0, 500.0, "saponpc")
+	_hunter_at(s, 520.0, 500.0)
 	_refuge_at(s, 520.0, 500.0)
 	KarmaAIOruga.step_ladder(s, a, 0.1)
 	assert_bool(bool(a.get("hidden", false))).is_true()
@@ -510,7 +510,7 @@ func test_step_jev_hides_when_hunted() -> void:
 	var s := _fresh_oruga_state()
 	var a := _ai_oruga(s, 500.0, 500.0)
 	_calm_fed(s, a)
-	_hunter_at(s, 600.0, 500.0, "saponpc")
+	_hunter_at(s, 520.0, 500.0)
 	_refuge_at(s, 520.0, 500.0)
 	a["jev_intent"] = {"kind": "seek_food", "x": 2000.0, "y": 500.0, "ttl": 5.0}
 	KarmaAIOruga.step_jev(s, a, 0.1)

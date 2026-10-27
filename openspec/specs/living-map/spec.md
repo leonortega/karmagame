@@ -5,7 +5,7 @@
 Define the living ecosystem shared by player and CPU animals: one unified roster of agents of every species on a bigger persistent map, where the player possesses exactly one agent and can start as any species.
 ## Requirements
 ### Requirement: Unified animal roster with possessed player agent
-The system SHALL represent every animal on the map (player and CPU alike) as an agent with species, position, facing, HP, hambre, sed, edad, and brain (PLAYER or AI), where exactly one agent is possessed by the player. The possessed agent carries judgment eligibility; every AI agent additionally carries its own `karma`, `pa`, `owned`, and `lifeLog` ledger.
+The system SHALL represent every animal on the map (player and CPU alike) as an agent with species, position, facing, HP, hambre, sed, edad, and brain (PLAYER or AI), where exactly one agent is possessed by the player. No agent SHALL carry a `role`, `kind`, or `type` label: species data defines legal actions and parameters, and brain selects input versus AI. The possessed agent SHALL remain in the single agents roster; possession SHALL NOT erase the member or spawn a duplicate body. The possessed agent carries judgment eligibility; every AI agent additionally carries its own `karma`, `pa`, `owned`, and `lifeLog` ledger. Company SHALL be derived as same-species AI agents; fauna SHALL be derived as other-species AI agents.
 
 - **WHEN** an AI agent interacts with flora
 - **THEN** it **SHALL** plant nuts (Ardilla) that grow young oaks in the shared world, graze diet plants, and shelter per its species behavior
@@ -14,9 +14,21 @@ The system SHALL represent every animal on the map (player and CPU alike) as an 
 - **WHEN** a life is running with a mixed population
 - **THEN** every visible animal is an entry in the single agents roster with a species key from the full set (oruga, sapo, raton, ardilla, topo, halcon, zorro, lobo) and a brain flag
 
+#### Scenario: Possessed member stays in the roster
+- **WHEN** the player possesses a rolled census member at life start
+- **THEN** that member stays in the agents roster with `brain="PLAYER"`, no second body is created, and the roster count is unchanged
+
+#### Scenario: No role, kind, or type label
+- **WHEN** any animal is created or spawned
+- **THEN** its dictionary has a species key and a brain but no `role`, `kind`, or `type` field, and company/fauna/threat queries derive their answers from species and brain
+
+#### Scenario: Player body fields belong to the possessed agent
+- **WHEN** the player eats, drinks, takes damage, ages, or uses a verb
+- **THEN** the possessed agent's HP, hambre, sed, edad, and action state change; no top-level duplicate body exists
+
 #### Scenario: Only the possessed agent has karma and PA
 - **WHEN** any karma or PA event fires (shout, plant, wasteful kill, survival tick)
-- **THEN** the PLAYER-brained agent's karma/PA changes; AI agents accrue karma/PA only through their own good deeds, shouts, and purchases — never from the player's actions
+- **THEN** the PLAYER-brained agent's karma/PA changes; AI agents accrue karma/PA only through their own good deeds, shouts, and purchases - never from the player's actions
 
 #### Scenario: AI Topo digs a burrow near a predator
 - **WHEN** an AI Topo agent's `digCd` is 0 and `dug` < 3
@@ -62,7 +74,7 @@ The system SHALL seed and maintain a mixed-species population scaled to world ar
 - **THEN** the roster is topped up to at least two fauna lobos, so AI regurg and pack hunting stay reachable
 
 ### Requirement: Shared hunger-eat-die loop for all agents
-Every agent on the map (player or AI) SHALL drain hambre and sed continuously at the same species rates, regenerate vida over time only when hambre AND sed are both above threshold (scaled down by age per `animal-senescence`), otherwise drain vida with the same deficit multiplier, drink from charcos and lagos with the same sed and sip-vida gains, eat only its DIET table entries with the same Vida gains (no karma, no PA for AI), age through prime/worn/frail stages, and die at 0 Vida or at its species lifespan leaving a fresh carrion. AI kills obey the same age-scaled damage and kill verbs as player kills. Role-hunter NPC predators (zorro, lobo, saponpc pressure roles) SHALL drain hambre/sed/edad, weaken with age, and drink like other agents, and their Vida SHALL drain from needs and age like everyone else: they starve, weaken, and die of hunger, thirst, or old age, and combat and feast gains still apply. **BREAKING**: the old pressure-role needs-immunity guarantee is removed.
+Every agent on the map (player or AI) SHALL drain hambre and sed continuously at the same species rates, regenerate vida over time only when hambre AND sed are both above threshold (scaled down by age per `animal-senescence`), otherwise drain vida with the same deficit multiplier, drink from charcos and lagos with the same sed and sip-vida gains, eat only its DIET table entries with the same Vida gains (no karma, no PA for AI), age through prime/worn/frail stages, and die at 0 Vida or at its species lifespan leaving a fresh carrion. AI kills obey the same age-scaled damage and kill verbs as player kills. Any animal whose species data lists animal prey SHALL drain hambre/sed/edad, weaken with age, and drink like other agents, and its Vida SHALL drain from needs and age like everyone else: it starves, weakens, and dies of hunger, thirst, or old age, and combat and feast gains still apply. **BREAKING**: the old pressure-role needs-immunity guarantee is removed.
 
 #### Scenario: NPC grazer eats and survives
 - **WHEN** an AI raton reaches a berry patch with fruit remaining
@@ -81,11 +93,11 @@ Every agent on the map (player or AI) SHALL drain hambre and sed continuously at
 - **THEN** it gains the same sed refill and sip-vida heal as a player would, with no karma or PA granted
 
 #### Scenario: Hunter pressure never starves out
-- **WHEN** a role-hunter NPC goes unfed and unwatered for an extended time
+- **WHEN** a predatory animal goes unfed and unwatered for an extended time
 - **THEN** the old immunity no longer applies (**BREAKING**): its Vida drops from needs and age like any agent and it can die, weakening first
 
 #### Scenario: Hunter pressure can starve and age out
-- **WHEN** a role-hunter NPC goes unfed and unwatered for an extended time or reaches its lifespan
+- **WHEN** a predatory animal goes unfed and unwatered for an extended time or reaches its lifespan
 - **THEN** its Vida drops from needs and age like any agent, it weakens (slower, softer hits), and it dies at 0 or at lifespan, spawning carrion
 
 ### Requirement: Player can start as any species

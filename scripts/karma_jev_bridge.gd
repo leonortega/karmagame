@@ -13,10 +13,6 @@ static func verb_ready(a: Dictionary, slot: int) -> bool:
 	return float((a["verbCds"] as Array)[slot - 1]) <= 0.0
 
 
-static func max_hp(a: Dictionary) -> float:
-	return KarmaAI.ai_max_hp(a)
-
-
 static func set_intent(a: Dictionary, kind: String, x: float, y: float, target: Variant = null) -> void:
 	var intent := {"kind": kind, "x": x, "y": y, "ttl": INTENT_TTL}
 	if target != null:

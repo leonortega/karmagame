@@ -28,6 +28,13 @@ func test_hp_frac_clamps_and_colors() -> void:
 	assert_str(KarmaDraw.hp_color(0.1).to_html()).is_equal(Color("#ef5350").to_html())
 
 
+func test_agent_hp_bar_frac_uses_adapted_max() -> void:
+	var adapted := {"speciesKey": "raton", "owned": {"stomach": true}, "hp": 125.0}
+	assert_float(KarmaDraw.hp_frac_for_agent(adapted)).is_equal(1.0)
+	var hurt := {"speciesKey": "raton", "owned": {"stomach": true}, "hp": 100.0}
+	assert_float(KarmaDraw.hp_frac_for_agent(hurt)).is_equal(0.8)
+
+
 func test_bar_text_fills_proportionally() -> void:
 	assert_str(KarmaHud.bar(1.0, 4)).is_equal("■■■■")
 	assert_str(KarmaHud.bar(0.0, 4)).is_equal("□□□□")
@@ -36,9 +43,9 @@ func test_bar_text_fills_proportionally() -> void:
 
 func test_vital_fracs_derive_from_state() -> void:
 	var s := KarmaState.blank_state("raton", 0.0, 0.0)
-	s["hp"] = 50.0
-	s["hambre"] = 25.0
-	s["sed"] = 75.0
+	KarmaState.player(s)["hp"] = 50.0
+	KarmaState.player(s)["hambre"] = 25.0
+	KarmaState.player(s)["sed"] = 75.0
 	assert_bool(abs(KarmaHud.hp_frac(s) - 0.5) < 0.001).is_true()
 	assert_bool(abs(KarmaHud.hunger_frac(s) - 0.25) < 0.001).is_true()
 	assert_bool(abs(KarmaHud.thirst_frac(s) - 0.75) < 0.001).is_true()
@@ -46,7 +53,7 @@ func test_vital_fracs_derive_from_state() -> void:
 
 func test_edad_line_reads_seconds_and_animal_years() -> void:
 	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
-	prime["edad"] = 40.0
+	KarmaState.player(prime)["edad"] = 40.0
 	var line := KarmaHud.edad_line(prime)
 	assert_bool(line.contains("40s")).is_true()
 	assert_bool(line.contains("2.0")).is_true()
@@ -54,13 +61,13 @@ func test_edad_line_reads_seconds_and_animal_years() -> void:
 
 func test_edad_line_shows_spanish_stage() -> void:
 	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
-	prime["edad"] = 40.0
+	KarmaState.player(prime)["edad"] = 40.0
 	assert_bool(KarmaHud.edad_line(prime).contains("joven")).is_true()
 	var worn := KarmaState.blank_state("raton", 0.0, 0.0)
 	worn["edad"] = 100.0
 	assert_bool(KarmaHud.edad_line(worn).contains("maduro")).is_true()
 	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
-	frail["edad"] = 200.0
+	KarmaState.player(frail)["edad"] = 200.0
 	var line := KarmaHud.edad_line(frail)
 	assert_bool(line.contains("frágil")).is_true()
 	assert_bool(line.contains("prime") or line.contains("worn") or line.contains("frail")).is_false()

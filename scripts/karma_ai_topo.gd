@@ -5,6 +5,11 @@ extends RefCounted
 # Micro steering every tick + macro intent from KarmaJevTopo ranking.
 
 
+static var _JEV_GATES := Callable(KarmaAI, "jev_gates_common")
+static var _JEV_STEER := Callable(KarmaAITopo, "steer_intent")
+static var _JEV_MOCK := Callable(KarmaJevTopo, "mock_macro")
+
+
 static func step(state: Dictionary, a: Dictionary, dt: float) -> void:
 	if KarmaJevTopo.USE_JEV:
 		step_jev(state, a, dt)
@@ -13,7 +18,7 @@ static func step(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, KarmaAI.ai_max_hp(a), dt)
+	KarmaUtils.update_needs(a, KarmaState.eff_max_hp_for(a), dt)
 	KarmaAI.ai_base(state, a, dt)
 	if KarmaAI.ai_hide_tick(state, a, dt):
 		return
@@ -38,32 +43,14 @@ static func step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, KarmaAI.ai_max_hp(a), dt)
-	KarmaAI.ai_base(state, a, dt)
-	KarmaJev.intent_tick(a, dt)
-	if KarmaAI.ai_hide_tick(state, a, dt):
-		return
-	if KarmaAI.is_hunted(state, a) and KarmaAI.ai_try_hide(state, a):
-		return
-	if KarmaAI.ai_thirst(state, a, dt):
-		return
-	if KarmaAI.ai_urgent_seek(state, a, dt):
-		return
-	if steer_intent(state, a, dt):
-		return
-	if bool(a.get("jev_live", false)):
-		a["jev_intent"] = {"kind": "wander", "x": float(a["x"]), "y": float(a["y"]), "ttl": 5.0}
-		return
-	KarmaJevTopo.mock_macro(state, a)
+	KarmaAI.jev_step(state, a, dt, _JEV_GATES, _JEV_STEER, _JEV_MOCK)
 
 
 static func steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if not a.has("jev_intent") or (a["jev_intent"] as Dictionary).is_empty():
+	var intent_v: Variant = KarmaAI.live_jev_intent(a)
+	if intent_v == null:
 		return false
-	if float((a["jev_intent"] as Dictionary).get("ttl", 0.0)) <= 0.0:
-		a["jev_intent"] = {}
-		return false
-	var intent := a["jev_intent"] as Dictionary
+	var intent := intent_v as Dictionary
 	match str(intent.get("kind", "wander")):
 		"eat":
 			var target: Variant = intent.get("target", null)
@@ -71,8 +58,7 @@ static func steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
 			if target != null:
 				var tx := float((target as Dictionary).get("x", float(a["x"])))
 				var ty := float((target as Dictionary).get("y", float(a["y"])))
-				var d := Vector2(tx, ty).distance_to(Vector2(float(a["x"]), float(a["y"])))
-				if d <= eat_range:
+				if KarmaUtils.dist2(tx, ty, float(a["x"]), float(a["y"])) <= eat_range * eat_range:
 					if (state["insects"] as Array).has(target):
 						return KarmaEat.eat_insect(state, target, a)
 					if KarmaJevTopo.patch_still_edible(target):

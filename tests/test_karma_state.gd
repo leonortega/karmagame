@@ -10,7 +10,7 @@ func before_test() -> void:
 
 func test_new_run_seeds_world() -> void:
 	var s := KarmaState.new_run("raton", 0.0, 0.0, 0, _rng)
-	assert_float(s["hp"]).is_equal(float(KarmaData.SPECIES["raton"]["maxHp"]))
+	assert_float(KarmaState.player(s)["hp"]).is_equal(float(KarmaData.SPECIES["raton"]["maxHp"]))
 	assert_bool((s["bushes"] as Array).size() > 0).is_true()
 	assert_bool((s["agents"] as Array).size() > 0).is_true()
 	assert_bool((s["refuges"] as Array).size() > 0).is_true()
@@ -30,18 +30,18 @@ func test_eff_adaptations() -> void:
 	assert_bool(abs(KarmaState.eff_speed(s) - float(KarmaData.SPECIES["raton"]["speed"])) < 0.01).is_true()
 	s["owned"]["raton_zarpas"] = true
 	assert_bool(abs(KarmaState.eff_speed(s) - float(KarmaData.SPECIES["raton"]["speed"]) * 1.15) < 0.01).is_true()
-	assert_float(KarmaState.eff_max_hp(s)).is_equal(float(KarmaData.SPECIES["raton"]["maxHp"]))
+	assert_float(KarmaState.eff_max_hp_for(s)).is_equal(float(KarmaData.SPECIES["raton"]["maxHp"]))
 	assert_bool(KarmaShop.has_adapt(s, "swift")).is_true()
 
 
 func test_refuge_fits_and_hide() -> void:
 	var s := KarmaState.new_run("raton", 0.0, 0.0, 0, _rng)
 	# Place a fitting refuge at the player.
-	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": s["px"], "y": s["py"], "dug": false})
+	(s["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": KarmaState.px(s), "y": KarmaState.py(s), "dug": false})
 	assert_bool(KarmaState.toggle_hide(s)).is_true()
-	assert_bool(s["hidden"]).is_true()
+	assert_bool(KarmaState.player(s)["hidden"]).is_true()
 	assert_bool(KarmaState.toggle_hide(s)).is_true()
-	assert_bool(s["hidden"]).is_false()
+	assert_bool(KarmaState.player(s)["hidden"]).is_false()
 
 
 func test_shout_pays_and_lures() -> void:
@@ -49,7 +49,7 @@ func test_shout_pays_and_lures() -> void:
 	assert_bool(KarmaState.try_shout(s)).is_true()
 	assert_float(s["karma"]).is_equal(30.0)
 	assert_float(s["pa"]).is_equal(50.0)
-	assert_float(s["lureTimer"]).is_equal(5.0)
+	assert_float(KarmaState.player(s)["lureTimer"]).is_equal(5.0)
 
 
 func test_predator_cannot_shout() -> void:
@@ -74,7 +74,7 @@ func test_new_run_matches_rolled_census() -> void:
 	var expect := 0
 	for sp in counts:
 		expect += int(counts[sp])
-	assert_int((s["agents"] as Array).size() + 1).is_equal(expect)
+	assert_int((s["agents"] as Array).size()).is_equal(expect)
 
 
 func test_player_species_not_stacked() -> void:
@@ -84,7 +84,7 @@ func test_player_species_not_stacked() -> void:
 	for a in s["agents"]:
 		if str(a["speciesKey"]) == "raton":
 			ratons += 1
-	assert_int(ratons + 1).is_equal(int(counts["raton"]))
+	assert_int(ratons).is_equal(int(counts["raton"]))
 
 
 func test_reincarnate_carries_census() -> void:
@@ -101,12 +101,9 @@ func test_reincarnate_carries_census() -> void:
 func _member_positions(s: Dictionary, sp: String) -> Array:
 	var pts := []
 	for a in s["agents"]:
-		# Pressure hunters (e.g. the T0 saponpc) share the species key but are
-		# deliberately offset from the grazer community, so they don't count here.
-		if str(a["speciesKey"]) == sp and str(a.get("role", "")) != "hunter":
+		if str(a["speciesKey"]) == sp:
 			pts.append(Vector2(float(a["x"]), float(a["y"])))
-	if str(s["speciesKey"]) == sp:
-		pts.append(Vector2(float(s["px"]), float(s["py"])))
+	return pts
 	return pts
 
 
@@ -145,31 +142,27 @@ func test_spawns_avoid_water() -> void:
 		assert_bool(KarmaUtils.inside_water(s, float(a["x"]), float(a["y"]))).is_false()
 		if is_failure():
 			return
-	assert_bool(KarmaUtils.inside_water(s, float(s["px"]), float(s["py"]))).is_false()
+	assert_bool(KarmaUtils.inside_water(s, float(KarmaState.px(s)), float(KarmaState.py(s)))).is_false()
 
 
-func test_scripted_hunters_capped_to_floor() -> void:
-	var t1 := KarmaState.new_run("raton", 0.0, 0.0, 0, _rng)
-	assert_int(KarmaState.hunter_agents(t1).size()).is_equal(0)
+func test_no_scripted_pressure_agents() -> void:
+	# The roster is exactly the rolled census: the possessed member stays in agents.
 	var t0 := KarmaState.new_run("oruga", 0.0, 0.0, 0, _rng)
-	var scripted := (t0["agents"] as Array).filter(func(a): return str(a.get("role", "")) == "hunter")
-	assert_int(scripted.size()).is_equal(1)
-	assert_str(str(scripted[0]["type"])).is_equal("saponpc")
+	var counts: Dictionary = (t0["census"] as Dictionary)["counts"]
+	var expected := 0
+	for k in counts:
+		expected += int(counts[k])
+	assert_int((t0["agents"] as Array).size()).is_equal(expected)
 
 
 func test_lobo_does_not_hunt_t0_agents() -> void:
 	var s := KarmaState.new_run("raton", 0.0, 0.0, 0, _rng)
-	s["px"] = 3000.0
-	s["py"] = 2200.0
+	KarmaState.player(s)["x"] = 3000.0
+	KarmaState.player(s)["y"] = 2200.0
 	var lobo := KarmaPredators.mk_predator(s, "lobo", 500.0, 500.0, 1)
 	(s["agents"] as Array).append(lobo)
 	var prey: Dictionary = KarmaState.spawn_fauna(s, "oruga", 550.0, 500.0)
-	var t: Dictionary = KarmaData.PRED["lobo"]
-	var dp := Vector2(float(s["px"]), float(s["py"])).distance_to(Vector2(500.0, 500.0))
-	var hit := KarmaPredators.pick_target(s, lobo, t, dp, false, false, _rng, KarmaPredators.stalk_victims(s, lobo))
-	assert_str(str(hit["hunting"])).is_equal("")
-	var dead: Array = []
-	KarmaPredators.step_predator(s, lobo, 0.1, dead, _rng, [])
+	KarmaGame.step_agent(s, lobo, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_true()
 
 
@@ -201,7 +194,10 @@ func test_all_themes_keep_communities_clustered() -> void:
 			if is_failure():
 				return
 		if theme == "lean" and sp == "oruga":
-			var scripted := (s["agents"] as Array).filter(func(a): return str(a.get("role", "")) == "hunter")
-			lean_t0_ok = scripted.size() == 1 and _member_positions(s, "oruga").size() >= 4
+			var halcones := 0
+			for a in s["agents"]:
+				if str(a.get("speciesKey", "")) == "halcon":
+					halcones += 1
+			lean_t0_ok = halcones >= 1 and _member_positions(s, "oruga").size() >= int((s["census"] as Dictionary)["counts"]["oruga"])
 	assert_int(themes.size()).is_equal(5)
 	assert_bool(lean_t0_ok).is_true()

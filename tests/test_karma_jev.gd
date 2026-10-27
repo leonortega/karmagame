@@ -85,8 +85,46 @@ func test_jev_micro_moves_toward_carrion_intent() -> void:
 	var c: Dictionary = (s["carrions"] as Array)[0]
 	a["jev_intent"] = {"kind": "seek_carrion", "x": float(c["x"]), "y": float(c["y"]), "ttl": 5.0, "target": c}
 	var x0 := float(a["x"])
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_bool(float(a["x"]) > x0).is_true()
+
+
+func test_steer_pounce_chases_prey_with_chase_mult() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	var prey := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "hp": 100.0, "x": 900.0, "y": 500.0})
+	(s["agents"] as Array).append(prey)
+	a["jev_intent"] = {"kind": "pounce", "x": 600.0, "y": 400.0, "ttl": 5.0, "target": prey}
+	var x0 := float(a["x"])
+	var y0 := float(a["y"])
+	var loco0 := float(a.get("locoT", 0.0))
+	assert_bool(KarmaAIZorro.steer_intent(s, a, 0.1)).is_true()
+	var envelope: float = KarmaGame.loco_mult("zorro", false, loco0 + 0.1)
+	var base: float = KarmaData.aged_speed("zorro", float(KarmaData.SPECIES["zorro"]["speed"]), float(a.get("edad", 0.0)))
+	var step: float = base * float(KarmaData.TUNING["chaseMult"]) * envelope * 0.1
+	assert_float(float(a["x"])).is_equal_approx(x0 + step, 0.0001)
+	assert_float(float(a["y"])).is_equal(y0)
+
+
+func test_steer_flee_skips_drink_and_eat() -> void:
+	var s := _fresh_zorro_state()
+	var a := _ai_zorro(s, 500.0, 500.0)
+	a["sed"] = 40.0
+	a["hp"] = 10.0
+	KarmaEat.add_carrion(s, 530.0, 500.0)
+	s["waters"] = [{"kind": "charco", "x": 520.0, "y": 520.0, "r": 10.0, "level": 10.0}]
+	a["jev_intent"] = {"kind": "flee", "x": 700.0, "y": 560.0, "ttl": 5.0}
+	var x0 := float(a["x"])
+	var y0 := float(a["y"])
+	var sed0 := float(a["sed"])
+	var hp0 := float(a["hp"])
+	var carrion0 := (s["carrions"] as Array).size()
+	assert_bool(KarmaAIZorro.steer_intent(s, a, 0.1)).is_true()
+	assert_bool(float(a["x"]) > x0).is_true()
+	assert_bool(float(a["y"]) > y0).is_true()
+	assert_float(float(a["sed"])).is_equal(sed0)
+	assert_float(float(a["hp"])).is_equal(hp0)
+	assert_int((s["carrions"] as Array).size()).is_equal(carrion0)
 
 
 func test_http_body_matches_server_contract() -> void:
@@ -101,7 +139,7 @@ func test_http_body_matches_server_contract() -> void:
 	for req in body["states"] as Array:
 		var crit: Dictionary = ((req as Dictionary)["questions"] as Dictionary)["intent"]
 		assert_bool((crit["criteria"] as Dictionary).size() >= 2).is_true()
-	var zorros := (s["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == "zorro")
+	var zorros := (s["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == "zorro" and str(a.get("brain", "")) != "PLAYER")
 	assert_int((body["states"] as Array).size()).is_equal(zorros.size())
 	assert_bool(zorros.size() >= 2).is_true()
 	for req in body["states"] as Array:
@@ -172,7 +210,7 @@ func test_parse_answers_clamps_unknown_kind_to_wander() -> void:
 
 
 func test_log_path_lives_under_user_logs() -> void:
-	assert_str(KarmaJev.JEV_LOG_PATH).is_equal("user://logs/jev_zorro.log")
+	assert_str(KarmaJev.jev_log_path_for("zorro")).is_equal("user://logs/jev_zorro.log")
 
 
 func test_ensure_log_ready_creates_dir_and_file() -> void:
@@ -209,7 +247,7 @@ func test_decision_log_caps_and_records() -> void:
 	for i in 5:
 		KarmaJev.log_decision(s, {"i": i}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0], "emocion": "Hambre"}, true)
 	assert_int((s.get("jev_log", []) as Array).size()).is_equal(5)
-	assert_str(str(((s["jev_log"] as Array)[0] as Dictionary)["schema"])).is_equal(KarmaJev.SCHEMA_VERSION)
+	assert_str(str(((s["jev_log"] as Array)[0] as Dictionary)["schema"])).is_equal(KarmaJev.schema_for("zorro"))
 	assert_bool(str(((s["jev_log"] as Array)[0] as Dictionary)["summary"]).find("wander") >= 0).is_true()
 	for i in KarmaJev.JEV_LOG_CAP + 5:
 		KarmaJev.log_decision(s, {"i": i}, [{"kind": "wander"}], {"choice": 0, "probs": [1.0]}, true)
@@ -260,7 +298,7 @@ func test_hunt_intent_kills_on_contact() -> void:
 	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
 	var carrion_n := (s["carrions"] as Array).size()
 	a["jev_intent"] = {"kind": "hunt", "x": 510.0, "y": 500.0, "ttl": 5.0, "target": prey}
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 
@@ -288,7 +326,7 @@ func test_apply_hunt_intent_kills_prey_on_contact() -> void:
 	var idx := _menu_kind_index(menu, "hunt")
 	assert_int(idx).is_not_equal(-1)
 	assert_bool(KarmaJev.apply_answer(s, a, menu, {"choice": idx, "probs": [1.0], "emocion": ""})).is_true()
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 
@@ -306,8 +344,8 @@ func test_should_ask_on_threat_with_nonflee_intent() -> void:
 
 func test_lod_interval_near_and_far() -> void:
 	var s := _fresh_zorro_state()
-	var near := _ai_zorro(s, float(s["px"]) + 10.0, float(s["py"]))
-	var far := _ai_zorro(s, float(s["px"]) + 600.0, float(s["py"]))
+	var near := _ai_zorro(s, float(KarmaState.px(s)) + 10.0, float(KarmaState.py(s)))
+	var far := _ai_zorro(s, float(KarmaState.px(s)) + 600.0, float(KarmaState.py(s)))
 	assert_float(KarmaJev.lod_interval(s, near, 1000.0)).is_equal(1.0)
 	assert_float(KarmaJev.lod_interval(s, far, 1000.0)).is_equal(3.0)
 
@@ -342,7 +380,7 @@ func test_live_flag_skips_mock_and_wanders() -> void:
 	var a := _ai_zorro(s, 500.0, 500.0)
 	a["jev_live"] = true
 	a["jev_intent"] = {}
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
 
 
@@ -579,7 +617,7 @@ func test_jev_halcon_micro_moves_toward_carrion_intent() -> void:
 	var c: Dictionary = (s["carrions"] as Array)[0]
 	a["jev_intent"] = {"kind": "seek_carrion", "x": float(c["x"]), "y": float(c["y"]), "ttl": 5.0, "target": c}
 	var x0 := float(a["x"])
-	KarmaAI._ai_halcon(s, a, 0.1)
+	KarmaAIHalcon.step(s, a, 0.1)
 	assert_bool(float(a["x"]) > x0).is_true()
 
 
@@ -590,7 +628,7 @@ func test_jev_halcon_dive_intent_kills_and_grounds_on_contact() -> void:
 	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
 	var carrion_n := (s["carrions"] as Array).size()
 	a["jev_intent"] = {"kind": "dive", "x": 510.0, "y": 500.0, "ttl": 5.0, "target": prey}
-	KarmaAI._ai_halcon(s, a, 0.1)
+	KarmaAIHalcon.step(s, a, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 	assert_bool(bool(a.get("grounded", false))).is_true()
@@ -619,7 +657,7 @@ func test_apply_dive_intent_kills_prey_on_contact() -> void:
 	var idx := _halcon_kind_index(menu, "dive")
 	assert_int(idx).is_not_equal(-1)
 	assert_bool(KarmaJev.apply_halcon_answer(s, a, menu, {"choice": idx, "probs": [1.0], "emocion": ""})).is_true()
-	KarmaAI._ai_halcon(s, a, 0.1)
+	KarmaAIHalcon.step(s, a, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 	assert_bool(bool(a.get("grounded", false))).is_true()
@@ -630,7 +668,7 @@ func test_jev_halcon_live_flag_skips_mock_and_wanders() -> void:
 	var a := _ai_halcon(s, 500.0, 500.0)
 	a["jev_live"] = true
 	a["jev_intent"] = {}
-	KarmaAI._ai_halcon(s, a, 0.1)
+	KarmaAIHalcon.step(s, a, 0.1)
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
 
 
@@ -699,7 +737,7 @@ func test_zorro_wander_fallthrough_cedes_when_sated() -> void:
 	a["satedT"] = 5.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	var k0 := float(a["karma"])
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_int((s["carrions"] as Array).size()).is_equal(1)
 	assert_bool(bool((s["carrions"] as Array)[0].get("ceded", false))).is_true()
 	assert_float(float(a["karma"])).is_equal(k0 + float(KarmaData.TUNING["cedeKarma"]))
@@ -713,7 +751,7 @@ func test_zorro_wander_fallthrough_hunts_opportunistically() -> void:
 	a["hambre"] = 50.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	var carrion_n := (s["carrions"] as Array).size()
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 
@@ -728,7 +766,7 @@ func test_zorro_wander_fallthrough_eats_contact_carrion() -> void:
 	a["satedT"] = 0.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	var hp0 := float(a["hp"])
-	KarmaAI._ai_zorro(s, a, 0.1)
+	KarmaAIZorro.step(s, a, 0.1)
 	assert_bool(float(a["hp"]) > hp0).is_true()
 	assert_int((s["carrions"] as Array).size()).is_equal(0)
 
@@ -740,7 +778,7 @@ func test_halcon_wander_fallthrough_hunts_opportunistically() -> void:
 	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
 	var carrion_n := (s["carrions"] as Array).size()
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
-	KarmaAI._ai_halcon(s, a, 0.1)
+	KarmaAIHalcon.step(s, a, 0.1)
 	assert_bool((s["agents"] as Array).has(prey)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n + 1)
 	assert_bool(bool(a.get("grounded", false))).is_true()
@@ -754,7 +792,7 @@ func test_halcon_wander_fallthrough_lands_on_carrion() -> void:
 	a["grounded"] = false
 	a["landT"] = 0.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
-	KarmaAI._ai_halcon(s, a, 0.1)
+	KarmaAIHalcon.step(s, a, 0.1)
 	assert_bool(bool(a.get("grounded", false))).is_true()
 	assert_float(float(a.get("landT", 0.0))).is_equal(float(KarmaData.TUNING["landTime"]))
 	assert_int((s["carrions"] as Array).size()).is_equal(1)

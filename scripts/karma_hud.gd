@@ -25,21 +25,21 @@ static func control_rows(state: Dictionary) -> Array:
 	var rows: Array = [{"key": "WASD/Flechas", "label": "moverse", "cd": 0.0}]
 	var e_cd: float = 0.0
 	var e_extra: String = ""
-	if sk == "zorro" and float(state.get("pounceCd", 0.0)) > 0.0:
-		e_cd = float(state["pounceCd"])
+	if sk == "zorro" and float(KarmaState.player(state).get("pounceCd", 0.0)) > 0.0:
+		e_cd = float(KarmaState.player(state)["pounceCd"])
 	if sk == "topo":
-		if float(state.get("digCd", 0.0)) > 0.0:
-			e_cd = float(state["digCd"])
+		if float(KarmaState.player(state).get("digCd", 0.0)) > 0.0:
+			e_cd = float(KarmaState.player(state)["digCd"])
 		e_extra = " (%d/%d)" % [int(state.get("dug", 0)), int(KarmaData.TUNING["digMax"])]
 	rows.append({"key": "E", "label": str(KarmaData.CONTROLS_E.get(sk, "comer/cazar")) + e_extra, "cd": e_cd})
 	if sk in KarmaData.CONTROLS_Q:
-		rows.append({"key": "Q", "label": "gritar", "cd": float(state.get("shoutCd", 0.0))})
+		rows.append({"key": "Q", "label": "gritar", "cd": float(KarmaState.player(state).get("shoutCd", 0.0))})
 	if KarmaData.CONTROLS_V.has(sk):
-		rows.append({"key": "V", "label": str(KarmaData.CONTROLS_V[sk]), "cd": float(state.get("senseCd", 0.0))})
+		rows.append({"key": "V", "label": str(KarmaData.CONTROLS_V[sk]), "cd": float(KarmaState.player(state).get("senseCd", 0.0))})
 	if sk in KarmaData.CONTROLS_C:
-		var nut: String = " (nuez en lomo: C enterrar)" if bool(state.get("carriedNut", false)) else ""
+		var nut: String = " (nuez en lomo: C enterrar)" if bool(KarmaState.player(state).get("carriedNut", false)) else ""
 		rows.append({"key": "C", "label": "llevar/enterrar" + nut, "cd": 0.0})
-	rows.append({"key": "H", "label": "salir (hambre y sed siguen)" if bool(state.get("hidden", false)) else "esconderse", "cd": 0.0})
+	rows.append({"key": "H", "label": "salir (hambre y sed siguen)" if bool(KarmaState.player(state).get("hidden", false)) else "esconderse", "cd": 0.0})
 	rows.append({"key": "B", "label": "tienda (1-3 comprar)", "cd": 0.0})
 	return rows
 
@@ -50,7 +50,7 @@ static func verb_rows(state: Dictionary) -> Array:
 	for i in defs.size():
 		var v: Dictionary = defs[i]
 		out.append({"slot": v["slot"], "name": v["name"], "desc": v["desc"],
-			"cd": float((state["verbCds"] as Array)[i]), "poor": float(state.get("pa", 0.0)) < float(v["costPa"])})
+			"cd": float((KarmaState.player(state)["verbCds"] as Array)[i]), "poor": float(state.get("pa", 0.0)) < float(v["costPa"])})
 	return out
 
 
@@ -83,7 +83,7 @@ static func judgment_summary(state: Dictionary) -> String:
 
 
 static func edad_line(state: Dictionary) -> String:
-	var secs: float = float(state.get("edad", 0.0))
+	var secs: float = float(KarmaState.player(state).get("edad", 0.0))
 	var sk: String = str(state["speciesKey"])
 	var line: String = "Edad %ds (~%.1f años)" % [int(secs), KarmaData.animal_years(sk, secs)]
 	return line + " · %s" % str(STAGE_LABEL.get(KarmaData.age_stage(sk, secs), "joven"))
@@ -95,15 +95,15 @@ static func bar(frac: float, width: int = 10) -> String:
 
 
 static func hp_frac(state: Dictionary) -> float:
-	return KarmaDraw.hp_frac(float(state.get("hp", 0.0)), KarmaState.eff_max_hp(state))
+	return KarmaDraw.hp_frac(float(KarmaState.player(state).get("hp", 0.0)), KarmaState.eff_max_hp_for(state))
 
 
 static func hunger_frac(state: Dictionary) -> float:
-	return clampf(float(state.get("hambre", 0.0)) / 100.0, 0.0, 1.0)
+	return clampf(float(KarmaState.player(state).get("hambre", 0.0)) / 100.0, 0.0, 1.0)
 
 
 static func thirst_frac(state: Dictionary) -> float:
-	return clampf(float(state.get("sed", 0.0)) / 100.0, 0.0, 1.0)
+	return clampf(float(KarmaState.player(state).get("sed", 0.0)) / 100.0, 0.0, 1.0)
 
 
 static func weather_line(state: Dictionary) -> String:
@@ -112,9 +112,15 @@ static func weather_line(state: Dictionary) -> String:
 
 
 static func prompt_line(state: Dictionary) -> String:
-	if bool(state.get("hidden", false)):
+	if bool(KarmaState.player(state).get("hidden", false)):
 		return "Oculto — H salir · hambre y sed siguen drenando"
-	var near: Array = (state.get("refuges", []) as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= float(KarmaData.TUNING["hideRange"]))
+	var px: float = float(KarmaState.px(state))
+	var py: float = float(KarmaState.py(state))
+	var hide_range: float = float(KarmaData.TUNING["hideRange"])
+	var near: Array = []
+	for r in state.get("refuges", []):
+		if KarmaUtils.dist2(float(r["x"]), float(r["y"]), px, py) <= hide_range * hide_range:
+			near.append(r)
 	var fit: Variant = null
 	for r in near:
 		if KarmaState.refuge_fits(state, r):

@@ -13,21 +13,21 @@ static func heal_eater(state: Dictionary, for_agent: Variant, n: float) -> void:
 		var a: Dictionary = for_agent as Dictionary
 		a["hp"] = minf(KarmaState.eff_max_hp_for(a), float(a.get("hp", 0.0)) + n)
 	else:
-		state["hp"] = minf(KarmaState.eff_max_hp(state), float(state["hp"]) + n)
+		KarmaState.player(state)["hp"] = minf(KarmaState.eff_max_hp_for(state), float(KarmaState.player(state)["hp"]) + n)
 
 
 static func hurt_eater(state: Dictionary, for_agent: Variant, n: float) -> void:
 	if for_agent != null:
 		(for_agent as Dictionary)["hp"] = float((for_agent as Dictionary).get("hp", 0.0)) + n
 	else:
-		state["hp"] = float(state["hp"]) + n
+		KarmaState.player(state)["hp"] = float(KarmaState.player(state)["hp"]) + n
 
 
 static func refill_hambre(state: Dictionary, for_agent: Variant, n: float) -> void:
 	if for_agent != null:
 		(for_agent as Dictionary)["hambre"] = minf(100.0, float((for_agent as Dictionary).get("hambre", 100.0)) + n)
 	else:
-		state["hambre"] = minf(100.0, float(state["hambre"]) + n)
+		KarmaState.player(state)["hambre"] = minf(100.0, float(KarmaState.player(state)["hambre"]) + n)
 
 
 static func eat_range(state: Dictionary) -> float:
@@ -37,7 +37,7 @@ static func eat_range(state: Dictionary) -> float:
 
 
 static func nearest_water(state: Dictionary, max_d: float) -> Variant:
-	return KarmaUtils.nearest_water_for(state, float(state["px"]), float(state["py"]), max_d)
+	return KarmaUtils.nearest_water_for(state, float(KarmaState.px(state)), float(KarmaState.py(state)), max_d)
 
 
 static func drink_water(state: Dictionary, w: Variant, for_agent: Variant) -> bool:
@@ -53,8 +53,8 @@ static func drink_water(state: Dictionary, w: Variant, for_agent: Variant) -> bo
 		heal_eater(state, a, float(KarmaData.TUNING["sipHp"]))
 		body["level"] = maxf(0.0, float(body["level"]) - cost)
 		return true
-	state["sed"] = minf(100.0, float(state["sed"]) + float(KarmaData.TUNING["sipSed"]))
-	state["hp"] = minf(KarmaState.eff_max_hp(state), float(state["hp"]) + float(KarmaData.TUNING["sipHp"]))
+	KarmaState.player(state)["sed"] = minf(100.0, float(KarmaState.player(state)["sed"]) + float(KarmaData.TUNING["sipSed"]))
+	KarmaState.player(state)["hp"] = minf(KarmaState.eff_max_hp_for(state), float(KarmaState.player(state)["hp"]) + float(KarmaData.TUNING["sipHp"]))
 	body["level"] = maxf(0.0, float(body["level"]) - cost)
 	KarmaState.add_log(state, null, "Bebes agua (+sed, +vida)")
 	return true
@@ -65,7 +65,7 @@ static func try_drink(state: Dictionary) -> bool:
 
 
 static func try_eat(state: Dictionary) -> bool:
-	if bool(state.get("dead", false)) or bool(state.get("hidden", false)):
+	if bool(state.get("dead", false)) or bool(KarmaState.player(state).get("hidden", false)):
 		return false
 	match str(state["speciesKey"]):
 		"zorro":
@@ -81,16 +81,16 @@ static func try_eat(state: Dictionary) -> bool:
 
 
 static func eat_as_zorro(state: Dictionary) -> bool:
-	if float(state.get("pounceCd", 0.0)) <= 0.0:
-		var m: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), KarmaState.company_agents(state), float(KarmaData.TUNING["pounceRange"]))
+	if float(KarmaState.player(state).get("pounceCd", 0.0)) <= 0.0:
+		var m: Variant = KarmaState.nearest_company(float(KarmaState.px(state)), float(KarmaState.py(state)), state, float(KarmaData.TUNING["pounceRange"]))
 		if m != null:
 			return pounce_kill(state, m, null)
 	if KarmaUtils.thirstier(state):
 		if try_drink(state):
 			return true
-	var c: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
+	var c: Variant = KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
 	if c != null:
-		if float(state["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp(state) and not bool((c as Dictionary).get("ceded", false)):
+		if float(KarmaState.player(state)["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp_for(state) and not bool((c as Dictionary).get("ceded", false)):
 			return cede_carrion(state, c)
 		return eat_carrion(state, c, null)
 	if try_drink(state):
@@ -106,21 +106,21 @@ static func cede_carrion(state: Dictionary, c: Dictionary) -> bool:
 
 
 static func eat_as_halcon(state: Dictionary) -> bool:
-	var p: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), KarmaState.all_hunters(state), 60.0)
-	if p != null and float(state.get("strikeCd", 0.0)) <= 0.0:
+	var p: Variant = KarmaState.nearest_hunter(float(KarmaState.px(state)), float(KarmaState.py(state)), state, 60.0)
+	if p != null and float(KarmaState.player(state).get("strikeCd", 0.0)) <= 0.0:
 		return strike_predator(state, p, null)
-	var m: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), KarmaState.company_agents(state), 60.0)
+	var m: Variant = KarmaState.nearest_company(float(KarmaState.px(state)), float(KarmaState.py(state)), state, 60.0)
 	if m != null:
 		return dive_kill(state, m, null)
 	return land_for_meal(state)
 
 
 static func strike_predator(state: Dictionary, p: Dictionary, for_agent: Variant) -> bool:
-	var ox: float = float((for_agent as Dictionary)["x"]) if for_agent != null else float(state["px"])
-	var oy: float = float((for_agent as Dictionary)["y"]) if for_agent != null else float(state["py"])
+	var ox: float = float((for_agent as Dictionary)["x"]) if for_agent != null else float(KarmaState.px(state))
+	var oy: float = float((for_agent as Dictionary)["y"]) if for_agent != null else float(KarmaState.py(state))
 	if for_agent == null:
-		state["strikeCd"] = float(KarmaData.TUNING["strikeCd"])
-	var is_lobo: bool = str(p.get("type", "")) == "lobo"
+		KarmaState.player(state)["strikeCd"] = float(KarmaData.TUNING["strikeCd"])
+	var is_lobo: bool = str(p.get("speciesKey", "")) == "lobo"
 	p["x"] = float(p["x"]) + (float(p["x"]) - ox) * 0.6
 	p["y"] = float(p["y"]) + (float(p["y"]) - oy) * 0.6
 	p["hitCd"] = 2.0
@@ -129,21 +129,21 @@ static func strike_predator(state: Dictionary, p: Dictionary, for_agent: Variant
 	var k: float = (float(KarmaData.TUNING["loboStrikeKarma"]) if is_lobo else float(KarmaData.TUNING["strikeKarma"])) * (2.0 if KarmaShop.has_adapt(state, "strikePlus") else 1.0)
 	KarmaState.add_karma(state, null, k, "¡Ahuyentas un Lobo! Hazaña (+%d karma)" % int(k) if is_lobo else "Caza necesaria: ahuyentas depredador (+%d karma)" % int(k))
 	KarmaState.add_pa(state, null, float(KarmaData.TUNING["strikePa"]))
-	state["hp"] = minf(KarmaState.eff_max_hp(state), float(state["hp"]) + float(KarmaData.TUNING["strikeHp"]))
+	KarmaState.player(state)["hp"] = minf(KarmaState.eff_max_hp_for(state), float(KarmaState.player(state)["hp"]) + float(KarmaData.TUNING["strikeHp"]))
 	return true
 
 
 static func land_for_meal(state: Dictionary) -> bool:
-	var c: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
+	var c: Variant = KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
 	var w: Variant = nearest_water(state, float(KarmaData.TUNING["drinkRange"]))
 	if c == null and w == null:
 		return diet_hint_if_near(state)
-	if not bool(state.get("grounded", false)):
-		state["grounded"] = true
-		state["landT"] = float(KarmaData.TUNING["landTime"])
+	if not bool(KarmaState.player(state).get("grounded", false)):
+		KarmaState.player(state)["grounded"] = true
+		KarmaState.player(state)["landT"] = float(KarmaData.TUNING["landTime"])
 		KarmaState.add_log(state, null, "Aterrizas para comer (vulnerable 1s)…")
 		return true
-	if float(state.get("landT", 0.0)) > 0.0:
+	if float(KarmaState.player(state).get("landT", 0.0)) > 0.0:
 		return true
 	if KarmaUtils.thirstier(state):
 		return try_drink(state) or (eat_carrion(state, c, null) if c != null else false)
@@ -154,9 +154,9 @@ static func eat_as_topo(state: Dictionary) -> bool:
 	if KarmaUtils.thirstier(state):
 		if try_drink(state):
 			return true
-	if eat_carrion(state, KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])), null):
+	if eat_carrion(state, KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])), null):
 		return true
-	if eat_insect(state, KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("insects", []), float(KarmaData.TUNING["eatRange"])), null):
+	if eat_insect(state, KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("insects", []), float(KarmaData.TUNING["eatRange"])), null):
 		return true
 	if eat_patch(state, nearest_edible_patch(state, float(KarmaData.TUNING["eatRange"])), null):
 		return true
@@ -169,7 +169,7 @@ static func eat_as_sapo(state: Dictionary) -> bool:
 	if KarmaUtils.thirstier(state):
 		if try_drink(state):
 			return true
-	if eat_insect(state, KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("insects", []), eat_range(state)), null):
+	if eat_insect(state, KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("insects", []), eat_range(state)), null):
 		return true
 	if try_drink(state):
 		return true
@@ -180,7 +180,7 @@ static func eat_as_grazer(state: Dictionary) -> bool:
 	if KarmaUtils.thirstier(state):
 		if try_drink(state):
 			return true
-	if eat_carrion(state, KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])), null):
+	if eat_carrion(state, KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])), null):
 		return true
 	if eat_patch(state, nearest_edible_patch(state, float(KarmaData.TUNING["eatRange"])), null):
 		return true
@@ -190,35 +190,50 @@ static func eat_as_grazer(state: Dictionary) -> bool:
 
 
 static func diet_hint_if_near(state: Dictionary) -> bool:
-	var all: Array = (state.get("bushes", []) as Array) + (state.get("shrubs", []) as Array) + (state.get("patches", []) as Array) + (state.get("clusters", []) as Array) + (state.get("clumps", []) as Array) + (state.get("oaks", []) as Array)
-	var any_food: Variant = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]),
-		all.filter(func(p): return bool(p.get("alive", false)) and int(p.get("amount", 0)) > 0), 60.0)
+	var px: float = float(KarmaState.px(state))
+	var py: float = float(KarmaState.py(state))
+	var any_food: Variant = null
+	var bd2: float = 60.0 * 60.0
+	for key in KarmaState.FLORA_KEYS:
+		for p in state.get(key, []):
+			if not bool(p.get("alive", false)) or int(p.get("amount", 0)) <= 0:
+				continue
+			var dx: float = float(p["x"]) - px
+			var dy: float = float(p["y"]) - py
+			var d2: float = dx * dx + dy * dy
+			if d2 < bd2:
+				bd2 = d2
+				any_food = p
 	if any_food == null:
-		any_food = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("insects", []), 60.0)
+		any_food = KarmaUtils.nearest_from(px, py, state.get("insects", []), 60.0)
 	if any_food == null:
-		any_food = KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("carrions", []), 60.0)
+		any_food = KarmaUtils.nearest_from(px, py, state.get("carrions", []), 60.0)
 	if any_food != null:
 		KarmaState.diet_hint(state)
 	return false
 
 
 static func nearest_edible_patch(state: Dictionary, max_d: float) -> Variant:
-	return nearest_edible_patch_for(state, {"speciesKey": state["speciesKey"], "x": state["px"], "y": state["py"]}, max_d)
+	return nearest_edible_patch_for(state, {"speciesKey": state["speciesKey"], "x": KarmaState.px(state), "y": KarmaState.py(state)}, max_d)
 
 
 static func nearest_edible_patch_for(state: Dictionary, a: Dictionary, max_d: float) -> Variant:
-	var all: Array = (state.get("bushes", []) as Array) + (state.get("shrubs", []) as Array) + (state.get("patches", []) as Array) + (state.get("clusters", []) as Array) + (state.get("clumps", []) as Array) + (state.get("oaks", []) as Array)
 	var best: Variant = null
-	var bd: float = max_d
-	for p in all:
-		if not bool(p.get("alive", false)) or int(p.get("amount", 0)) <= 0:
-			continue
-		if not (KarmaData.DIET[str(a["speciesKey"])] as Array).has(str(p["kind"])):
-			continue
-		var d: float = Vector2(float(p["x"]), float(p["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
-		if d < bd:
-			bd = d
-			best = p
+	var bd2: float = max_d * max_d
+	var ax: float = float(a["x"])
+	var ay: float = float(a["y"])
+	for key in KarmaState.FLORA_KEYS:
+		for p in state.get(key, []):
+			if not bool(p.get("alive", false)) or int(p.get("amount", 0)) <= 0:
+				continue
+			if not (KarmaData.DIET[str(a["speciesKey"])] as Array).has(str(p["kind"])):
+				continue
+			var dx: float = float(p["x"]) - ax
+			var dy: float = float(p["y"]) - ay
+			var d2: float = dx * dx + dy * dy
+			if d2 < bd2:
+				bd2 = d2
+				best = p
 	return best
 
 
@@ -226,13 +241,15 @@ static func nearest_oak_with_nuts_for(state: Dictionary, a: Dictionary, max_d: f
 	var ax: float = float(a.get("x", (state as Dictionary).get("px", 0.0)))
 	var ay: float = float(a.get("y", (state as Dictionary).get("py", 0.0)))
 	var best: Variant = null
-	var bd: float = max_d
+	var bd2: float = max_d * max_d
 	for o in state.get("oaks", []):
 		if not bool(o.get("alive", false)) or int(o.get("amount", 0)) <= 0:
 			continue
-		var d: float = Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(ax, ay))
-		if d < bd:
-			bd = d
+		var dx: float = float(o["x"]) - ax
+		var dy: float = float(o["y"]) - ay
+		var d2: float = dx * dx + dy * dy
+		if d2 < bd2:
+			bd2 = d2
 			best = o
 	return best
 
@@ -240,23 +257,27 @@ static func nearest_oak_with_nuts_for(state: Dictionary, a: Dictionary, max_d: f
 static func nearest_spare_flora_for(state: Dictionary, a: Dictionary, max_d: float) -> Variant:
 	var ax: float = float(a.get("x", (state as Dictionary).get("px", 0.0)))
 	var ay: float = float(a.get("y", (state as Dictionary).get("py", 0.0)))
-	var all: Array = (state.get("bushes", []) as Array) + (state.get("shrubs", []) as Array) + (state.get("patches", []) as Array) + (state.get("clusters", []) as Array) + (state.get("oaks", []) as Array)
 	var best: Variant = null
-	var bd: float = max_d
-	for p in all:
-		if not bool(p.get("alive", false)) or int(p.get("amount", 0)) <= 1:
+	var bd2: float = max_d * max_d
+	for key in KarmaState.FLORA_KEYS:
+		if key == "clumps":
 			continue
-		if not (KarmaData.DIET[str(a["speciesKey"])] as Array).has(str(p["kind"])):
-			continue
-		var d: float = Vector2(float(p["x"]), float(p["y"])).distance_to(Vector2(ax, ay))
-		if d < bd:
-			bd = d
-			best = p
+		for p in state.get(key, []):
+			if not bool(p.get("alive", false)) or int(p.get("amount", 0)) <= 1:
+				continue
+			if not (KarmaData.DIET[str(a["speciesKey"])] as Array).has(str(p["kind"])):
+				continue
+			var dx: float = float(p["x"]) - ax
+			var dy: float = float(p["y"]) - ay
+			var d2: float = dx * dx + dy * dy
+			if d2 < bd2:
+				bd2 = d2
+				best = p
 	return best
 
 
 static func pounce_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> bool:
-	var attacker: Dictionary = for_agent if for_agent != null else state
+	var attacker: Dictionary = KarmaState.body_actor(state, for_agent) as Dictionary
 	var base: float = KarmaState.eff_max_hp_for(m)
 	var lethal: bool = resolve_strike(state, attacker, m, base)
 	if for_agent != null:
@@ -264,27 +285,27 @@ static func pounce_kill(state: Dictionary, m: Dictionary, for_agent: Variant) ->
 		if lethal:
 			heal_eater(state, for_agent, float(KarmaData.TUNING["pounceHp"]))
 		return true
-	state["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
+	KarmaState.player(state)["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
 	if not lethal:
 		return true
 	KarmaState.add_pa(state, null, float(KarmaData.TUNING["pouncePa"]))
-	if float(state["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp(state):
+	if float(KarmaState.player(state)["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp_for(state):
 		KarmaState.add_karma(state, null, float(KarmaData.TUNING["wastefulKarma"]), "Mataste por deporte: %d karma" % int(KarmaData.TUNING["wastefulKarma"]))
 	else:
-		state["hp"] = minf(KarmaState.eff_max_hp(state), float(state["hp"]) + float(KarmaData.TUNING["pounceHp"]))
+		KarmaState.player(state)["hp"] = minf(KarmaState.eff_max_hp_for(state), float(KarmaState.player(state)["hp"]) + float(KarmaData.TUNING["pounceHp"]))
 		KarmaState.add_log(state, null, "Zarpazo necesario (+vida)")
 	return true
 
 
 static func dive_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> bool:
-	var attacker: Dictionary = for_agent if for_agent != null else state
+	var attacker: Dictionary = KarmaState.body_actor(state, for_agent) as Dictionary
 	if for_agent != null:
 		(for_agent as Dictionary)["x"] = float(m["x"])
 		(for_agent as Dictionary)["y"] = float(m["y"])
 	else:
-		state["px"] = float(m["x"])
-		state["py"] = float(m["y"])
-		state["grounded"] = true
+		KarmaState.player(state)["x"] = float(m["x"])
+		KarmaState.player(state)["y"] = float(m["y"])
+		KarmaState.player(state)["grounded"] = true
 	var base: float = KarmaState.eff_max_hp_for(m)
 	var lethal: bool = resolve_strike(state, attacker, m, base)
 	if for_agent != null:
@@ -294,10 +315,10 @@ static func dive_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> b
 	if not lethal:
 		return true
 	KarmaState.add_pa(state, null, float(KarmaData.TUNING["divePa"]))
-	if float(state["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp(state):
+	if float(KarmaState.player(state)["hp"]) >= float(KarmaData.TUNING["wastefulHpFrac"]) * KarmaState.eff_max_hp_for(state):
 		KarmaState.add_karma(state, null, float(KarmaData.TUNING["wastefulKarma"]), "Cazaste por deporte desde el cielo (%d karma)" % int(KarmaData.TUNING["wastefulKarma"]))
 	else:
-		state["hp"] = minf(KarmaState.eff_max_hp(state), float(state["hp"]) + float(KarmaData.TUNING["pounceHp"]))
+		KarmaState.player(state)["hp"] = minf(KarmaState.eff_max_hp_for(state), float(KarmaState.player(state)["hp"]) + float(KarmaData.TUNING["pounceHp"]))
 		KarmaState.add_log(state, null, "Picado necesario (+vida)")
 	return true
 
@@ -313,14 +334,14 @@ static func resolve_strike(state: Dictionary, attacker: Dictionary, victim: Dict
 
 
 static func dig_burrow(state: Dictionary, for_agent: Variant) -> bool:
-	var t: Dictionary = for_agent if for_agent != null else state
+	var t: Dictionary = KarmaState.body_actor(state, for_agent) as Dictionary
 	var dig_plus: int = 1 if KarmaShop.has_adapt(t, "digPlus") else 0
 	if float(t.get("digCd", 0.0)) > 0.0 or int(t.get("dug", 0)) >= int(KarmaData.TUNING["digMax"]) + dig_plus:
 		return false
 	t["digCd"] = KarmaData.aged_time(t, float(KarmaData.TUNING["digCd"]))
 	t["dug"] = int(t.get("dug", 0)) + 1
-	var px: float = float((for_agent as Dictionary)["x"]) if for_agent != null else float(state["px"])
-	var py: float = float((for_agent as Dictionary)["y"]) if for_agent != null else float(state["py"])
+	var px: float = float((for_agent as Dictionary)["x"]) if for_agent != null else float(KarmaState.px(state))
+	var py: float = float((for_agent as Dictionary)["y"]) if for_agent != null else float(KarmaState.py(state))
 	(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": px, "y": py, "dug": true, "charge": 1})
 	if for_agent != null:
 		KarmaState.add_karma(state, for_agent, float(KarmaData.TUNING["aerateKarma"]), "Airea la tierra (+karma)")
@@ -461,16 +482,16 @@ static func eat_carrion(state: Dictionary, c: Variant, for_agent: Variant) -> bo
 			KarmaState.add_pa(state, for_agent, float(KarmaData.TUNING["pouncePa"]))
 		if for_agent == null:
 			KarmaState.add_pa(state, null, float(KarmaData.TUNING["carrionFreshPa"]))
-			if int(state.get("stash", 0)) > 0:
-				state["stash"] = int(state["stash"]) - 1
+			if int(KarmaState.player(state).get("stash", 0)) > 0:
+				KarmaState.player(state)["stash"] = int(KarmaState.player(state)["stash"]) - 1
 				KarmaState.add_pa(state, null, float(KarmaData.TUNING["pouncePa"]))
 			KarmaState.add_log(state, null, "Comes carroña fresca (+vida)")
 	elif stage == "stale":
 		heal_eater(state, for_agent, float(KarmaData.TUNING["carrionStaleHp"]))
 		refill_hambre(state, for_agent, float(KarmaData.TUNING["carrionStaleHp"]))
 		if for_agent == null:
-			if int(state.get("stash", 0)) > 0:
-				state["stash"] = int(state["stash"]) - 1
+			if int(KarmaState.player(state).get("stash", 0)) > 0:
+				KarmaState.player(state)["stash"] = int(KarmaState.player(state)["stash"]) - 1
 				KarmaState.add_pa(state, null, float(KarmaData.TUNING["pouncePa"]))
 			KarmaState.add_log(state, null, "Carroña pasada (+poca vida)")
 	else:
@@ -481,9 +502,9 @@ static func eat_carrion(state: Dictionary, c: Variant, for_agent: Variant) -> bo
 
 
 static func bury_or_carry_nut(state: Dictionary, for_agent: Variant) -> bool:
-	var t: Dictionary = for_agent if for_agent != null else state
-	var px: float = float((for_agent as Dictionary)["x"]) if for_agent != null else float(state["px"])
-	var py: float = float((for_agent as Dictionary)["y"]) if for_agent != null else float(state["py"])
+	var t: Dictionary = KarmaState.body_actor(state, for_agent) as Dictionary
+	var px: float = float((for_agent as Dictionary)["x"]) if for_agent != null else float(KarmaState.px(state))
+	var py: float = float((for_agent as Dictionary)["y"]) if for_agent != null else float(KarmaState.py(state))
 	if bool(t.get("carriedNut", false)):
 		t["carriedNut"] = false
 		if for_agent != null:
@@ -496,11 +517,16 @@ static func bury_or_carry_nut(state: Dictionary, for_agent: Variant) -> bool:
 			return true
 		KarmaState.add_karma(state, null, float(KarmaData.TUNING["plantKarma"]), "Plantas un bosque futuro (+karma)")
 		return true
+	var er: float = float(KarmaData.TUNING["eatRange"])
+	var er2: float = er * er
 	var oak: Variant = null
 	for o in state.get("oaks", []):
-		if bool(o.get("alive", false)) and int(o.get("amount", 0)) > 0 and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(px, py)) <= 46.0:
-			oak = o
-			break
+		if bool(o.get("alive", false)) and int(o.get("amount", 0)) > 0:
+			var dx: float = float(o["x"]) - px
+			var dy: float = float(o["y"]) - py
+			if dx * dx + dy * dy <= er2:
+				oak = o
+				break
 	if oak == null:
 		return false
 	(oak as Dictionary)["amount"] = int((oak as Dictionary)["amount"]) - 1
@@ -513,25 +539,25 @@ static func bury_or_carry_nut(state: Dictionary, for_agent: Variant) -> bool:
 
 
 static func carry_action(state: Dictionary) -> bool:
-	if bool(state.get("dead", false)) or bool(state.get("hidden", false)) or str(state["speciesKey"]) != "ardilla":
+	if bool(state.get("dead", false)) or bool(KarmaState.player(state).get("hidden", false)) or str(state["speciesKey"]) != "ardilla":
 		return false
 	return bury_or_carry_nut(state, null)
 
 
 static func sense_pulse(state: Dictionary) -> bool:
-	if bool(state.get("dead", false)) or bool(state.get("hidden", false)) or float(state.get("senseCd", 0.0)) > 0.0:
+	if bool(state.get("dead", false)) or bool(KarmaState.player(state).get("hidden", false)) or float(KarmaState.player(state).get("senseCd", 0.0)) > 0.0:
 		return false
 	if str(state["speciesKey"]) == "topo":
-		state["senseCd"] = KarmaData.aged_time(state, float(KarmaData.TUNING["senseTremorCd"]))
-		state["revealT"] = float(KarmaData.TUNING["revealTime"])
+		KarmaState.player(state)["senseCd"] = KarmaData.aged_time(state, float(KarmaData.TUNING["senseTremorCd"]))
+		KarmaState.player(state)["revealT"] = float(KarmaData.TUNING["revealTime"])
 		KarmaState.add_log(state, null, "Temblor: sientes comida y peligro (3s)")
 		return true
 	if str(state["speciesKey"]) == "zorro":
 		if (state.get("carrions", []) as Array).is_empty():
 			KarmaState.add_log(state, null, "Sin rastro de carroña")
 			return false
-		state["senseCd"] = KarmaData.aged_time(state, float(KarmaData.TUNING["senseTrackCd"]))
-		state["trackT"] = float(KarmaData.TUNING["trackTime"])
+		KarmaState.player(state)["senseCd"] = KarmaData.aged_time(state, float(KarmaData.TUNING["senseTrackCd"]))
+		KarmaState.player(state)["trackT"] = float(KarmaData.TUNING["trackTime"])
 		KarmaState.add_log(state, null, "Rastro: hueles carroña (5s)")
 		return true
 	return false

@@ -38,10 +38,14 @@ When an AI grazer's HP is below 40% of max, or its hambre or sed is below its re
 - **THEN** it moves toward that food every tick instead of holding still or wandering, until its `hambre` climbs above 30
 
 ### Requirement: AI hides in refuges when hunted
-When a predator of its fear table (or any role-hunter predator for prey species) is within perception, an AI grazer near a fitting refuge (≤ hide-range) SHALL enter it: `hidden = true` with the refuge as `hideRef`, for up to `aiHideMax` seconds. Frail animals SHALL weigh hiding over outrunning (they hide on weaker threat signals and at longer ranges than prime animals of the same species). While hidden, ground predators SHALL lose the agent per existing hide rules. The AI SHALL exit when danger passes or `aiHideMax` expires. Hunger and thirst SHALL keep draining while hidden.
+When an animal whose species data can eat the agent is within perception - including AI-brained and possessed animals, not only a separately labeled predator - an AI grazer near a fitting refuge (<= hide-range) SHALL enter it: `hidden = true` with the refuge as `hideRef`, for up to `aiHideMax` seconds. The agent's own fear table still decides which species qualify. Frail animals SHALL weigh hiding over outrunning (they hide on weaker threat signals and at longer ranges than prime animals of the same species). While hidden, ground threats SHALL lose the agent per existing hide rules. The AI SHALL exit when danger passes or `aiHideMax` expires. Hunger and thirst SHALL keep draining while hidden.
 
 #### Scenario: Raton hides from the fox
-- **WHEN** a Zorro hunts an AI Raton standing within hide-range of a burrow-M
+- **WHEN** a Zorro whose species data can eat a Raton is within perception of an AI Raton standing within hide-range of a burrow-M
+- **THEN** the Raton enters the refuge, becomes untargeted per hide rules, and exits when the Zorro leaves or 5s pass
+
+#### Scenario: Raton hides from a fauna fox
+- **WHEN** an AI-brained Zorro (not the possessed agent) can eat an AI Raton standing within hide-range of a burrow-M
 - **THEN** the Raton enters the refuge, becomes untargeted per hide rules, and exits when the Zorro leaves or 5s pass
 
 #### Scenario: Old raton holes up earlier

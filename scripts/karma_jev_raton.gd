@@ -30,29 +30,29 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	if KarmaAI.is_hunted(state, a):
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["raton"], r, "raton") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["raton"], r, "raton") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
-	var mate: Variant = KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), float(KarmaData.TUNING["groomRange"]))
+	var mate: Variant = KarmaState.nearest_company(ax, ay, state, float(KarmaData.TUNING["groomRange"]), a)
 	if mate != null:
 		menu.append({"kind": "groom", "label": "Groom mate", "x": float((mate as Dictionary)["x"]), "y": float((mate as Dictionary)["y"]), "target": mate})
 	if float(a.get("shoutCd", 0.0)) <= 0.0:
-		var hunter: Variant = KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+		var hunter: Variant = KarmaState.nearest_hunter(ax, ay, state, float(KarmaData.TUNING["shoutLureRange"]), a)
 		if hunter != null:
 			menu.append({"kind": "alarm", "label": "Alarm call", "x": float((hunter as Dictionary)["x"]), "y": float((hunter as Dictionary)["y"]), "target": hunter})
 	var cache: Variant = KarmaEat.nearest_spare_flora_for(state, a, eat_range)
 	if cache != null:
 		menu.append({"kind": "seedcache", "label": "Cache seed", "x": float((cache as Dictionary)["x"]), "y": float((cache as Dictionary)["y"]), "target": cache})
-	if KarmaJevBridge.verb_ready(a, 4) and KarmaUtils.nearest_from(ax, ay, KarmaState.company_agents(state), float(KarmaData.TUNING["aiCoverRange"])) != null:
+	if KarmaJevBridge.verb_ready(a, 4) and KarmaState.nearest_company(ax, ay, state, float(KarmaData.TUNING["aiCoverRange"]), a) != null:
 		menu.append({"kind": "scout", "label": "Scout posts", "x": ax, "y": ay})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
 	return menu
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaAI.ai_max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var eat_range := float(KarmaData.TUNING["eatRange"])
@@ -158,8 +158,7 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			KarmaJevBridge.set_intent(a, "groom", float(pick["x"]), float(pick["y"]), mate)
 			return true
 		"alarm":
-			var hunter: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+			var hunter: Variant = KarmaState.nearest_hunter(float(a["x"]), float(a["y"]), state, float(KarmaData.TUNING["shoutLureRange"]), a)
 			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			if hunter == null:
 				return true

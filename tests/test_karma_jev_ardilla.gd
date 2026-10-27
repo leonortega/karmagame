@@ -288,7 +288,7 @@ func test_jev_micro_moves_toward_food_intent() -> void:
 	var c: Dictionary = (s["bushes"] as Array)[(s["bushes"] as Array).size() - 1]
 	a["jev_intent"] = {"kind": "seek_food", "x": 650.0, "y": 500.0, "ttl": 5.0, "target": c}
 	var x0 := float(a["x"])
-	KarmaAI._ai_ardilla(s, a, 0.1)
+	KarmaAIArdilla.step(s, a, 0.1)
 	assert_bool(float(a["x"]) > x0).is_true()
 
 
@@ -301,7 +301,7 @@ func test_jev_micro_eat_resolves_locally() -> void:
 	var c: Dictionary = (s["bushes"] as Array)[(s["bushes"] as Array).size() - 1]
 	a["jev_intent"] = {"kind": "eat", "x": 505.0, "y": 500.0, "ttl": 5.0, "target": c}
 	var hp0 := float(a["hp"])
-	KarmaAI._ai_ardilla(s, a, 0.1)
+	KarmaAIArdilla.step(s, a, 0.1)
 	assert_bool(float(a["hp"]) > hp0).is_true()
 
 
@@ -311,7 +311,7 @@ func test_jev_live_flag_skips_mock_and_wanders() -> void:
 	_hunter_free(s, a)
 	a["jev_live"] = true
 	a["jev_intent"] = {}
-	KarmaAI._ai_ardilla(s, a, 0.1)
+	KarmaAIArdilla.step(s, a, 0.1)
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
 
 
@@ -322,7 +322,7 @@ func test_carry_persists_past_intent_expiry() -> void:
 	a["carriedNut"] = true
 	a["jev_live"] = true
 	a["jev_intent"] = {}
-	KarmaAI._ai_ardilla(s, a, 0.0)
+	KarmaAIArdilla.step(s, a, 0.0)
 	assert_bool(bool(a.get("carriedNut", false))).is_true()
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
 	var menu: Array = KarmaJevArdilla.build_menu(s, a)
@@ -339,7 +339,7 @@ func test_hungry_carrier_drops_nut() -> void:
 	a["carriedNut"] = true
 	a["hambre"] = 50.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
-	KarmaAI._ai_ardilla(s, a, 0.1)
+	KarmaAIArdilla.step(s, a, 0.1)
 	assert_bool(bool(a.get("carriedNut", true))).is_false()
 
 
@@ -351,7 +351,7 @@ func test_wander_fallthrough_keeps_ladder_verbs() -> void:
 	_hunter_near(s, 600.0, 500.0)
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	var k0 := float(a["karma"])
-	KarmaAI._ai_ardilla(s, a, 0.1)
+	KarmaAIArdilla.step(s, a, 0.1)
 	assert_float(float(a["karma"])).is_equal(k0 + float(KarmaData.TUNING["shoutKarma"]) + float(KarmaData.TUNING["tailflickKarma"])) # danger + shout on cooldown: silent tailflick, not falsecache
 
 
@@ -427,7 +427,7 @@ func test_falsecache_ignores_harmless_hunter() -> void:
 	var s := _fresh_ardilla_state()
 	var a := _ai_ardilla(s, 500.0, 500.0)
 	_hunter_free(s, a)
-	var h := KarmaPredators.mk_predator(s, "saponpc", 520.0, 500.0, 1)
+	var h := KarmaPredators.mk_predator(s, "lobo", 520.0, 500.0, 1)
 	(s["agents"] as Array).append(h)
 	assert_bool(KarmaAI.is_hunted(s, a)).is_false()
 	assert_bool(_menu_kinds(KarmaJevArdilla.build_menu(s, a)).has("falsecache")).is_false()
@@ -442,7 +442,7 @@ func test_jev_hides_under_eat_intent_when_hunted() -> void:
 	(s["bushes"] as Array).append(KarmaUtils.mk_patch("berries", 505.0, 500.0, 3))
 	var c: Dictionary = (s["bushes"] as Array)[(s["bushes"] as Array).size() - 1]
 	a["jev_intent"] = {"kind": "eat", "x": 505.0, "y": 500.0, "ttl": 5.0, "target": c}
-	KarmaAI._ai_ardilla(s, a, 0.1)
+	KarmaAIArdilla.step(s, a, 0.1)
 	assert_bool(bool(a.get("hidden", false))).is_true()
 
 

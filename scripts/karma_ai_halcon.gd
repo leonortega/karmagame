@@ -2,7 +2,12 @@ class_name KarmaAIHalcon
 extends RefCounted
 
 # Per-species AI for halcon (Strategy). KarmaAI delegates here.
-# Behavior-preserving extraction of KarmaAI._ai_halcon*.
+# Behavior-preserving extraction from the KarmaAI.ai_step dispatch.
+
+
+static var _JEV_GATES := Callable(KarmaAIHalcon, "_jev_gates")
+static var _JEV_STEER := Callable(KarmaAIHalcon, "steer_intent")
+static var _JEV_MOCK := Callable(KarmaJevHalcon, "mock_halcon_macro")
 
 
 static func step(state: Dictionary, a: Dictionary, dt: float) -> void:
@@ -13,48 +18,41 @@ static func step(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, KarmaAI.ai_max_hp(a), dt)
-	KarmaAI.ai_base(state, a, dt)
-	KarmaJev.intent_tick(a, dt)
+	KarmaAI.jev_step(state, a, dt, _JEV_GATES, _JEV_STEER, _JEV_MOCK)
+
+
+static func _jev_gates(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	if not bool(a.get("grounded", false)) and float(a.get("strikeCd", 0.0)) <= 0.0:
-		var p: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-			(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
+		var p: Variant = KarmaPredators.nearest_rival(state, a, 60.0)
 		if p != null:
 			KarmaAI.ai_strike(state, a, p)
-			return
+			return true
 	if KarmaAI.ai_thirst(state, a, dt):
-		return
+		return true
 	if bool(a.get("grounded", false)):
 		var c: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"]))
 		if c != null and float(a.get("landT", 0.0)) <= 0.0 and KarmaEat.eat_carrion(state, c, a):
 			a["grounded"] = false
-			return
+			return true
 		if float(a.get("landT", 0.0)) <= 0.0:
 			a["grounded"] = false
-			return
-		return
+		return true
 	if KarmaAI.ai_urgent_seek(state, a, dt):
-		return
-	if steer_intent(state, a, dt):
-		return
-	if bool(a.get("jev_live", false)):
-		a["jev_intent"] = {"kind": "wander", "x": float(a["x"]), "y": float(a["y"]), "ttl": 5.0}
-		return
-	KarmaJevHalcon.mock_halcon_macro(state, a)
+		return true
+	return false
 
 
 static func steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if not a.has("jev_intent") or (a["jev_intent"] as Dictionary).is_empty():
+	var intent_v: Variant = KarmaAI.live_jev_intent(a)
+	if intent_v == null:
 		return false
-	if float((a["jev_intent"] as Dictionary).get("ttl", 0.0)) <= 0.0:
-		a["jev_intent"] = {}
-		return false
-	var intent := a["jev_intent"] as Dictionary
+	var intent := intent_v as Dictionary
 	match str(intent.get("kind", "wander")):
 		"eat", "seek_carrion":
 			var c: Variant = intent.get("target", null)
+			var eat_range: float = float(KarmaData.TUNING["eatRange"])
 			if c != null and (state["carrions"] as Array).has(c):
-				if Vector2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"]))) <= float(KarmaData.TUNING["eatRange"]):
+				if KarmaUtils.dist2(float((c as Dictionary)["x"]), float((c as Dictionary)["y"]), float(a["x"]), float(a["y"])) <= eat_range * eat_range:
 					if KarmaEat.eat_carrion(state, c, a):
 						a["grounded"] = false
 					return true
@@ -72,8 +70,8 @@ static func steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
 			if prey == null or not (state["agents"] as Array).has(prey) or bool((prey as Dictionary).get("hidden", false)):
 				a["jev_intent"] = {}
 				return false
-			var d := Vector2(float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"])).distance_to(Vector2(float(a["x"]), float(a["y"])))
-			if d <= 60.0:
+			var strike_range: float = 60.0
+			if KarmaUtils.dist2(float((prey as Dictionary)["x"]), float((prey as Dictionary)["y"]), float(a["x"]), float(a["y"])) <= strike_range * strike_range:
 				if KarmaAI.ai_hunt_eat(state, a, prey, dt):
 					a["grounded"] = true
 					a["landT"] = float(KarmaData.TUNING["landTime"])
@@ -107,11 +105,10 @@ static func steer_intent(state: Dictionary, a: Dictionary, dt: float) -> bool:
 
 
 static func step_ladder(state: Dictionary, a: Dictionary, dt: float) -> void:
-	KarmaUtils.update_needs(a, KarmaAI.ai_max_hp(a), dt)
+	KarmaUtils.update_needs(a, KarmaState.eff_max_hp_for(a), dt)
 	KarmaAI.ai_base(state, a, dt)
 	if not bool(a.get("grounded", false)) and float(a.get("strikeCd", 0.0)) <= 0.0:
-		var p: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-			(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
+		var p: Variant = KarmaPredators.nearest_rival(state, a, 60.0)
 		if p != null:
 			KarmaAI.ai_strike(state, a, p)
 			return

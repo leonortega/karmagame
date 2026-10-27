@@ -84,11 +84,11 @@ func test_costlier_drinker_empties_faster() -> void:
 func test_last_drop_still_heals_then_dry() -> void:
 	var s := _fresh("raton")
 	s["waters"] = [_charco(0.3)]
-	s["sed"] = 10.0
-	s["hp"] = 10.0
+	KarmaState.player(s)["sed"] = 10.0
+	KarmaState.player(s)["hp"] = 10.0
 	assert_bool(KarmaEat.drink_water(s, (s["waters"] as Array)[0], null)).is_true()
-	assert_float(s["sed"]).is_equal(45.0)
-	assert_float(s["hp"]).is_equal(15.0)
+	assert_float(KarmaState.player(s)["sed"]).is_equal(45.0)
+	assert_float(KarmaState.player(s)["hp"]).is_equal(15.0)
 	assert_float(float((s["waters"] as Array)[0]["level"])).is_equal(0.0)
 
 
@@ -115,11 +115,11 @@ func test_nearest_water_skips_dry() -> void:
 func test_player_cannot_drink_dry_only() -> void:
 	var s := _fresh("raton")
 	s["waters"] = [_charco(0.0)]
-	s["sed"] = 10.0
-	s["hp"] = 10.0
+	KarmaState.player(s)["sed"] = 10.0
+	KarmaState.player(s)["hp"] = 10.0
 	assert_bool(KarmaEat.try_drink(s)).is_false()
-	assert_float(s["sed"]).is_equal(10.0)
-	assert_float(s["hp"]).is_equal(10.0)
+	assert_float(KarmaState.player(s)["sed"]).is_equal(10.0)
+	assert_float(KarmaState.player(s)["hp"]).is_equal(10.0)
 
 
 func test_ai_seek_water_skips_dry() -> void:

@@ -30,12 +30,12 @@ static func _bristle_cost() -> float:
 
 static func _bristle_hunter(state: Dictionary, a: Dictionary) -> Variant:
 	return KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), 60.0)
+		(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), 60.0)
 
 
 static func _hunter_near(state: Dictionary, a: Dictionary) -> Variant:
 	return KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), HUNTER_RANGE)
+		(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), HUNTER_RANGE)
 
 
 static func _clump_near(state: Dictionary, a: Dictionary) -> Variant:
@@ -109,8 +109,9 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 				drink_label = "Drink water (you are thirsty: drink now!)"
 			menu.append({"kind": "drink", "label": drink_label, "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	if KarmaAI.is_hunted(state, a):
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["oruga"], r, "oruga") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["oruga"], r, "oruga") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge (hunted!)", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
 	var hunter: Variant = _hunter_near(state, a)
@@ -130,7 +131,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaAI.ai_max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var eat_range := float(KarmaData.TUNING["eatRange"])
@@ -146,7 +147,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"hungry": KarmaAI.is_hungry(a),
 		"threatened": KarmaAI.is_hunted(state, a),
 		"pressure_near": KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"])) != null,
+			(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), float(KarmaData.TUNING["aiFearRange"])) != null,
 		"food_near": KarmaEat.nearest_edible_patch_for(state, a, eat_range) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
 		"clump_near": _clump_near(state, a) != null,

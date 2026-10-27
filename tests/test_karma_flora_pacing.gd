@@ -86,7 +86,7 @@ func test_buried_oak_matures_slow_and_bark_rides_nuts_rate() -> void:
 	assert_int((s["seedlings"] as Array).size()).is_equal(0)
 	assert_int((s["oaks"] as Array).size()).is_equal(1)
 	assert_int(int((s["oaks"] as Array)[0]["amount"])).is_equal(3)
-	var oak := KarmaUtils.mk_patch("nuts", float(s["px"]), float(s["py"]), 3)
+	var oak := KarmaUtils.mk_patch("nuts", float(KarmaState.px(s)), float(KarmaState.py(s)), 3)
 	(s["oaks"] as Array).append(oak)
 	assert_bool(KarmaGame.cast_verb(s, 4)).is_true()
 	assert_float(float(oak["stripT"])).is_equal(KarmaGame.regrow_rate_for("nuts"))
@@ -133,12 +133,12 @@ func test_eating_empty_bush_is_refused() -> void:
 	bush["alive"] = true
 	bush["mimic"] = false
 	bush["mimicEaten"] = true
-	s["hp"] = 10.0
+	KarmaState.player(s)["hp"] = 10.0
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_true()
-	assert_float(float(s["hp"])).is_equal(30.0)
+	assert_float(float(KarmaState.player(s)["hp"])).is_equal(30.0)
 	assert_float(float(s["karma"])).is_equal(-15.0)
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_false()
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_false()
 	assert_int(int(bush["amount"])).is_equal(0)
-	assert_float(float(s["hp"])).is_equal(30.0)
+	assert_float(float(KarmaState.player(s)["hp"])).is_equal(30.0)
 	assert_float(float(s["karma"])).is_equal(-15.0)

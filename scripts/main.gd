@@ -6,6 +6,7 @@ extends Node2D
 # Display-only viewport geometry (must match project.godot window size).
 const VIEW_W := 1280.0
 const VIEW_H := 800.0
+const VIEW_DIAG := sqrt(VIEW_W * VIEW_W + VIEW_H * VIEW_H)
 const PANEL_W := 264.0
 const PANEL_MARGIN := 8.0
 # _pill measures every visible label; font shaping is the expensive part.
@@ -56,10 +57,6 @@ func _ready() -> void:
 	set_process_unhandled_input(true)
 
 
-func _jev_view_diag() -> float:
-	return Vector2(VIEW_W, VIEW_H).length()
-
-
 func _jev_poll() -> void:
 	if _jev_busy:
 		if not state.is_empty():
@@ -68,7 +65,7 @@ func _jev_poll() -> void:
 	if state.is_empty() or bool(state.get("dead", false)):
 		return
 	var now: float = float(state.get("time", 0.0))
-	var view_diag: float = _jev_view_diag()
+	var view_diag: float = VIEW_DIAG
 	var due: Array = _due_jev_agents(KarmaJev.all_jev_zorros(state) if KarmaJev.USE_JEV else [], now, view_diag)
 	var h_due: Array = _due_jev_agents(KarmaJev.all_jev_halcons(state) if KarmaJev.USE_JEV_HALCON else [], now, view_diag)
 	var r_due: Array = _due_jev_agents(KarmaJev.all_jev_ratons(state) if KarmaJev.USE_JEV_RATON else [], now, view_diag)
@@ -103,9 +100,8 @@ func _due_jev_agents(agents: Array, now: float, view_diag: float) -> Array:
 func _send_batch(species: String, due: Array) -> void:
 	var body: Dictionary = _build_jev_body(species, due)
 	if (body["states"] as Array).is_empty():
-		var view_diag: float = _jev_view_diag()
 		for a in due:
-			KarmaJev.mark_asked(state, a, view_diag)
+			KarmaJev.mark_asked(state, a, VIEW_DIAG)
 		return
 	var agents: Array = body["agents"]
 	_jev_flight = {
@@ -273,11 +269,10 @@ func _jev_flush_log() -> void:
 
 func _clear_jev_flight() -> void:
 	if not state.is_empty():
-		var view_diag: float = _jev_view_diag()
 		for a in _jev_flight.get("agents", []):
 			if (state["agents"] as Array).has(a):
 				(a as Dictionary)["jev_live"] = false
-				KarmaJev.mark_asked(state, a, view_diag)
+				KarmaJev.mark_asked(state, a, VIEW_DIAG)
 	_jev_flight = {}
 
 
@@ -603,8 +598,9 @@ func _physics_process(delta: float) -> void:
 		if _jev_flush_t >= 0.5:
 			_jev_flush_t = 0.0
 			_jev_flush_log()
-		state["cam"] = {"x": clampf(float(state["px"]) - VIEW_W / 2.0, 0.0, float(KarmaData.WORLD["w"]) - VIEW_W),
-			"y": clampf(float(state["py"]) - VIEW_H / 2.0, 0.0, float(KarmaData.WORLD["h"]) - VIEW_H)}
+		var cam_d: Dictionary = KarmaState.player(state)["cam"]
+		cam_d["x"] = clampf(float(KarmaState.px(state)) - VIEW_W / 2.0, 0.0, float(KarmaData.WORLD["w"]) - VIEW_W)
+		cam_d["y"] = clampf(float(KarmaState.py(state)) - VIEW_H / 2.0, 0.0, float(KarmaData.WORLD["h"]) - VIEW_H)
 	queue_redraw()
 	# Movement + sim stay every physics tick (smooth 60fps motion); HUD is
 	# text-only and refreshed on a timer instead.
@@ -626,9 +622,9 @@ func _refresh_hud() -> void:
 		return
 	_set_text("species", "◆ %s T%d · ⏱ %s" % [str(state["sp"]["name"]), int(state["sp"]["tier"]), KarmaUtils.fmt_time(float(state.get("time", 0.0)))])
 	_set_text("vitals", "Vida %s %d/%d\nHambre %s %d\nSed %s %d" % [
-		KarmaHud.bar(KarmaHud.hp_frac(state), 10), int(ceil(float(state.get("hp", 0.0)))), int(KarmaState.eff_max_hp(state)),
-		KarmaHud.bar(KarmaHud.hunger_frac(state), 10), int(state.get("hambre", 0.0)),
-		KarmaHud.bar(KarmaHud.thirst_frac(state), 10), int(state.get("sed", 0.0))])
+		KarmaHud.bar(KarmaHud.hp_frac(state), 10), int(ceil(float(KarmaState.player(state).get("hp", 0.0)))), int(KarmaState.eff_max_hp_for(state)),
+		KarmaHud.bar(KarmaHud.hunger_frac(state), 10), int(KarmaState.player(state).get("hambre", 0.0)),
+		KarmaHud.bar(KarmaHud.thirst_frac(state), 10), int(KarmaState.player(state).get("sed", 0.0))])
 	_set_text("karma", "◈ PA %d · Karma %d%s" % [int(state.get("pa", 0.0)), int(state.get("karma", 0.0)), " · MUERTO (R reencarnar)" if bool(state.get("dead", false)) else ""])
 	_set_text("edad", KarmaHud.edad_line(state))
 	_set_text("weather", KarmaHud.weather_line(state))
@@ -663,9 +659,10 @@ func _refresh_hud() -> void:
 func _medal(pos: Vector2, radius: float, fill: Color, glyph: String, glyph_size: float, font: Font, outline: Color = Color(0, 0, 0, 0), ring_width: float = 0.0) -> void:
 	draw_circle(pos + Vector2(2, 3), radius, KarmaDraw.SHADOW)
 	draw_circle(pos, radius, fill)
-	draw_arc(pos, radius - 1.0, 0, TAU, 32, KarmaDraw.RIM, 2.0)
+	var segs: int = maxi(8, int(radius))
+	draw_arc(pos, radius - 1.0, 0, TAU, segs, KarmaDraw.RIM, 2.0)
 	if ring_width > 0.0:
-		draw_arc(pos, radius + 2.0, 0, TAU, 32, outline, ring_width)
+		draw_arc(pos, radius + 2.0, 0, TAU, segs, outline, ring_width)
 	var w: float = maxf(radius * 2.0, 40.0) + 16.0
 	draw_string(font, pos + Vector2(-w / 2.0, glyph_size * 0.35), glyph, HORIZONTAL_ALIGNMENT_CENTER, w, glyph_size, Color.WHITE)
 
@@ -715,7 +712,8 @@ func _hp_bar(pos: Vector2, w: float, frac: float) -> void:
 func _draw() -> void:
 	if state.is_empty():
 		return
-	var cam: Vector2 = Vector2(float((state.get("cam", {"x": 0}) as Dictionary).get("x", 0.0)), float((state.get("cam", {"y": 0}) as Dictionary).get("y", 0.0)))
+	var cam_dict: Dictionary = KarmaState.player(state).get("cam", {})
+	var cam: Vector2 = Vector2(float(cam_dict.get("x", 0.0)), float(cam_dict.get("y", 0.0)))
 	var font: Font = ThemeDB.fallback_font
 	_sync_label_font(font)
 	_pill_calls = 0
@@ -729,14 +727,20 @@ func _draw() -> void:
 	# world is manually shifted by -cam, so the backdrop sits at origin).
 	draw_rect(Rect2(Vector2.ZERO, Vector2(VIEW_W, VIEW_H)), KarmaDraw.MEADOW_B)
 	var step: float = KarmaDraw.GRID_STEP
+	var grid: PackedVector2Array = PackedVector2Array()
+	var right: float = cam.x + VIEW_W
 	var gx: float = floorf(cam.x / step) * step
-	while gx <= cam.x + VIEW_W:
-		draw_line(Vector2(gx - cam.x, 0), Vector2(gx - cam.x, VIEW_H), KarmaDraw.GRID_LINE, 1.0)
+	while gx <= right:
+		grid.append(Vector2(gx - cam.x, 0.0))
+		grid.append(Vector2(gx - cam.x, VIEW_H))
 		gx += step
+	var bottom: float = cam.y + VIEW_H
 	var gy: float = floorf(cam.y / step) * step
-	while gy <= cam.y + VIEW_H:
-		draw_line(Vector2(0, gy - cam.y), Vector2(VIEW_W, gy - cam.y), KarmaDraw.GRID_LINE, 1.0)
+	while gy <= bottom:
+		grid.append(Vector2(0.0, gy - cam.y))
+		grid.append(Vector2(VIEW_W, gy - cam.y))
 		gy += step
+	draw_multiline(grid, KarmaDraw.GRID_LINE, 1.0)
 	for w in state.get("waters", []):
 		var wpos: Vector2 = Vector2(float(w["x"]), float(w["y"])) - cam
 		if not view.has_point(wpos):
@@ -769,7 +773,7 @@ func _draw() -> void:
 		_medal(rpos, rr, rmedal, KarmaDraw.refuge_icon(rtype), KarmaDraw.refuge_emoji_size(rtype), font)
 		if rtype.begins_with("burrow"):
 			draw_circle(rpos, rr * 0.55, Color(0, 0, 0, 0.55))
-		if bool(state.get("hidden", false)) and state.get("hideRef") is Dictionary and Vector2(float((state["hideRef"] as Dictionary).get("x", -9999.0)), float((state["hideRef"] as Dictionary).get("y", -9999.0))).distance_to(Vector2(float(r["x"]), float(r["y"]))) < 1.0:
+		if bool(KarmaState.player(state).get("hidden", false)) and KarmaState.player(state).get("hideRef") is Dictionary and KarmaUtils.dist2(float((KarmaState.player(state)["hideRef"] as Dictionary).get("x", -9999.0)), float((KarmaState.player(state)["hideRef"] as Dictionary).get("y", -9999.0)), float(r["x"]), float(r["y"])) < 1.0:
 			draw_arc(rpos, rr + 3.0, 0, TAU, 32, Color("#80deea"), 2.0)
 		_pill(rpos + Vector2(0, rr + 16.0), str(KarmaDraw.REFUGE_LABEL.get(rtype, rtype)), font, 11)
 	for s in state.get("seedlings", []):
@@ -777,8 +781,11 @@ func _draw() -> void:
 		if not view.has_point(spos):
 			continue
 		_medal(spos, 8.0, KarmaDraw.food_medal("leaves"), "🌱", 12.0, font)
-	var mimics: Array = KarmaState.mimics_visible(state)
-	var toxics: Array = KarmaState.toxics_visible(state)
+	var nose_adapt: bool = KarmaShop.has_adapt(state, "nose")
+	var px: float = float(KarmaState.px(state))
+	var py: float = float(KarmaState.py(state))
+	var vis: float = KarmaState.eff_vision(state)
+	var vis2: float = vis * vis
 	for key in ["bushes", "shrubs", "patches", "clusters", "oaks", "clumps"]:
 		for p in state.get(key, []):
 			var kind: String = str(p.get("kind", key))
@@ -792,7 +799,12 @@ func _draw() -> void:
 			var trapped: bool = (bool(p.get("mimic", false)) and not bool(p.get("mimicEaten", false))) or int(p.get("toxicLeft", 0)) > 0
 			var ring: Color = Color(0, 0, 0, 0)
 			var ring_w: float = 0.0
-			if mimics.has(p) or toxics.has(p):
+			var flagged: bool = false
+			if trapped and nose_adapt and (key == "bushes" or key == "clusters"):
+				var fdx: float = float(p["x"]) - px
+				var fdy: float = float(p["y"]) - py
+				flagged = fdx * fdx + fdy * fdy <= vis2
+			if flagged:
 				ring = Color("#ffd54f")
 				ring_w = 2.0
 			elif trapped:
@@ -821,12 +833,12 @@ func _draw() -> void:
 			draw_circle(cpos + Vector2(-6, -12) + wob, 1.5, Color("#212121"))
 			draw_circle(cpos + Vector2(6, -10) - wob, 1.5, Color("#212121"))
 	# Vision ring + agents + player.
-	var pcenter: Vector2 = Vector2(float(state["px"]), float(state["py"])) - cam
-	draw_arc(pcenter, KarmaState.eff_vision(state), 0, TAU, 64, Color(1, 1, 1, 0.22), 1.0)
-	if float(state.get("thermalT", 0.0)) > 0.0:
-		draw_arc(pcenter, KarmaState.eff_vision(state) + 6.0, 0, TAU, 64, Color("#ffd54f"), 1.5)
-	if float(state.get("revealT", 0.0)) > 0.0:
-		draw_arc(pcenter, KarmaState.eff_vision(state) * 0.5, 0, TAU, 48, Color("#80deea"), 1.5)
+	var pcenter: Vector2 = Vector2(px, py) - cam
+	draw_arc(pcenter, vis, 0, TAU, 64, Color(1, 1, 1, 0.22), 1.0)
+	if float(KarmaState.player(state).get("thermalT", 0.0)) > 0.0:
+		draw_arc(pcenter, vis + 6.0, 0, TAU, 64, Color("#ffd54f"), 1.5)
+	if float(KarmaState.player(state).get("revealT", 0.0)) > 0.0:
+		draw_arc(pcenter, vis * 0.5, 0, TAU, 48, Color("#80deea"), 1.5)
 	var tracked: Variant = KarmaState.tracked_carrion(state)
 	if tracked is Dictionary:
 		var tpos: Vector2 = Vector2(float((tracked as Dictionary)["x"]), float((tracked as Dictionary)["y"])) - cam
@@ -835,7 +847,7 @@ func _draw() -> void:
 	for a in state.get("agents", []):
 		var sp: Dictionary = KarmaData.SPECIES.get(str(a.get("speciesKey", "raton")), KarmaData.SPECIES["raton"])
 		var col: Color = KarmaDraw.species_medal(str(a.get("speciesKey", "raton")))
-		if str(a.get("role", "")) == "company":
+		if str(a.get("brain", "")) != "PLAYER" and str(a.get("speciesKey", "")) == str(state.get("speciesKey", "")):
 			col = col.darkened(0.2)
 		var pos: Vector2 = Vector2(float(a["x"]), float(a["y"])) - cam
 		if pos.x < -40 or pos.y < -40 or pos.x > VIEW_W + 40.0 or pos.y > VIEW_H + 40.0:
@@ -843,18 +855,18 @@ func _draw() -> void:
 		var ar: float = float(sp["radius"]) * 0.7 + 5.0
 		var ring: Color = Color(0, 0, 0, 0)
 		var ring_w: float = 0.0
-		if str(a.get("kind", "")) == "hunter":
+		if KarmaData.PRED.has(str(a.get("speciesKey", ""))):
 			ring = Color("#ef5350")
 			ring_w = 2.5
 		_medal(pos, ar, col, KarmaDraw.species_icon(str(a.get("speciesKey", ""))), KarmaDraw.animal_emoji_size(str(a.get("speciesKey", ""))), font, ring, ring_w)
 		var kc: Color = Color("#ffd54f") if float(a.get("karma", 0.0)) > 0.0 else (Color("#ef5350") if float(a.get("karma", 0.0)) < 0.0 else Color("#ffffff"))
 		_pill(pos + Vector2(0, -ar - 22.0), "%s %d" % [KarmaDraw.species_icon(str(a.get("speciesKey", ""))), int(a.get("karma", 0.0))], font, 11, kc)
-		_hp_bar(pos + Vector2(0, ar + 4.0), ar * 2.0, KarmaDraw.hp_frac(float(a.get("hp", 60.0)), float(sp.get("maxHp", 100.0))))
-	var pp: Vector2 = Vector2(float(state["px"]), float(state["py"])) - cam
+		_hp_bar(pos + Vector2(0, ar + 4.0), ar * 2.0, KarmaDraw.hp_frac_for_agent(a))
+	var pp: Vector2 = Vector2(float(KarmaState.px(state)), float(KarmaState.py(state))) - cam
 	var psp: Dictionary = state["sp"]
 	var pr: float = float(psp["radius"]) + 4.0
 	_medal(pp, pr, KarmaDraw.species_medal(str(state["speciesKey"])), KarmaDraw.species_icon(str(state["speciesKey"])), KarmaDraw.animal_emoji_size(str(state["speciesKey"])), font, Color("#ffffff"), 2.0)
-	var face: Vector2 = Vector2(float((state.get("face", {"x": 1.0}) as Dictionary).get("x", 1.0)), float((state.get("face", {"y": 0.0}) as Dictionary).get("y", 0.0)))
+	var face: Vector2 = Vector2(float((KarmaState.player(state).get("face", {"x": 1.0}) as Dictionary).get("x", 1.0)), float((KarmaState.player(state).get("face", {"y": 0.0}) as Dictionary).get("y", 0.0)))
 	if face.length() > 0.01:
 		face = face.normalized()
 		var nose: Vector2 = pp + face * (pr + 9.0)
@@ -872,13 +884,13 @@ func _draw() -> void:
 			draw_line(Vector2(rx, ry), Vector2(rx - 4.0, ry + 14.0), Color(0.8, 0.9, 1.0, 0.5), 1.5)
 	var badge_y: float = 30.0
 	var badge_x: float = VIEW_W - PANEL_W - PANEL_MARGIN - 240.0
-	if bool(state.get("hidden", false)):
+	if bool(KarmaState.player(state).get("hidden", false)):
 		draw_string(font, Vector2(badge_x, badge_y), "🙈 OCULTO", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#80deea"))
 		badge_y += 18.0
-	if bool(state.get("grounded", false)):
+	if bool(KarmaState.player(state).get("grounded", false)):
 		draw_string(font, Vector2(badge_x, badge_y), "🛬 EN TIERRA", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#ffe0b2"))
 		badge_y += 18.0
-	if bool(state.get("bristled", false)):
+	if bool(KarmaState.player(state).get("bristled", false)):
 		draw_string(font, Vector2(badge_x, badge_y), "🦔 ERIZADO", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#ef5350"))
 	# Vignette edges.
 	draw_rect(Rect2(0, 0, VIEW_W, 18), Color(0, 0, 0, 0.18))

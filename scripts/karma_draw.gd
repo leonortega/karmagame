@@ -114,6 +114,10 @@ static func hp_frac(hp: float, max_hp: float) -> float:
 	return clampf(hp / max_hp, 0.0, 1.0)
 
 
+static func hp_frac_for_agent(a: Dictionary) -> float:
+	return hp_frac(float(a.get("hp", 60.0)), KarmaState.eff_max_hp_for(a))
+
+
 static func hp_color(frac: float) -> Color:
 	if frac >= 0.55:
 		return HP_GOOD

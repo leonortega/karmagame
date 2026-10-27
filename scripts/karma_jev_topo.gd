@@ -27,27 +27,6 @@ static func patch_still_edible(target: Variant) -> bool:
 	return int((target as Dictionary).get("amount", 0)) > 0
 
 
-static func topo_definition() -> Dictionary:
-	var defs: Array = KarmaData.VERB_DEFS["topo"]
-	return {
-		"schema": SCHEMA_VERSION,
-		"species": KarmaData.SPECIES["topo"],
-		"diet": KarmaData.DIET["topo"],
-		"verbs": defs,
-		"shop": KarmaData.SHOP_BY_SPECIES["topo"],
-		"tuning": {
-			"eatRange": float(KarmaData.TUNING["eatRange"]),
-			"drinkRange": float(KarmaData.TUNING["drinkRange"]),
-			"forageRangeMult": float(KarmaData.TUNING["forageRangeMult"]),
-			"hungerPriority": float(KarmaData.TUNING["hungerPriority"]),
-			"aiFearRange": float(KarmaData.TUNING["aiFearRange"]),
-			"aiCoverRange": float(KarmaData.TUNING["aiCoverRange"]),
-			"groomRange": float(KarmaData.TUNING["groomRange"]),
-			"regenSed": float(KarmaData.TUNING["regenSed"]),
-		},
-	}
-
-
 static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var menu: Array = []
 	var ax := float(a["x"])
@@ -73,8 +52,9 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	if KarmaAI.is_hunted(state, a):
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["topo"], r, "topo") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["topo"], r, "topo") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
 	var dug: Variant = _dug_near(state, a)
@@ -87,8 +67,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	if KarmaJevBridge.verb_ready(a, 4) and (KarmaUtils.nearest_from(ax, ay, state.get("insects", []), eat_range) != null or int(a.get("larder", 0)) > 0):
 		menu.append({"kind": "larder", "label": "Larder worm", "x": ax, "y": ay})
 	if float(a.get("shoutCd", 0.0)) <= 0.0:
-		var hunter: Variant = KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+		var hunter: Variant = KarmaState.nearest_hunter(ax, ay, state, float(KarmaData.TUNING["shoutLureRange"]), a)
 		if hunter != null:
 			menu.append({"kind": "alarm", "label": "Alarm call", "x": float((hunter as Dictionary)["x"]), "y": float((hunter as Dictionary)["y"]), "target": hunter})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
@@ -96,7 +75,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaAI.ai_max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var eat_range := float(KarmaData.TUNING["eatRange"])
@@ -111,8 +90,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"pa": float(a.get("pa", 0.0)),
 		"hungry": KarmaAI.is_hungry(a),
 		"threatened": KarmaAI.is_hunted(state, a),
-		"pressure_near": KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"])) != null,
+		"pressure_near": KarmaState.nearest_hunter(ax, ay, state, float(KarmaData.TUNING["aiFearRange"]), a) != null,
 		"food_near": KarmaUtils.nearest_from(ax, ay, state.get("insects", []), eat_range) != null or KarmaEat.nearest_edible_patch_for(state, a, eat_range) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
 		"dug_near": _dug_near(state, a) != null,
@@ -182,8 +160,7 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return KarmaGame.cast_verb_for(state, a, 4)
 		"alarm":
-			var hunter: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+			var hunter: Variant = KarmaState.nearest_hunter(float(a["x"]), float(a["y"]), state, float(KarmaData.TUNING["shoutLureRange"]), a)
 			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			if hunter == null:
 				return true

@@ -15,27 +15,6 @@ static func _tongue_reach(a: Dictionary) -> float:
 	return float(KarmaData.TUNING["tongueRange"]) + (40.0 if KarmaShop.has_adapt(a, "tonguePlus") else 0.0)
 
 
-static func sapo_definition() -> Dictionary:
-	var defs: Array = KarmaData.VERB_DEFS["sapo"]
-	return {
-		"schema": SCHEMA_VERSION,
-		"species": KarmaData.SPECIES["sapo"],
-		"diet": KarmaData.DIET["sapo"],
-		"verbs": defs,
-		"shop": KarmaData.SHOP_BY_SPECIES["sapo"],
-		"tuning": {
-			"tongueRange": float(KarmaData.TUNING["tongueRange"]),
-			"drinkRange": float(KarmaData.TUNING["drinkRange"]),
-			"forageRangeMult": float(KarmaData.TUNING["forageRangeMult"]),
-			"hungerPriority": float(KarmaData.TUNING["hungerPriority"]),
-			"aiFearRange": float(KarmaData.TUNING["aiFearRange"]),
-			"aiCoverRange": float(KarmaData.TUNING["aiCoverRange"]),
-			"groomRange": float(KarmaData.TUNING["groomRange"]),
-			"regenSed": float(KarmaData.TUNING["regenSed"]),
-		},
-	}
-
-
 static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 	var menu: Array = []
 	var ax := float(a["x"])
@@ -55,27 +34,28 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		var water: Variant = KarmaUtils.nearest_water_for(state, ax, ay, forage)
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
-	var pressure: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"]))
+	var pressure: Variant = KarmaState.nearest_hunter(ax, ay, state, float(KarmaData.TUNING["aiFearRange"]), a)
 	if pressure != null:
+		var cover_range: float = float(KarmaData.TUNING["aiCoverRange"])
 		for r in state.get("refuges", []):
-			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["sapo"], r, "sapo") and Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["aiCoverRange"]):
+			if KarmaAI.refuge_fits_size(KarmaData.SPECIES["sapo"], r, "sapo") and KarmaUtils.dist2(float(r["x"]), float(r["y"]), ax, ay) <= cover_range * cover_range:
 				menu.append({"kind": "flee", "label": "Flee to refuge", "x": float((r as Dictionary)["x"]), "y": float((r as Dictionary)["y"]), "target": r})
 				break
 	if pressure != null and not bool(a.get("hidden", false)) and KarmaJevBridge.verb_ready(a, 3):
 		menu.append({"kind": "burrowin", "label": "Burrow in", "x": ax, "y": ay})
 	var close_hunter: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), 60.0)
+		(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), 60.0)
 	var toxin_cost := float((KarmaData.VERB_DEFS["sapo"] as Array)[3]["costHp"])
 	if close_hunter != null and KarmaJevBridge.verb_ready(a, 4) and float(a.get("hp", 0.0)) > toxin_cost:
 		menu.append({"kind": "toxin", "label": "Toxin spray", "x": float((close_hunter as Dictionary)["x"]), "y": float((close_hunter as Dictionary)["y"]), "target": close_hunter})
 	if float(a.get("shoutCd", 0.0)) <= 0.0:
 		var lurker: Variant = KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+			(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), float(KarmaData.TUNING["shoutLureRange"]))
 		if lurker != null:
 			menu.append({"kind": "croak", "label": "Croak alarm", "x": float((lurker as Dictionary)["x"]), "y": float((lurker as Dictionary)["y"]), "target": lurker})
+	var groom_range: float = float(KarmaData.TUNING["groomRange"])
 	var choir := (state["agents"] as Array).filter(func(o):
-		return o != a and str(o.get("speciesKey", "")) == "sapo" and str(o.get("role", "")) in ["company", "fauna"] and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(ax, ay)) <= float(KarmaData.TUNING["groomRange"]))
+		return o != a and str(o.get("speciesKey", "")) == "sapo" and str(o.get("brain", "")) != "PLAYER" and KarmaUtils.dist2(float(o["x"]), float(o["y"]), ax, ay) <= groom_range * groom_range)
 	if not choir.is_empty() and KarmaJevBridge.verb_ready(a, 5):
 		menu.append({"kind": "chorus", "label": "Chorus", "x": ax, "y": ay})
 	menu.append({"kind": "wander", "label": "Wander", "x": ax, "y": ay})
@@ -83,7 +63,7 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaAI.ai_max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	return {
@@ -98,7 +78,7 @@ static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
 		"hungry": KarmaAI.is_hungry(a),
 		"threatened": KarmaAI.is_hunted(state, a),
 		"pressure_near": KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["aiFearRange"])) != null,
+			(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), float(KarmaData.TUNING["aiFearRange"])) != null,
 		"insect_near": KarmaUtils.nearest_from(ax, ay, state.get("insects", []), _tongue_reach(a)) != null,
 		"water_near": KarmaUtils.nearest_water_for(state, ax, ay, float(KarmaData.TUNING["drinkRange"])) != null,
 	}.merged(KarmaJev.age_fields(state, a))
@@ -158,7 +138,7 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			return KarmaGame.cast_verb_for(state, a, 4)
 		"croak":
 			var hunter: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+				(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), float(KarmaData.TUNING["shoutLureRange"]))
 			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			if hunter == null:
 				return true

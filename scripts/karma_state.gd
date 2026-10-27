@@ -6,6 +6,7 @@ extends RefCounted
 
 const FLORA_BASE := {"berries": 7, "apples": 3, "carrots": 2, "mushrooms": 4, "leaves": 4, "nuts": 2}
 const FLORA_KIND := {"berries": "bushes", "apples": "shrubs", "carrots": "patches", "mushrooms": "clusters", "leaves": "clumps", "nuts": "oaks"}
+const FLORA_KEYS := ["bushes", "shrubs", "patches", "clusters", "clumps", "oaks"]
 
 
 static func flora_cap(kind: String) -> int:
@@ -16,21 +17,10 @@ static func blank_state(species_key: String, karma: float, pa: float) -> Diction
 	var sp: Dictionary = KarmaData.SPECIES[species_key]
 	return {
 		"speciesKey": species_key, "sp": sp,
-		"px": float(KarmaData.WORLD["w"]) / 2.0, "py": float(KarmaData.WORLD["h"]) / 2.0,
-		"face": {"x": 1.0, "y": 0.0}, "moved": false,
-		"hp": float(sp["maxHp"]), "karma": karma,
-		"hambre": 100.0, "sed": 100.0, "edad": 0.0,
-		"pa": pa, "saplings": 0,
+		"karma": karma, "pa": pa, "saplings": 0,
 		"time": 0.0, "dead": false, "paAcc": 0.0,
-		"shoutCd": 0.0, "invuln": 0.0, "lureTimer": 0.0, "strikeCd": 0.0,
-		"verbCds": [0.0, 0.0, 0.0, 0.0, 0.0],
-		"pounceCd": 0.0, "digCd": 0.0, "dug": 0, "senseCd": 0.0, "revealT": 0.0, "trackT": 0.0,
-		"groomT": 0.0, "groomCd": 0.0, "stillT": 0.0, "curlCd": 0.0, "dietHintT": 0.0, "thermalT": 0.0,
-		"carriedNut": false, "larder": 0, "stash": 0,
-		"hidden": false, "hideRef": null, "bristled": false,
-		"grounded": false, "landT": 0.0,
-		"cam": {"x": 0.0, "y": 0.0},
-		"agents": [], "possessed": 0,
+		"dug": 0,
+		"agents": [],
 		"lifeLog": [], "feed": [], "otherFeed": [],
 		"owned": {}, "shopOpen": false, "paused": false,
 		"introDone": true, "introNext": null,
@@ -52,7 +42,6 @@ static func new_run(species_key: String, carry_karma: float = 0.0, carry_pa: flo
 	seed_food(state, carry_saplings, r)
 	seed_fauna(state, r)
 	possess_member(state)
-	seed_foes(state, state["sp"], r)
 	seed_refuges(state, r)
 	state["carrions"] = []
 	add_log(state, null, "Naces como %s T%d" % [str(state["sp"]["name"]), int(state["sp"]["tier"])])
@@ -118,19 +107,15 @@ static func seed_food(state: Dictionary, carry_saplings: int, rng: RandomNumberG
 		(state["rocks"] as Array).append({"x": pt["x"], "y": pt["y"]})
 
 
-static func seed_foes(state: Dictionary, sp: Dictionary, rng: RandomNumberGenerator) -> void:
-	# Scripted hunters are the pressure floor, not a stacked pack: fauna predator
-	# communities already cover the tiers, so only the T0 saponpc role (which
-	# has no fauna equivalent) spawns here, counted against sapo in seed_fauna.
-	if int(sp["tier"]) != 0:
-		return
-	var pt: Dictionary = distant_pt(state, rng)
-	(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, "saponpc", float(pt["x"]), float(pt["y"]), 0)))
-
-
 static func mk_agent(a: Dictionary) -> Dictionary:
-	var base: Dictionary = {"brain": "AI", "kind": "grazer", "hp": 60.0, "hambre": 100.0, "sed": 100.0, "edad": 0.0,
-		"larder": 0, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": [], "verbCds": [0.0, 0.0, 0.0, 0.0, 0.0]}
+	var base: Dictionary = {"brain": "AI", "x": 0.0, "y": 0.0, "face": {"x": 1.0, "y": 0.0}, "moved": false,
+		"hp": 60.0, "hambre": 100.0, "sed": 100.0, "edad": 0.0, "invuln": 0.0,
+		"shoutCd": 0.0, "strikeCd": 0.0, "pounceCd": 0.0, "digCd": 0.0, "senseCd": 0.0,
+		"revealT": 0.0, "trackT": 0.0, "groomCd": 0.0, "curlCd": 0.0, "dietHintT": 0.0,
+		"thermalT": 0.0, "lureTimer": 0.0, "verbCds": [0.0, 0.0, 0.0, 0.0, 0.0],
+		"hidden": false, "hideRef": null, "bristled": false, "grounded": false, "landT": 0.0,
+		"cam": {"x": 0.0, "y": 0.0}, "carriedNut": false, "larder": 0, "stash": 0,
+		"stillT": 0.0, "groomT": 0.0, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": []}
 	for k in a:
 		base[k] = a[k]
 	if not base.has("caution_food"):
@@ -140,16 +125,94 @@ static func mk_agent(a: Dictionary) -> Dictionary:
 	return base
 
 
+# The possessed body: the one agent with brain PLAYER. Until every scene
+# possesses a member, blank states keep their body at top level.
+static func player(state: Dictionary) -> Variant:
+	for a in state["agents"] as Array:
+		if a != null and str((a as Dictionary).get("brain", "")) == "PLAYER":
+			return a
+	return null
+
+
+static func body_actor(state: Dictionary, a: Variant) -> Variant:
+	if a != null:
+		return a
+	var p: Variant = player(state)
+	if p != null:
+		return p
+	return state
+
+
+static func px(state: Dictionary) -> float:
+	var p: Variant = player(state)
+	if p == null:
+		return 0.0
+	return float((p as Dictionary).get("x", 0.0))
+
+
+static func py(state: Dictionary) -> float:
+	var p: Variant = player(state)
+	if p == null:
+		return 0.0
+	return float((p as Dictionary).get("y", 0.0))
+
+
 static func company_agents(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("role", "")) == "company")
+	var out: Array = []
+	for a in state["agents"] as Array:
+		if a == null or str(a.get("brain", "")) == "PLAYER":
+			continue
+		if str(a.get("speciesKey", "")) == str(state["speciesKey"]):
+			out.append(a)
+	return out
 
 
-static func hunter_agents(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("role", "")) == "hunter")
+# Nearest company agent within max_d, or null. Scans agents in place (no temp array).
+# exclude skips one agent (the asker) without scanning the list twice.
+static func nearest_company(ax: float, ay: float, state: Dictionary, max_d: float, exclude: Variant = null) -> Variant:
+	var best: Variant = null
+	var bd: float = max_d * max_d
+	for o in state["agents"] as Array:
+		if o == null or o == exclude or str(o.get("brain", "")) == "PLAYER":
+			continue
+		if str(o.get("speciesKey", "")) != str(state["speciesKey"]):
+			continue
+		var dx: float = ax - float(o["x"])
+		var dy: float = ay - float(o["y"])
+		var d: float = dx * dx + dy * dy
+		if d < bd:
+			bd = d
+			best = o
+	return best
 
 
-static func all_hunters(state: Dictionary) -> Array:
-	return (state["agents"] as Array).filter(func(a): return str(a.get("kind", "")) == "hunter")
+static func predator_agents(state: Dictionary) -> Array:
+	var out: Array = []
+	for a in state["agents"] as Array:
+		if a == null or str(a.get("brain", "")) == "PLAYER":
+			continue
+		if KarmaData.PRED.has(str(a.get("speciesKey", ""))):
+			out.append(a)
+	return out
+
+
+# Nearest animal predator within max_d, or null. Scans agents in place.
+# exclude skips one agent (the asker) without scanning the list twice.
+static func nearest_hunter(ax: float, ay: float, state: Dictionary, max_d: float, exclude: Variant = null) -> Variant:
+	var best: Variant = null
+	var bd: float = max_d * max_d
+	for o in state["agents"] as Array:
+		if o == null or o == exclude:
+			continue
+		if not KarmaData.PRED.has(str(o.get("speciesKey", ""))):
+			continue
+		var dx: float = ax - float(o["x"])
+		var dy: float = ay - float(o["y"])
+		var d: float = dx * dx + dy * dy
+		if d < bd:
+			bd = d
+			best = o
+	return best
 
 
 static func remove_agent(state: Dictionary, a: Dictionary) -> void:
@@ -157,13 +220,10 @@ static func remove_agent(state: Dictionary, a: Dictionary) -> void:
 
 
 static func possess_member(state: Dictionary) -> void:
-	# Fixed roster: the player takes over one census member instead of spawning
-	# extra bodies on top. Census floors guarantee a member exists.
+	# The census member is taken over in place: no erase, no duplicate body.
 	for a in (state["agents"] as Array):
 		if str(a.get("speciesKey", "")) == str(state["speciesKey"]) and str(a.get("brain", "")) != "PLAYER":
-			state["px"] = float(a["x"])
-			state["py"] = float(a["y"])
-			(state["agents"] as Array).erase(a)
+			a["brain"] = "PLAYER"
 			return
 
 
@@ -180,11 +240,9 @@ static func fauna_count(k: String) -> int:
 
 
 static func spawn_fauna(state: Dictionary, k: String, x: float, y: float) -> Dictionary:
-	var carnivore: bool = (KarmaData.DIET[k] as Array).has("mates")
-	var a: Dictionary = mk_agent({"role": "fauna", "speciesKey": k, "hp": float(KarmaData.SPECIES[k]["maxHp"]), "x": x, "y": y,
-		"face": {"x": 1.0, "y": 0.0}, "kind": "hunter" if carnivore else "grazer"})
-	if carnivore:
-		a["type"] = k
+	var a: Dictionary = mk_agent({"speciesKey": k, "hp": float(KarmaData.SPECIES[k]["maxHp"]), "x": x, "y": y,
+		"face": {"x": 1.0, "y": 0.0}})
+	if KarmaData.PRED.has(k):
 		a["speed"] = float(KarmaData.SPECIES[k]["speed"])
 		a["mode"] = "wander"
 		a["wx"] = x
@@ -208,9 +266,7 @@ static func seed_fauna(state: Dictionary, rng: RandomNumberGenerator) -> void:
 	var counts: Dictionary = (state["census"] as Dictionary)["counts"]
 	for k in counts:
 		var n: int = int(counts[k])
-		if str(k) == "sapo" and int(state["sp"]["tier"]) == 0:
-			n -= 1 # the saponpc pressure hunter spawns in seed_foes instead
-		if str(k) in ["halcon", "zorro", "lobo"]:
+		if KarmaData.PRED.has(str(k)):
 			for i in n:
 				var far: Dictionary = distant_pt(state, rng)
 				spawn_fauna(state, str(k), float(far["x"]), float(far["y"]))
@@ -255,18 +311,23 @@ static func member_pt(state: Dictionary, anchor: Dictionary, i: int, rng: Random
 
 
 static func spawn_company(state: Dictionary, x: float, y: float) -> void:
-	(state["agents"] as Array).append(mk_agent({"role": "company", "speciesKey": state["speciesKey"],
+	(state["agents"] as Array).append(mk_agent({"speciesKey": state["speciesKey"],
 		"hp": float(state["sp"]["maxHp"]), "x": x, "y": y, "saved": false}))
 
 
 static func distant_pt(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
 	var best: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
 	var bd: float = -1.0
+	var ptx: float = float(KarmaState.px(state))
+	var pty: float = float(KarmaState.py(state))
+	var hunters: Array = predator_agents(state)
 	for i in 5:
 		var pt: Dictionary = KarmaUtils.scatter_dry(state, 1, rng)[0]
-		var d: float = Vector2(float(pt["x"]), float(pt["y"])).distance_to(Vector2(float(state["px"]), float(state["py"])))
-		for h in all_hunters(state):
-			d = minf(d, Vector2(float(pt["x"]), float(pt["y"])).distance_to(Vector2(float(h["x"]), float(h["y"]))))
+		var px: float = float(pt["x"])
+		var py: float = float(pt["y"])
+		var d: float = Vector2(px, py).distance_to(Vector2(ptx, pty))
+		for h in hunters:
+			d = minf(d, Vector2(px, py).distance_to(Vector2(float(h["x"]), float(h["y"]))))
 		if d > bd:
 			bd = d
 			best = pt
@@ -274,21 +335,19 @@ static func distant_pt(state: Dictionary, rng: RandomNumberGenerator) -> Diction
 
 
 static func respawn_missing(state: Dictionary, rng: RandomNumberGenerator) -> void:
-	# Tier-0 worlds keep one scripted pressure hunter (saponpc). Rebuild it before
-	# the census top-up so it fills the reserved sapo slot instead of a grazer.
-	if int(state["sp"]["tier"]) == 0 and hunter_agents(state).is_empty():
-		var ph: Dictionary = distant_pt(state, rng)
-		(state["agents"] as Array).append(mk_agent(KarmaPredators.mk_predator(state, "saponpc", float(ph["x"]), float(ph["y"]), 0)))
 	var targets: Dictionary = {}
 	if state.has("census"):
 		targets = ((state["census"] as Dictionary)["counts"] as Dictionary).duplicate()
 	else:
 		for fk in (KarmaData.POP["faunaFloor"] as Dictionary):
 			targets[str(fk)] = fauna_count(str(fk))
+	var player_sk: String = str(state["speciesKey"])
+	var counts: Dictionary = {}
+	for a in state["agents"] as Array:
+		var sk: String = str(a.get("speciesKey", ""))
+		counts[sk] = int(counts.get(sk, 0)) + 1
 	for k in targets:
-		var n: int = (state["agents"] as Array).filter(func(a): return str(a.get("speciesKey", "")) == str(k)).size()
-		if str(state["speciesKey"]) == str(k):
-			n += 1
+		var n: int = int(counts.get(str(k), 0))
 		if n < int(targets[k]):
 			var pt: Dictionary = distant_pt(state, rng)
 			spawn_fauna(state, str(k), float(pt["x"]), float(pt["y"]))
@@ -296,15 +355,23 @@ static func respawn_missing(state: Dictionary, rng: RandomNumberGenerator) -> vo
 
 static func eff_speed(state: Dictionary) -> float:
 	var swift: float = 1.15 if KarmaShop.has_adapt(state, "swift") else 1.0
-	return float(state["sp"]["speed"]) * swift * KarmaData.speed_mult_for(str(state.get("speciesKey", "raton")), float(state.get("edad", 0.0)))
+	var _edad: float = 0.0
+	var _p: Variant = player(state)
+	if _p != null:
+		_edad = float((_p as Dictionary).get("edad", 0.0))
+	else:
+		_edad = float(state.get("edad", 0.0))
+	return float(state["sp"]["speed"]) * swift * KarmaData.speed_mult_for(str(state.get("speciesKey", "raton")), _edad)
 
 
 static func eff_vision(state: Dictionary) -> float:
-	return float(state["sp"]["vision"]) + (50.0 if KarmaShop.has_adapt(state, "nose") else 0.0) + (float(KarmaData.TUNING["thermalVision"]) if float(state.get("thermalT", 0.0)) > 0.0 else 0.0)
-
-
-static func eff_max_hp(state: Dictionary) -> float:
-	return eff_max_hp_for(state)
+	var _thermal: float = 0.0
+	var _vp: Variant = player(state)
+	if _vp != null:
+		_thermal = float((_vp as Dictionary).get("thermalT", 0.0))
+	else:
+		_thermal = float(state.get("thermalT", 0.0))
+	return float(state["sp"]["vision"]) + (50.0 if KarmaShop.has_adapt(state, "nose") else 0.0) + (float(KarmaData.TUNING["thermalVision"]) if _thermal > 0.0 else 0.0)
 
 
 static func eff_max_hp_for(target: Dictionary) -> float:
@@ -319,32 +386,16 @@ static func eff_size(state: Dictionary) -> int:
 
 
 static func diet_hint(state: Dictionary) -> void:
-	if float(state.get("dietHintT", 0.0)) > 0.0:
+	if float(KarmaState.player(state).get("dietHintT", 0.0)) > 0.0:
 		return
-	state["dietHintT"] = float(KarmaData.TUNING["dietHintCd"])
+	KarmaState.player(state)["dietHintT"] = float(KarmaData.TUNING["dietHintCd"])
 	add_log(state, null, "Los %ss comen %s" % [str(state["sp"]["name"]).to_lower(), str(KarmaData.DIET_HINT[state["speciesKey"]])])
 
 
-static func mimics_visible(state: Dictionary) -> Array:
-	if not KarmaShop.has_adapt(state, "nose"):
-		return []
-	return (state["bushes"] as Array).filter(func(b):
-		return bool(b.get("alive", false)) and bool(b.get("mimic", false)) and not bool(b.get("mimicEaten", false)) and Vector2(float(b["x"]), float(b["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= eff_vision(state)
-	)
-
-
-static func toxics_visible(state: Dictionary) -> Array:
-	if not KarmaShop.has_adapt(state, "nose"):
-		return []
-	return (state["clusters"] as Array).filter(func(c):
-		return bool(c.get("alive", false)) and int(c.get("toxicLeft", 0)) > 0 and Vector2(float(c["x"]), float(c["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= eff_vision(state)
-	)
-
-
 static func tracked_carrion(state: Dictionary) -> Variant:
-	if float(state.get("trackT", 0.0)) <= 0.0:
+	if float(KarmaState.player(state).get("trackT", 0.0)) <= 0.0:
 		return null
-	return KarmaUtils.nearest_from(float(state["px"]), float(state["py"]), state.get("carrions", []), 9999.0)
+	return KarmaUtils.nearest_from(float(KarmaState.px(state)), float(KarmaState.py(state)), state.get("carrions", []), 9999.0)
 
 
 static func reincarnate(state: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
@@ -378,9 +429,21 @@ static func possess_or_spawn(state: Dictionary, next: String, carry_karma: float
 		fresh[k] = state[k]
 	if state.has("census"):
 		fresh["census"] = state["census"]
-	fresh["px"] = float(at["x"])
-	fresh["py"] = float(at["y"])
 	fresh["saplings"] = 0
+	# Ensure a same-species agent exists to possess; spawn one if the world has none.
+	var has_host: bool = false
+	for a in (fresh["agents"] as Array):
+		if str(a.get("speciesKey", "")) == next and str(a.get("brain", "")) != "PLAYER":
+			has_host = true
+			break
+	if not has_host:
+		(fresh["agents"] as Array).append(mk_agent({"speciesKey": next, "brain": "AI",
+			"hp": float(sp["maxHp"]), "x": float(at["x"]), "y": float(at["y"])}))
+	possess_member(fresh)
+	var pp: Variant = player(fresh)
+	if pp != null:
+		(pp as Dictionary)["x"] = float(at["x"])
+		(pp as Dictionary)["y"] = float(at["y"])
 	var extra: int = mini(carry_saplings, int(KarmaData.TUNING["saplingCap"]))
 	for pt in KarmaUtils.scatter_dry(fresh, extra, rng):
 		(fresh["bushes"] as Array).append(KarmaUtils.mk_patch("berries", pt["x"], pt["y"], 3))
@@ -400,12 +463,21 @@ static func refuge_fits(state: Dictionary, r: Dictionary) -> bool:
 static func toggle_hide(state: Dictionary) -> bool:
 	if bool(state.get("dead", false)):
 		return false
-	if bool(state.get("hidden", false)):
-		state["hidden"] = false
-		state["hideRef"] = null
+	if bool(KarmaState.player(state).get("hidden", false)):
+		KarmaState.player(state)["hidden"] = false
+		KarmaState.player(state)["hideRef"] = null
 		add_log(state, null, "Sales del escondite")
 		return true
-	var near: Array = (state["refuges"] as Array).filter(func(r): return Vector2(float(r["x"]), float(r["y"])).distance_to(Vector2(float(state["px"]), float(state["py"]))) <= float(KarmaData.TUNING["hideRange"]))
+	var hr: float = float(KarmaData.TUNING["hideRange"])
+	var hr2: float = hr * hr
+	var ptx: float = float(KarmaState.px(state))
+	var pty: float = float(KarmaState.py(state))
+	var near: Array = []
+	for r in state["refuges"] as Array:
+		var dx: float = float(r["x"]) - ptx
+		var dy: float = float(r["y"]) - pty
+		if dx * dx + dy * dy <= hr2:
+			near.append(r)
 	if near.is_empty():
 		return false
 	var fit: Variant = null
@@ -416,23 +488,23 @@ static func toggle_hide(state: Dictionary) -> bool:
 	if fit == null:
 		add_log(state, null, "No cabes aquí (tamaño %d)" % eff_size(state))
 		return false
-	state["hidden"] = true
-	state["hideRef"] = fit
+	KarmaState.player(state)["hidden"] = true
+	KarmaState.player(state)["hideRef"] = fit
 	add_log(state, null, "Te escondes (%s)" % str((fit as Dictionary)["type"]))
 	return true
 
 
 static func try_shout(state: Dictionary) -> bool:
-	if bool(state.get("dead", false)) or float(state.get("shoutCd", 0.0)) > 0.0:
+	if bool(state.get("dead", false)) or float(KarmaState.player(state).get("shoutCd", 0.0)) > 0.0:
 		return false
 	if str(state["speciesKey"]) in ["oruga", "halcon", "zorro"]:
 		add_log(state, null, "Esta forma no avisa a nadie.")
 		return false
-	if bool(state.get("hidden", false)):
-		state["hidden"] = false
-		state["hideRef"] = null
-	state["shoutCd"] = float(KarmaData.TUNING["shoutCooldown"])
-	state["lureTimer"] = 5.0
+	if bool(KarmaState.player(state).get("hidden", false)):
+		KarmaState.player(state)["hidden"] = false
+		KarmaState.player(state)["hideRef"] = null
+	KarmaState.player(state)["shoutCd"] = float(KarmaData.TUNING["shoutCooldown"])
+	KarmaState.player(state)["lureTimer"] = 5.0
 	add_karma(state, null, float(KarmaData.TUNING["shoutKarma"]), "Alerta a tu especie (+karma, atrae 5s)")
 	add_pa(state, null, float(KarmaData.TUNING["shoutPa"]))
 	for m in company_agents(state):

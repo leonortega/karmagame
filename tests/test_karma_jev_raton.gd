@@ -152,7 +152,7 @@ func test_jev_micro_moves_toward_food_intent() -> void:
 	var c: Dictionary = (s["bushes"] as Array)[(s["bushes"] as Array).size() - 1]
 	a["jev_intent"] = {"kind": "seek_food", "x": 650.0, "y": 500.0, "ttl": 5.0, "target": c}
 	var x0 := float(a["x"])
-	KarmaAI._ai_raton(s, a, 0.1)
+	KarmaAIRaton.step(s, a, 0.1)
 	assert_bool(float(a["x"]) > x0).is_true()
 
 
@@ -165,7 +165,7 @@ func test_jev_micro_eat_resolves_locally() -> void:
 	var c: Dictionary = (s["bushes"] as Array)[(s["bushes"] as Array).size() - 1]
 	a["jev_intent"] = {"kind": "eat", "x": 505.0, "y": 500.0, "ttl": 5.0, "target": c}
 	var hp0 := float(a["hp"])
-	KarmaAI._ai_raton(s, a, 0.1)
+	KarmaAIRaton.step(s, a, 0.1)
 	assert_bool(float(a["hp"]) > hp0).is_true()
 
 
@@ -175,7 +175,7 @@ func test_jev_live_flag_skips_mock_and_wanders() -> void:
 	_hunter_free(s, a)
 	a["jev_live"] = true
 	a["jev_intent"] = {}
-	KarmaAI._ai_raton(s, a, 0.1)
+	KarmaAIRaton.step(s, a, 0.1)
 	assert_str(str((a.get("jev_intent", {}) as Dictionary).get("kind", ""))).is_equal("wander")
 
 
@@ -193,7 +193,7 @@ func test_wander_fallthrough_keeps_social_verbs() -> void:
 		a["y"] = 500.0
 		mate["x"] = 510.0
 		mate["y"] = 500.0
-		KarmaAI._ai_raton(s, a, 0.1)
+		KarmaAIRaton.step(s, a, 0.1)
 	assert_float(float(a["karma"])).is_equal(float(KarmaData.TUNING["groomKarma"]))
 	assert_bool(float(a.get("groomCd", 0.0)) > 0.0).is_true()
 
@@ -245,7 +245,7 @@ func test_groom_intent_pays_timer_not_instant() -> void:
 	a["hambre"] = 100.0
 	a["jev_intent"] = {"kind": "groom", "x": 510.0, "y": 500.0, "ttl": 30.0, "target": (s["agents"] as Array)[(s["agents"] as Array).size() - 1]}
 	for i in 40:
-		KarmaAI._ai_raton(s, a, 0.1)
+		KarmaAIRaton.step(s, a, 0.1)
 	assert_float(float(a["karma"])).is_equal(float(KarmaData.TUNING["groomKarma"]))
 
 

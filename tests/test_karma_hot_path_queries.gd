@@ -17,13 +17,13 @@ func _state() -> Dictionary:
 
 
 func _subject(s: Dictionary, x := 500.0, y := 500.0) -> Dictionary:
-	var a := KarmaState.mk_agent({"role": "company", "speciesKey": "raton", "x": x, "y": y})
+	var a := KarmaState.mk_agent({"speciesKey": "raton", "x": x, "y": y})
 	(s["agents"] as Array).append(a)
 	return a
 
 
-func _hunter(s: Dictionary, type: String, x: float, y: float) -> Dictionary:
-	var h := KarmaPredators.mk_predator(s, type, x, y, 1)
+func _hunter(s: Dictionary, species: String, x: float, y: float) -> Dictionary:
+	var h := KarmaPredators.mk_predator(s, species, x, y, 1)
 	(s["agents"] as Array).append(h)
 	return h
 
@@ -59,43 +59,37 @@ func test_is_hunted_counts_hidden_hunter() -> void:
 func test_is_hunted_false_for_non_edible_hunter() -> void:
 	var s := _state()
 	var a := _subject(s)
-	_hunter(s, "saponpc", 600.0, 500.0)
+	_hunter(s, "lobo", 600.0, 500.0)
 	assert_bool(KarmaAI.is_hunted(s, a)).is_false()
 
 
-# 1.2 Predator victim selection.
+# 1.2 Predator victim selection: the per-pair query picks the nearest edible agent.
 
-func test_strike_agents_targets_nearest_victim() -> void:
+func test_nearest_ai_prey_targets_nearest_edible_agent() -> void:
 	var s := _state()
 	var near := _victim(s, 508.0, 500.0)
-	var far := _victim(s, 515.0, 500.0)
+	_victim(s, 515.0, 500.0)
 	var p := _hunter(s, "zorro", 500.0, 500.0)
-	KarmaPredators.strike_agents(s, p, KarmaData.PRED["zorro"], 0.1, KarmaPredators.stalk_victims(s, p))
-	assert_bool((s["agents"] as Array).has(near)).is_false()
-	assert_bool((s["agents"] as Array).has(far)).is_true()
+	assert_bool(KarmaAI.nearest_ai_prey(s, p, 100.0) == near).is_true()
 
 
-func test_strike_agents_equal_distance_keeps_first_listed_victim() -> void:
+func test_nearest_ai_prey_skips_non_edible_species() -> void:
 	var s := _state()
-	var first := _victim(s, 490.0, 500.0)
-	var second := _victim(s, 510.0, 500.0)
+	_hunter(s, "lobo", 505.0, 500.0)
 	var p := _hunter(s, "zorro", 500.0, 500.0)
-	KarmaPredators.strike_agents(s, p, KarmaData.PRED["zorro"], 0.1, KarmaPredators.stalk_victims(s, p))
-	assert_bool((s["agents"] as Array).has(first)).is_false()
-	assert_bool((s["agents"] as Array).has(second)).is_true()
+	assert_bool(KarmaAI.nearest_ai_prey(s, p, 100.0) == null).is_true()
 
 
-# 1.3 A kill inside a predator tick must not hide another eligible victim.
+# 1.3 A kill inside a world tick must not hide another eligible victim.
 
-func test_predator_tick_kills_each_eligible_victim_once() -> void:
+func test_world_tick_kills_each_eligible_victim_once() -> void:
 	var s := _state()
 	var first := _victim(s, 505.0, 500.0)
 	var second := _victim(s, 510.0, 500.0)
-	var p1 := _hunter(s, "zorro", 500.0, 500.0)
-	var p2 := _hunter(s, "zorro", 500.0, 500.0)
-	p1["satedT"] = 1.0
-	p2["satedT"] = 1.0
-	KarmaPredators.update_predators(s, 0.1, _rng)
+	_hunter(s, "halcon", 500.0, 500.0)
+	_hunter(s, "halcon", 500.0, 500.0)
+	for i in 3:
+		KarmaGame.update(s, 0.1, _rng)
 	assert_bool((s["agents"] as Array).has(first)).is_false()
 	assert_bool((s["agents"] as Array).has(second)).is_false()
 	assert_int((s["carrions"] as Array).size()).is_equal(2)

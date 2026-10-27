@@ -10,7 +10,7 @@ extends RefCounted
 const SCHEMA_VERSION := "jev-lobo/v1"
 const QUESTION := "Que hace el lobo ahora? Elige un candidato."
 const USE_JEV := true
-const MOCK_ORDER := ["eat", "strike", "regurg", "escort", "hunt", "alarm", "drink", "seek_carrion", "wander"]
+const MOCK_ORDER := ["eat", "strike", "regurg", "escort", "hunt", "drink", "seek_carrion", "alarm", "wander"]
 
 
 static func build_menu(state: Dictionary, a: Dictionary) -> Array:
@@ -38,29 +38,29 @@ static func build_menu(state: Dictionary, a: Dictionary) -> Array:
 		if water != null:
 			menu.append({"kind": "drink", "label": "Drink water", "x": float((water as Dictionary)["x"]), "y": float((water as Dictionary)["y"])})
 	var threat: Variant = KarmaUtils.nearest_from(ax, ay,
-		(state["agents"] as Array).filter(func(o): return o != a and (str(o.get("role", "")) == "hunter" or str(o.get("kind", "")) == "hunter")), 60.0)
+		(state["agents"] as Array).filter(func(o): return o != a and KarmaData.PRED.has(str(o.get("speciesKey", "")))), 60.0)
 	if threat != null and float(a.get("strikeCd", 0.0)) <= 0.0 and KarmaJevBridge.verb_ready(a, 3):
 		menu.append({"kind": "strike", "label": "Strike predator", "x": float((threat as Dictionary)["x"]), "y": float((threat as Dictionary)["y"]), "target": threat})
 	if KarmaJevBridge.verb_ready(a, 2) and float(a.get("hp", 0.0)) > float(KarmaData.TUNING["regurgCost"]):
-		var den: Array = KarmaState.company_agents(state) + (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "fauna")
+		var den: Array = state["agents"] as Array
 		var pack := den.filter(func(o):
 			return o != a and str(o.get("speciesKey", "")) == "lobo" and float(o.get("hambre", 100.0)) < float(KarmaData.TUNING["regenHambre"]))
 		var hungry_mate: Variant = KarmaUtils.nearest_from(ax, ay, pack, float(KarmaData.TUNING["groomRange"]))
 		if hungry_mate != null:
 			menu.append({"kind": "regurg", "label": "Feed packmate", "x": float((hungry_mate as Dictionary)["x"]), "y": float((hungry_mate as Dictionary)["y"]), "target": hungry_mate})
 	if float(a.get("shoutCd", 0.0)) <= 0.0:
-		var hunter: Variant = KarmaUtils.nearest_from(ax, ay,
-			(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+		var hunter: Variant = KarmaState.nearest_hunter(ax, ay, state, float(KarmaData.TUNING["shoutLureRange"]), a)
 		if hunter != null:
 			menu.append({"kind": "alarm", "label": "Alarm call", "x": float((hunter as Dictionary)["x"]), "y": float((hunter as Dictionary)["y"]), "target": hunter})
 	if KarmaJevBridge.verb_ready(a, 4):
-		var den2: Array = KarmaState.company_agents(state) + (state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "fauna")
+		var den2: Array = state["agents"] as Array
+		var guard_range: float = 150.0
 		var guarded: Variant = null
 		for m in den2:
 			if m == a or str(m.get("speciesKey", "")) != "lobo":
 				continue
-			for o in state["agents"]:
-				if str(o.get("role", "")) == "hunter" and Vector2(float(o["x"]), float(o["y"])).distance_to(Vector2(float(m["x"]), float(m["y"]))) <= 150.0:
+			for o in den2:
+				if KarmaPredators.threatens_mate(o, m) and KarmaUtils.dist2(float(o["x"]), float(o["y"]), float(m["x"]), float(m["y"])) <= guard_range * guard_range:
 					guarded = m
 					break
 			if guarded != null:
@@ -127,7 +127,7 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			return KarmaGame.cast_verb_for(state, a, 4)
 		"alarm":
 			var hunter: Variant = KarmaUtils.nearest_from(float(a["x"]), float(a["y"]),
-				(state["agents"] as Array).filter(func(o): return str(o.get("role", "")) == "hunter"), float(KarmaData.TUNING["shoutLureRange"]))
+				(state["agents"] as Array).filter(func(o): return KarmaData.PRED.has(str(o.get("speciesKey", "")))), float(KarmaData.TUNING["shoutLureRange"]))
 			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			if hunter == null:
 				return true
@@ -175,7 +175,7 @@ static func build_http_body_for(state: Dictionary, agents: Array) -> Dictionary:
 
 
 static func build_state(state: Dictionary, a: Dictionary) -> Dictionary:
-	var max_hp := KarmaJevBridge.max_hp(a)
+	var max_hp := KarmaState.eff_max_hp_for(a)
 	var ax := float(a["x"])
 	var ay := float(a["y"])
 	var perception := float(KarmaAI.ai_pred_row(a).get("perception", 280.0))

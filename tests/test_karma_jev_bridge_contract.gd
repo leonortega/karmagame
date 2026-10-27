@@ -123,7 +123,7 @@ func _fixtures() -> Array:
 			"candidate_ids": Callable(KarmaJevLobo, "candidate_ids"),
 			"mock_choice": Callable(KarmaJevLobo, "mock_choice"),
 			"apply_answer": Callable(KarmaJevLobo, "apply_answer"),
-			"order": ["eat", "strike", "regurg", "escort", "hunt", "alarm", "drink", "seek_carrion", "wander"],
+			"order": ["eat", "strike", "regurg", "escort", "hunt", "drink", "seek_carrion", "alarm", "wander"],
 		},
 	]
 
