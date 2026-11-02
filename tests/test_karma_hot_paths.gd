@@ -16,6 +16,15 @@ func _state(species := "raton") -> Dictionary:
 	return KarmaState.blank_state(species, 0.0, 0.0)
 
 
+# blank_state carries no possessed body; tests that drive the player need one.
+func _player_state(species := "raton") -> Dictionary:
+	var s := KarmaState.blank_state(species, 0.0, 0.0)
+	(s["agents"] as Array).append(KarmaState.mk_agent({
+		"speciesKey": species, "hp": float(KarmaData.SPECIES[species]["maxHp"]), "x": 500.0, "y": 500.0}))
+	KarmaState.possess_member(s)
+	return s
+
+
 func _pt(x: float, y: float) -> Dictionary:
 	return {"x": x, "y": y}
 
@@ -142,7 +151,7 @@ func _hunter(s: Dictionary, x: float, y: float) -> Dictionary:
 
 
 func test_wander_mates_moves_toward_player_and_flees_when_saved() -> void:
-	var s := _state()
+	var s := _player_state()
 	KarmaState.player(s)["x"] = 100.0
 	KarmaState.player(s)["y"] = 100.0
 	var near := _mate(s, 300.0, 100.0)
@@ -164,7 +173,7 @@ func test_wander_mates_moves_toward_player_and_flees_when_saved() -> void:
 # 1.5 Cooldown parity (player dictionary + agent dictionary + verbCds arrays).
 
 func test_player_tick_decrements_cooldowns_and_verb_slots() -> void:
-	var s := _state()
+	var s := _player_state()
 	KarmaState.player(s)["shoutCd"] = 1.0
 	KarmaState.player(s)["strikeCd"] = 0.05
 	KarmaState.player(s)["verbCds"] = [1.0, 0.0, 2.0, 0.0, 0.0]
@@ -198,10 +207,23 @@ func test_agent_base_decrements_cooldowns_and_verb_slots() -> void:
 	assert_float(float(cds[2])).is_equal_approx(1.9, 0.0001)
 
 
+func test_ai_base_lure_pull_never_drags_the_player() -> void:
+	var s := _player_state("lobo")
+	var ai := KarmaState.mk_agent({"speciesKey": "raton", "x": 540.0, "y": 500.0})
+	(s["agents"] as Array).append(ai)
+	ai["shoutCd"] = 999.0
+	ai["buyT"] = 100.0
+	ai["lureTimer"] = 1.0
+
+	KarmaAI.ai_base(s, ai, 0.1)
+
+	assert_float(float(KarmaState.player(s)["x"])).is_equal(500.0)
+
+
 # 1.6 cast_verb / cast_verb_for: success, cooldown rejection, insufficient PA.
 
 func test_player_cast_verb_success_pays_hp_and_sets_cooldown() -> void:
-	var s := _state("topo")
+	var s := _player_state("topo")
 	var before_pa: float = float(s["pa"])
 	assert_bool(KarmaGame.cast_verb(s, 5)).is_true()
 	assert_float(float(KarmaState.player(s)["hp"])).is_equal(float(KarmaData.SPECIES["topo"]["maxHp"]) - 10.0)
@@ -210,7 +232,7 @@ func test_player_cast_verb_success_pays_hp_and_sets_cooldown() -> void:
 
 
 func test_player_cast_verb_rejects_active_cooldown() -> void:
-	var s := _state("topo")
+	var s := _player_state("topo")
 	var before_hp: float = float(KarmaState.player(s)["hp"])
 	(KarmaState.player(s)["verbCds"] as Array)[4] = 5.0
 	assert_bool(KarmaGame.cast_verb(s, 5)).is_false()
@@ -219,7 +241,7 @@ func test_player_cast_verb_rejects_active_cooldown() -> void:
 
 
 func test_player_cast_verb_rejects_insufficient_pa() -> void:
-	var s := _state("raton")
+	var s := _player_state("raton")
 	s["pa"] = 0.0
 	assert_bool(KarmaGame.cast_verb(s, 4)).is_false()
 	assert_float(float((KarmaState.player(s)["verbCds"] as Array)[3])).is_equal(0.0)
@@ -274,8 +296,8 @@ func test_edible_patch_equal_distance_keeps_category_order() -> void:
 
 
 func test_blank_state_camera_is_fresh_per_state() -> void:
-	var first := _state()
-	var second := _state()
+	var first := _player_state()
+	var second := _player_state()
 	(KarmaState.player(first)["cam"] as Dictionary)["x"] = 42.0
 	assert_float(float((KarmaState.player(second)["cam"] as Dictionary)["x"])).is_equal(0.0)
 	assert_bool(KarmaState.player(first)["cam"] == KarmaState.player(second)["cam"]).is_false()

@@ -176,7 +176,7 @@ static func apply_answer(state: Dictionary, a: Dictionary, menu: Array, answer: 
 			KarmaJevBridge.set_intent(a, "wander", float(a["x"]), float(a["y"]))
 			return true
 		"dendig":
-			(state["refuges"] as Array).append({"type": "burrow-M", "maxSize": 2, "climbOnly": false, "x": float(a["x"]), "y": float(a["y"]), "dug": true})
+			(state["refuges"] as Array).append(KarmaUtils.mk_refuge("burrow-M", float(a["x"]), float(a["y"]), {"dug": true}))
 			a["hp"] = float(a.get("hp", 0.0)) - float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["costHp"])
 			a["pa"] = float(a.get("pa", 0.0)) - float((KarmaData.VERB_DEFS["zorro"] as Array)[3]["costPa"])
 			if a.has("verbCds") and (a["verbCds"] as Array).size() > 3:

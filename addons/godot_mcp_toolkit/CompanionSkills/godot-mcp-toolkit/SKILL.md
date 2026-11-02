@@ -54,7 +54,7 @@ rather than `select:` syntax, or the full prefixed name
 | Task | Tools |
 |------|-------|
 | Create a scene | `scene_create` -> `scene_open` -> `scene_create_node` -> `node_set_property` |
-| Edit an existing script | `script_edit` (exact `old_string` -> `new_string`) -> `script_check` |
+| Edit an existing script | `script_edit` (exact `old_string` -> `new_string`; several spots in one file: one call with `edits`) -> `script_check` |
 | Write a new script | `script_write` -> `node_set_script` |
 | Test a game | `game_start` -> `discover_tools({request: "runtime"})` -> runtime tools |
 | Explore a project | `scene_get_tree` -> `script_read` -> `asset_list` |
@@ -172,9 +172,10 @@ runtime_set_property(node_path: "/root/GameManager", property: "enemies_remainin
 Then verify the victory screen triggers — skipping minutes of play and dozens of
 `input_simulate` calls.
 
-**Scene instantiation.** `scene_instantiate` (`scene_advanced` group) auto-renames
-on name collision, so multiple instances of one scene work without manual
-renaming. Its `instances: [{name?, position?, rotation?, scale?, properties?}]`
+**Scene instantiation.** `scene_instantiate` (`scene_advanced` group) takes a
+`.tscn` or `.scn`, or a 3D model imported as a scene (`.glb`, `.gltf`, `.dae`...).
+It auto-renames on name collision, so multiple instances of one scene work
+without manual renaming. Its `instances: [{name?, position?, rotation?, scale?, properties?}]`
 batch spawns N copies with transforms in one call.
 
 **Tilemap bulk fills.** Use the `regions` parameter on `tilemap_set_cells` for
@@ -192,7 +193,10 @@ group).
 - `@onready var label: Label = %ScoreLabel` with unique-name nodes.
 - **Prefer `script_edit` for changes to an existing script** — a surgical
   `old_string` -> `new_string` swap that keeps undo history and returns inline
-  diagnostics. Use `script_write` for new files.
+  diagnostics. For several spots in one file (a rename and its callers), pass
+  them all as `edits` in one call: they apply in order, the file is written and
+  checked once, and nothing is written if one fails. Use `script_write` for new
+  files.
 - **Use `script_write` / `script_edit` for EVERY script file** — including scratch
   drafts, experiments, and throwaway managers, never a native file-write tool. The
   MCP tools compile-check the code and register it with the running editor; a raw
@@ -261,7 +265,7 @@ on-demand groups you activate with `discover_tools` to reach the full surface.
 | `runtime_advanced` | `runtime_get_node_state`, `runtime_set_property`, `animation_player_control` |
 | `signals` | `signal_emit` (`signal_manage` / `signal_list` are on the startup surface) |
 | `animation_authoring` | `animation_keyframe`, `animation_get_keys`, `animationtree_edit`, ... |
-| `input_map` | `input_map_action`, `input_map_event` |
+| `input_map` | `input_map_list`, `input_map_action`, `input_map_event` |
 | `tilemap` | `tilemap_set_cells`, `tilemap_read_cells` |
 | `audio` | `audiobus_edit`, `audiobus_list` |
 | `3d_tools` | `3d_create_primitive`, `3d_create_camera`, `3d_create_light`, ... |
@@ -326,16 +330,30 @@ vars and inspector-visible fields. Use `execute_code` for internal state.
 on the running game use `execute_code` (its default channel is the running game):
 `get_node('/root/Main/Player').call('take_damage', 25)`.
 
-### Stale live instance after a script edit (Godot < 4.4)
+### Stale live instance after an outside script edit (Godot < 4.4)
 
-On Godot **< 4.4** (4.2, 4.3), editing a `.gd` already attached to a **live**
-node does **not** reach that running instance: a newly-added method fails with
-`INVALID_METHOD`, and a changed method **body** runs the old code silently.
-`editor_refresh`, re-`node_set_script`, and a fresh node all keep the stale code
-— **relaunch the editor** (or disable+re-enable the plugin) before calling the
-changed members (`script_write` and `node_call_method` flag this in their hints).
-Best practice: write the full script **before** attaching it. On 4.4+ scripts
-hot-reload, so this doesn't apply.
+`script_write` and `script_edit` reload a `.gd` that compiles, so the nodes
+already running it run the new code (not on Godot 4.2.0 and 4.2.1: see below).
+The toolkit never loads a
+file that does not compile, so on 4.2–4.3 and a 4.5+ headless editor those nodes
+keep the code they had. On 4.4+ with an editor window (and 4.4 headless) the
+editor reloads the changed file by itself, so a broken write can break those
+nodes until you fix it. Read the write's inline `valid` and fix a broken source
+straight away, or check the new source in a scratch `.gd` first (drop its
+`class_name`).
+
+On Godot **< 4.4** (4.2, 4.3), a `.gd` changed **outside the toolkit** (an
+external editor, git) does **not** reach a **live** node already running it: a
+newly-added method fails with `INVALID_METHOD`, and a changed method **body**
+runs the old code silently. `editor_refresh` keeps the stale code — **set the
+script again** with `node_set_script`, which reloads it from disk, before calling
+the changed members (`node_call_method` flags this in its hint). On 4.4+ a
+display editor hot-reloads it, so this doesn't apply.
+
+On Godot **4.2.0 and 4.2.1** the toolkit reloads no script in place (there it
+can crash the editor; 4.2.2 fixed it), so neither a toolkit write nor
+`node_set_script` reaches a live node: relaunch the editor before calling the
+changed members. The `script_write` and `node_call_method` hints say so.
 
 **Env var lifecycle.** `GODOT_MCP_*` env vars (e.g. `GODOT_MCP_READ_ONLY`,
 `GODOT_MCP_EDITOR_PORT`) are read when the MCP server process starts. After
@@ -390,7 +408,7 @@ events process).
 
 | Code | Cause | Recovery |
 |------|-------|----------|
-| `GAME_NOT_RUNNING` | No game started, or it crashed | `game_start`, then `editor_get_console` if it fails again |
+| `GAME_NOT_RUNNING` | No game started, it crashed, or the editor was started with `GODOT_MCP_RUNTIME=0` (or `false`, `off`; its games never open the runtime channel; the `game_start` hint names it) | `game_start`, then `editor_get_console` if it fails again; for `GODOT_MCP_RUNTIME`, unset it and restart the editor |
 | `NOT_FOUND` | Node path, file, or `script_edit` `old_string` not found | Root is `"."`, children relative; check `scene_get_tree` |
 | `NOT_UNIQUE` | `script_edit` `old_string` matched more than once | Widen the span or pass `replace_all` |
 | `PARENT_NOT_FOUND` | Parent dir doesn't exist | `scene_create` / `script_write` auto-create dirs; others may not |
@@ -424,6 +442,8 @@ response, and the context it occupies:
 
 - **Batch properties** instead of one-at-a-time: one `node_set_property` with
   `batch` replaces 5-10 individual calls.
+- **Batch script edits.** One `script_edit` with `edits` replaces a call per
+  span, and the diagnostics run once, on the finished file.
 - **Activate groups in one call.** Pass an array to `discover_tools` — every
   activation makes the client re-process the full tool list, so batch them.
 - **Use `scene_get_tree` sparingly.** `include_properties: true` returns
@@ -480,6 +500,7 @@ These are the most common sources of wasted tool calls and retries:
 | `node_set_property` | `batch` mode: top-level `property`/`value` ignored when `batch` present |
 | `node_set_property` | Typed values need `{type: "Vector2", x: ...}` wrappers — plain `{x: 1, y: 2}` won't coerce |
 | `script_edit` | `old_string` must match byte-for-byte (whitespace included); `NOT_UNIQUE` -> widen the span or `replace_all` |
+| `script_check` | Godot 4.2 to 4.4 report a false error when a script passes `self` to a parameter typed with its own `class_name` (`Other.new().take(self)` with `func take(a: Player)`); `lsp_diagnostics` (`lsp_code_analysis` group) gives the real result there |
 | `signal_manage` vs `signal_emit` | `signal_manage` = persistent editor-time connect/disconnect; `signal_emit` = fire now (`channel: "editor"` default \| `"runtime"`) |
 | `scene_create` vs `scene_create_node` | `scene_create` = new `.tscn` file (open it after); `scene_create_node` = add a node to the open scene |
 | `autoload_manage` vs `project_set_setting` | Always use `autoload_manage` for autoloads; `project_set_setting` rejects them |

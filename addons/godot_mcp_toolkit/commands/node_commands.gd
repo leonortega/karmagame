@@ -6,12 +6,20 @@ const Modules := preload("res://addons/godot_mcp_toolkit/core/modules.gd")
 const Coerce = Modules.Coerce
 const FileGuard = Modules.FileGuard
 const Helpers = Modules.CommandHelpers
+const DeclaredTypeFitter = Modules.DeclaredTypeFitter
+const PropertySetCheck = Modules.PropertySetCheck
 
 ## node.set_property rejects "groups" because its set is a declarative full
 ## replace (it would drop any group not in the list), whereas node.groups is
 ## incremental. The two semantics are opposites, so groups go through one tool.
 const _GROUPS_REJECTION_MESSAGE := "'groups' cannot be set via node.set_property: it would replace the whole group list and silently drop any group not included."
 const _GROUPS_REJECTION_HINT := "Use node.groups (action 'add'/'remove') to change group membership incrementally, or 'list' to read it."
+
+## Node.duplicate()'s bound default flags. The duplicate action adds the editor's
+## own flag to them, so a copied scene instance stays linked to its scene and
+## non-persistent groups stay out of the copy.
+const _DUPLICATE_DEFAULT_FLAGS := (Node.DUPLICATE_SIGNALS | Node.DUPLICATE_GROUPS
+		| Node.DUPLICATE_SCRIPTS | Node.DUPLICATE_USE_INSTANTIATION)
 
 
 const COMMON_PROPERTIES_BY_CLASS := {
@@ -267,7 +275,11 @@ static func _set_property_scalar_single(
 		return MCPToolkitError.fail(
 			coerce_result.get("code", "INVALID_VALUE"),
 			str(coerce_result.get("error", "")))
-	var coerced = coerce_result["value"]
+	var requested: Variant = coerce_result["value"]
+	var fit := DeclaredTypeFitter.fit(node, property_name, requested)
+	if not str(fit["error"]).is_empty():
+		return MCPToolkitError.fail("INVALID_VALUE", str(fit["error"]))
+	var coerced = fit["value"]
 
 	var old_value = node.get(property_name)
 
@@ -288,10 +300,12 @@ static func _set_property_scalar_single(
 			"Use {\"type\": \"Resource\", \"path\": \"%s\"} as the value." % str(raw_value))
 	# Classify the write. DROPPED (silent wrong-type) fails before undo — nothing
 	# landed, so there is no state to roll back. ADJUSTED (engine reshaped the value,
-	# e.g. truncation 7.9→7 or a normalize) DID commit, so it records undo like a
-	# clean write and returns success WITH a warning naming the stored-vs-requested
-	# delta. OK is a clean success.
-	var outcome := Helpers.describe_set_drop(old_value, node.get(property_name), coerced, property_name)
+	# e.g. a clamp or a normalize) DID commit, so it records undo like a clean write
+	# and returns success WITH a warning naming the stored-vs-requested delta. OK is a
+	# clean success, unless the declared-type fit already dropped a fraction (its
+	# warning, below).
+	var stored: Variant = node.get(property_name)
+	var outcome := PropertySetCheck.describe_set_drop(old_value, stored, coerced, property_name)
 	if outcome.get("status", "") == "dropped":
 		# A bound setter (position/modulate) may have Variant-converted the wrong type
 		# to a ZERO and stored it; restore the prior value so a SET_FAILED is truly
@@ -306,8 +320,9 @@ static func _set_property_scalar_single(
 	if old_value is Resource:
 		action.undo_reference(old_value)
 	action.commit_recorded()
-	if outcome.get("status", "") == "adjusted":
-		return MCPToolkitSuccess.ok({"warning": str(outcome.get("warning", ""))})
+	var warning := PropertySetCheck.scalar_set_warning(outcome, fit, stored, requested, property_name)
+	if not warning.is_empty():
+		return MCPToolkitSuccess.ok({"warning": warning})
 	return MCPToolkitSuccess.ok()
 
 
@@ -318,6 +333,8 @@ static func _batch_set_properties(server: Node, root: Node, entries: Array) -> D
 	var action = MCPToolkitUndoRedoAction.begin("batch set %d properties" % entries.size(), root)
 
 	var results: Array = []
+	# Compound paths written on shared external sub-resources, for the top-level note.
+	var non_persisting: PackedStringArray = []
 	for entry in entries:
 		if typeof(entry) != TYPE_DICTIONARY:
 			results.append({"success": false, "error": "entry must be an object"})
@@ -380,6 +397,8 @@ static func _batch_set_properties(server: Node, root: Node, entries: Array) -> D
 					res_entry["made_unique"] = result["made_unique"]
 				if result.has("warning"):
 					res_entry["warning"] = result["warning"]
+				if bool(result.get("shared_external", false)):
+					non_persisting.append(prop)
 				results.append(res_entry)
 			else:
 				results.append({"node_path": np, "property": prop,
@@ -401,6 +420,13 @@ static func _batch_set_properties(server: Node, root: Node, entries: Array) -> D
 		var old_value = node.get(prop)
 		if typeof(old_value) == TYPE_NODE_PATH and typeof(coerced) == TYPE_STRING:
 			coerced = NodePath(str(coerced))
+		var requested: Variant = coerced
+		var fit := DeclaredTypeFitter.fit(node, prop, requested)
+		if not str(fit["error"]).is_empty():
+			results.append({"node_path": np, "property": prop,
+				"success": false, "error": str(fit["error"])})
+			continue
+		coerced = fit["value"]
 
 		# Apply mutation unconditionally, then record for undo. Disarm the Godot 4.3
 		# tooltip-timer UAF first when prop is editor_description (no-op otherwise).
@@ -408,8 +434,10 @@ static func _batch_set_properties(server: Node, root: Node, entries: Array) -> D
 		node.set(prop, coerced)
 		# Classify: DROPPED → per-entry failure (skip undo; the rest of the batch
 		# still applies, summarize_batch rolls it up). ADJUSTED/OK committed → register
-		# undo; ADJUSTED adds a per-entry warning naming the engine's value reshape.
-		var outcome := Helpers.describe_set_drop(old_value, node.get(prop), coerced, prop)
+		# undo; a per-entry warning names the engine's value reshape (ADJUSTED) or a
+		# fraction the fit dropped.
+		var stored: Variant = node.get(prop)
+		var outcome := PropertySetCheck.describe_set_drop(old_value, stored, coerced, prop)
 		if outcome.get("status", "") == "dropped":
 			# Restore the prior value (a bound setter may have zeroed it) so this
 			# failed entry is non-destructive; skip its undo, rest of batch applies.
@@ -424,17 +452,14 @@ static func _batch_set_properties(server: Node, root: Node, entries: Array) -> D
 		if old_value is Resource:
 			action.undo_reference(old_value)
 		var scalar_entry := {"node_path": np, "property": prop, "success": true}
-		if outcome.get("status", "") == "adjusted":
-			scalar_entry["warning"] = str(outcome.get("warning", ""))
+		var warning := PropertySetCheck.scalar_set_warning(outcome, fit, stored, requested, prop)
+		if not warning.is_empty():
+			scalar_entry["warning"] = warning
 		results.append(scalar_entry)
 
 	action.commit_recorded()
 
-	# Aggregate warnings for non-persisting external sub-resource mutations.
-	var non_persisting: PackedStringArray = []
-	for r in results:
-		if r.has("warning"):
-			non_persisting.append(str(r.get("property", "")))
+	# One top-level note covers every compound path that may not persist.
 	var response := {"results": results}
 	if non_persisting.size() > 0:
 		response["warning"] = (
@@ -560,11 +585,12 @@ static func _stale_method_hint(node: Object, method_name: String) -> String:
 	var version := Modules.VersionUtils.get_engine_version_ints()
 	var headless := Modules.VersionUtils.is_headless()
 	var disk_has := Modules.StaleInstanceHint.source_has_method(disk_source, method_name)
-	var disk_ok := Modules.StaleInstanceHint.source_compiles(disk_source)
+	var disk_ok := Modules.StaleInstanceHint.source_compiles(disk_source, scr_path)
 	if not Modules.StaleInstanceHint.should_hint_on_call(false, disk_has, disk_ok, true, version.x, version.y, headless):
 		return ""
 	return Modules.StaleInstanceHint.recovery_message(
-			Modules.VersionUtils.get_engine_version_pair(), version.y, headless)
+			Modules.VersionUtils.get_engine_version_pair(), version.y, headless,
+			Modules.VersionUtils.in_place_reload_safe())
 
 
 ## Builds the node.call_method hint for a null callv() result, version-gated.
@@ -652,6 +678,19 @@ static func _cmd_node_call_method(parameters: Dictionary) -> Dictionary:
 	return MCPToolkitSuccess.ok(response)
 
 
+## The node.set_script hint when the script's file on disk was not loaded:
+## [param compile_error] says why. When [param previous_kept] is true the node runs the
+## version the editor already had, since a source that does not compile never replaces
+## working code; when false, even that version failed to recompile.
+static func _refused_reload_hint(script_path: String, compile_error: String, previous_kept: bool) -> String:
+	var running_code := "The editor kept the version it had loaded, so the node runs that previous code."
+	if not previous_kept:
+		running_code = ("The editor could not restore the version it had loaded either, so calls "
+			+ "into the script can fail.")
+	return ("%s on disk was not loaded: %s. %s Run script_check on the file for the error "
+		+ "and its line, fix it, then call node_set_script again.") % [script_path, compile_error, running_code]
+
+
 static func _cmd_node_set_script(parameters: Dictionary) -> Dictionary:
 	var root := _get_edited_root()
 	if root == null:
@@ -690,6 +729,11 @@ static func _cmd_node_set_script(parameters: Dictionary) -> Dictionary:
 	if not (loaded is Script):
 		return MCPToolkitError.fail("INVALID_PARAMS",
 			"resource at %s is not a Script (got %s)" % [script_path, loaded.get_class()])
+	# Where an in-place reload is unsafe, the node takes the version the editor has, and a
+	# file changed since then waits for an editor restart.
+	var reload_outcome := Modules.ScriptReload.unreloaded_outcome()
+	if Modules.VersionUtils.in_place_reload_safe():
+		reload_outcome = Modules.ScriptReload.reload_script_from_disk(loaded)
 
 	var old_script = node.get_script()
 	node.set_script(loaded)
@@ -716,7 +760,12 @@ static func _cmd_node_set_script(parameters: Dictionary) -> Dictionary:
 			"hint_string": str(property.get("hint_string", "")),
 		})
 
-	return MCPToolkitSuccess.ok({"path": node_path, "script": script_path, "properties": exports})
+	var response := {"path": node_path, "script": script_path, "properties": exports}
+	var compile_error := str(reload_outcome["compile_error"])
+	if compile_error != "":
+		response["valid"] = false
+		response["hint"] = _refused_reload_hint(script_path, compile_error, bool(reload_outcome["previous_kept"]))
+	return MCPToolkitSuccess.ok(response)
 
 
 static func _cmd_node_manage(parameters: Dictionary) -> Dictionary:
@@ -840,13 +889,42 @@ static func _manage_reorder(
 		"old_index": old_index, "new_index": node.get_index()})
 
 
+## The value of the engine's [code]Node.DUPLICATE_FROM_EDITOR[/code] flag on the running
+## engine. Passed to [method Node.duplicate], it re-instances a copied scene instance with
+## its instance state, as the editor's own Duplicate does, so the saved copy stays linked
+## to its scene instead of writing out the scene root's script and properties. It also
+## leaves non-persistent groups out of the copy, as the editor's Duplicate does.
+##
+## The engine declares the flag only in editor builds and binds no constant for it, but
+## [method Node.duplicate] passes every bit through unchecked, and the engine passes the
+## flag the same way itself ([code]scene/2d/tile_map.cpp[/code], 4.3 to 4.7). The flag is
+## the last one [code]Node::DuplicateFlags[/code] declares, so its value is the next bit
+## above the highest bound [code]DUPLICATE_*[/code] constant other than
+## [code]DUPLICATE_DEFAULT[/code]: 16 on 4.2 to 4.5 ([code]scene/main/node.h[/code] line 95
+## on 4.2, 104 on 4.5) and 32 from 4.6 (line 109 on 4.6, 113 on 4.7), which binds
+## [code]DUPLICATE_INTERNAL_STATE[/code] as 16. A wrong value is not harmless: 32 below 4.6 is
+## ignored, and 16 from 4.6 sets [code]DUPLICATE_INTERNAL_STATE[/code], which still bakes
+## the copy and makes the engine report invalid owners. Every new engine minor must be
+## checked against this rule, since a flag inserted before this one without a bound
+## constant would move its value unnoticed.
+##
+## Returns the flag's value, read from the running engine's bound constants.
+static func duplicate_from_editor_flag() -> int:
+	var highest_bound := 0
+	for constant_name: String in ClassDB.class_get_integer_constant_list(&"Node", true):
+		if not constant_name.begins_with("DUPLICATE_") or constant_name == "DUPLICATE_DEFAULT":
+			continue
+		highest_bound = maxi(highest_bound, ClassDB.class_get_integer_constant(&"Node", constant_name))
+	return highest_bound << 1
+
+
 static func _manage_duplicate(
 	root: Node, node: Node, node_path: String, parameters: Dictionary,
 ) -> Dictionary:
 	if node == root:
 		return MCPToolkitError.fail("INVALID_PATH", "cannot duplicate the scene root")
 
-	var dup := node.duplicate()
+	var dup := node.duplicate(_DUPLICATE_DEFAULT_FLAGS | duplicate_from_editor_flag())
 	if dup == null:
 		return MCPToolkitError.fail("INTERNAL", "Node.duplicate() returned null for %s" % node_path)
 
@@ -868,10 +946,16 @@ static func _manage_duplicate(
 
 	target_parent.add_child(dup)
 	dup.set_owner(root)
-	MCPToolkitUndoRedoAction.begin("duplicate %s" % node_path, target_parent) \
+	var owned_copies := _copies_to_reown(node, dup)
+	for copy in owned_copies:
+		copy.set_owner(root)
+	var action := MCPToolkitUndoRedoAction.begin("duplicate %s" % node_path, target_parent) \
 		.do_method(target_parent.add_child.bind(dup)) \
-		.do_method(dup.set_owner.bind(root)) \
-		.do_reference(dup) \
+		.do_method(dup.set_owner.bind(root))
+	# Undo leaves the copies with no owner, so redo sets it again, as for the copy itself.
+	for copy in owned_copies:
+		action.do_method(copy.set_owner.bind(root))
+	action.do_reference(dup) \
 		.undo_method(target_parent.remove_child.bind(dup)) \
 		.commit_recorded()
 
@@ -879,6 +963,7 @@ static func _manage_duplicate(
 	# Use coerce_value_hint so untagged dicts like {x:200,y:300}
 	# are inferred as Vector2/Vector3/Color from the property type.
 	var props_raw = parameters.get("properties", null)
+	var warnings: Array[String] = []
 	if typeof(props_raw) == TYPE_DICTIONARY:
 		for key in (props_raw as Dictionary):
 			var prop_name := str(key)
@@ -886,11 +971,42 @@ static func _manage_duplicate(
 			var coerced = Coerce.coerce_value_hint(props_raw[key], existing)
 			if typeof(coerced) == TYPE_DICTIONARY and (coerced as Dictionary).has("_coerce_error"):
 				return MCPToolkitError.fail("INVALID_PARAMS", str(coerced["_coerce_error"]))
-			dup.set(prop_name, coerced)
+			var fit := DeclaredTypeFitter.fit(dup, prop_name, coerced)
+			if not str(fit["error"]).is_empty():
+				return MCPToolkitError.fail("INVALID_PARAMS", str(fit["error"]))
+			dup.set(prop_name, fit["value"])
+			if not str(fit["warning"]).is_empty():
+				warnings.append(str(fit["warning"]))
 
 	var dup_path := str(root.get_path_to(dup))
-	return MCPToolkitSuccess.ok({"action": "duplicate", "path": dup_path,
-		"class": dup.get_class()})
+	var response := {"action": "duplicate", "path": dup_path, "class": dup.get_class()}
+	if not warnings.is_empty():
+		response["warnings"] = warnings
+	return MCPToolkitSuccess.ok(response)
+
+
+## Returns the copies, under [param copy], of the descendants of [param original]
+## that some owner up the original's owner chain owns (its owner, that owner's
+## owner, and so on), matched by relative path. Node.duplicate() leaves those
+## copies with no owner, so the scene saver would drop them; walking the whole
+## chain, as the editor's Duplicate does, also keeps the children an editable
+## instance owns under a node copied from inside it. A copy that already has an
+## owner is left out as a safety net, so the internals of a sub-scene the copy
+## re-instanced stay owned by that instance's root and never move to the scene.
+static func _copies_to_reown(original: Node, copy: Node) -> Array[Node]:
+	var owner_chain: Array[Node] = []
+	var chain_owner := original.owner
+	while chain_owner != null:
+		owner_chain.append(chain_owner)
+		chain_owner = chain_owner.owner
+	var copies: Array[Node] = []
+	for descendant: Node in original.find_children("*", "", true, false):
+		if not owner_chain.has(descendant.owner):
+			continue
+		var counterpart := copy.get_node_or_null(original.get_path_to(descendant))
+		if counterpart != null and counterpart.owner == null:
+			copies.append(counterpart)
+	return copies
 
 
 static func _cmd_node_groups(parameters: Dictionary) -> Dictionary:

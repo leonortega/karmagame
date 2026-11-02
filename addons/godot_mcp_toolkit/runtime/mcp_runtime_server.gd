@@ -14,12 +14,17 @@ extends Node
 ##      false in every export, so Mode B self-protects in ALL exports
 ##      regardless of export_strip nulling the autoload. Security-critical;
 ##      stronger than is_debug_build() (which is true in a debug export).
+##
+## GODOT_MCP_RUNTIME=0 (or false/off) also keeps it inert, so a scripted or
+## headless run of the project (a test runner, CI) neither binds a port nor
+## takes the project's runtime entry from the game the MCP tools launched.
 
 # Runtime dependency closure — direct preloads of export-clean scripts only.
 # Deliberately NOT core/modules.gd: it statically names EditorInterface/EditorPlugin, which
 # would parse-fail this autoload in an export template (godot#91713) — GDScript
 # resolves identifiers at parse time, before any runtime guard can help.
 const Coerce := preload("res://addons/godot_mcp_toolkit/contract/coerce.gd")
+const DeclaredTypeFitter := preload("res://addons/godot_mcp_toolkit/contract/declared_type_fitter.gd")
 const ExecuteHints := preload("res://addons/godot_mcp_toolkit/contract/execute_hints.gd")
 const Pagination := preload("res://addons/godot_mcp_toolkit/contract/pagination.gd")
 const PropertySetCheck := preload("res://addons/godot_mcp_toolkit/contract/property_set_check.gd")
@@ -34,6 +39,7 @@ const Notifier := preload("res://addons/godot_mcp_toolkit/transport/notifier.gd"
 const WsTransport := preload("res://addons/godot_mcp_toolkit/transport/ws_transport.gd")
 const SignalPairResolver := preload("res://addons/godot_mcp_toolkit/scene/signal_pair_resolver.gd")
 const TextInputSynth := preload("res://addons/godot_mcp_toolkit/runtime/text_input_synth.gd")
+const RuntimeOptOut := preload("res://addons/godot_mcp_toolkit/runtime/runtime_opt_out.gd")
 # Export-clean (core APIs only) — safe in this runtime autoload's preload closure.
 const PortConfig := preload("res://addons/godot_mcp_toolkit/transport/port_config.gd")
 
@@ -70,6 +76,9 @@ const _RUNTIME_FRAME_WAIT_SECONDS := 1.0
 # Drives it inline per _process (no call_deferred — a running game has no
 # EditorFileSystem reentrancy to dodge).
 var _transport: WsTransport = null
+# Set once _ready gets past every gate, so _exit_tree undoes only a start that
+# happened: clear_runtime() deletes the project's runtime entry whoever wrote it.
+var _started := false
 
 
 func _init() -> void:
@@ -94,7 +103,9 @@ func _ready() -> void:
 	if Engine.is_editor_hint():
 		set_process(false)
 		return
-	# --check-only is a parse-only pass — no runtime server needed.
+	# The engine honours --check-only only alongside --script; without it the run
+	# loads the main scene with its autoloads. Keep that run off the runtime
+	# channel.
 	if "--check-only" in OS.get_cmdline_args():
 		set_process(false)
 		return
@@ -108,14 +119,23 @@ func _ready() -> void:
 	if not OS.has_feature("editor"):
 		set_process(false)
 		return
+	var opt_out := OS.get_environment(RuntimeOptOut.ENV_RUNTIME)
+	if RuntimeOptOut.is_opted_out(opt_out):
+		print("[MCPRuntimeServer] off (%s=%s): not listening or registering this run." % [
+			RuntimeOptOut.ENV_RUNTIME, opt_out])
+		set_process(false)
+		return
 	_start_server()
 
 
 func _exit_tree() -> void:
+	if not _started:
+		return
 	_stop_server()
 
 
 func _start_server() -> void:
+	_started = true
 	LogBuffer.setup()
 	var config := PortConfig.resolve(_ENV_PIN, _ENV_PORT_MIN, _ENV_PORT_MAX, PORT_MIN, PORT_MAX)
 	_log_port_config(config)
@@ -144,6 +164,7 @@ func _start_server() -> void:
 	# (the transport's own push_error is the loud runtime surface — no dock to reach).
 	_transport.set_handlers(_handle_message, Callable(), Callable(), Callable(),
 		_on_bound)
+	_transport.set_buffer_kb_source(_project_ws_buffer_kb)
 	# Runtime uses the same token file as the editor server so the bridge can
 	# authenticate against both with one read. The editor server writes first
 	# (plugin enable runs before game launch). If the file doesn't exist yet
@@ -198,6 +219,12 @@ func _stop_server() -> void:
 # fresh-bind seam re-publishes the registry entry via the composition root.
 func _on_bound(port: int) -> void:
 	RegistryClient.set_runtime(port)
+
+
+# The runtime sizes each accepted peer from the project's ws_buffer_kb. An env
+# override lives in the editor process only, so it never reaches the game.
+func _project_ws_buffer_kb() -> int:
+	return int(ProjectSettings.get_setting("mcp_toolkit/limits/ws_buffer_kb", 1024))
 
 
 func _process(_delta: float) -> void:
@@ -633,6 +660,12 @@ func _cmd_runtime_set_property(peer: WebSocketPeer, id, params) -> void:
 	# Auto-coerce string → NodePath when the property expects NodePath.
 	if typeof(current) == TYPE_NODE_PATH and typeof(coerced) == TYPE_STRING:
 		coerced = NodePath(str(coerced))
+	var requested: Variant = coerced
+	var fit := DeclaredTypeFitter.fit(node, property, requested)
+	if not str(fit["error"]).is_empty():
+		_send_result(peer, id, MCPToolkitError.fail("INVALID_VALUE", str(fit["error"])))
+		return
+	coerced = fit["value"]
 
 	node.set(property, coerced)
 
@@ -640,12 +673,13 @@ func _cmd_runtime_set_property(peer: WebSocketPeer, id, params) -> void:
 	var new_value = node.get(property)
 	# Classify the write on scalar (non-colon) paths: DROPPED (silent wrong-type,
 	# Godot's set() discards an unassignable Variant) → SET_FAILED; ADJUSTED (engine
-	# reshaped the value, e.g. truncation 7.9→7) → success with a warning appended
-	# below. A colon sub-path (e.g. "position:x") isn't read back through node.get()
+	# reshaped the value, e.g. a clamp) → success with a warning appended below that
+	# names the caller's request; otherwise a fraction the fit dropped is the warning.
+	# A colon sub-path (e.g. "position:x") isn't read back through node.get()
 	# (before/after both null), so it stays best-effort — mirrors the editor split.
-	var adjusted_warning := ""
+	var outcome: Dictionary = {}
 	if ":" not in property:
-		var outcome := PropertySetCheck.describe_set_drop(current, new_value, coerced, property)
+		outcome = PropertySetCheck.describe_set_drop(current, new_value, coerced, property)
 		if outcome.get("status", "") == "dropped":
 			# A bound setter (position/modulate) may have Variant-converted the wrong
 			# type to a ZERO and stored it; restore the prior value so SET_FAILED is
@@ -653,8 +687,8 @@ func _cmd_runtime_set_property(peer: WebSocketPeer, id, params) -> void:
 			node.set(property, current)
 			_send_result(peer, id, MCPToolkitError.fail("SET_FAILED", str(outcome.get("error", ""))))
 			return
-		if outcome.get("status", "") == "adjusted":
-			adjusted_warning = str(outcome.get("warning", ""))
+	var adjusted_warning := PropertySetCheck.scalar_set_warning(
+			outcome, fit, new_value, requested, property)
 	var result := {
 		"node_path": node_path,
 		"property": property,

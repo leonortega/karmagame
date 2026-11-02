@@ -6,7 +6,7 @@ scenes, edit scripts, inspect nodes, and run playtests inside your editor.
 The plugin is half the stack: the companion npm package
 `@npgamedev/godot-mcp-server` is the bridge your assistant actually talks to.
 
-Everything runs locally. Nothing leaves your machine.
+Everything runs locally. Nothing leaves your machine. The one exception is update checks: at most once a day the toolkit asks GitHub whether a newer version is published (and, when one is, asks the Asset Store whether it lists it yet), and the Extensions dialog fetches its catalog from GitHub when you open it. These requests carry no identifier and nothing about your project; the servers see only your IP address, as with any download. Turn the update check off in Project Settings under Mcp Toolkit > Updates (`mcp_toolkit/updates/check_for_updates`).
 
 ## Quick start
 
@@ -21,9 +21,12 @@ Everything runs locally. Nothing leaves your machine.
    bridge through `npx -y @npgamedev/godot-mcp-server`, which fetches it on
    first connect, so there is no install step (Node.js 22 or newer required).
    If you would rather keep a fixed copy on the machine,
-   `npm install -g @npgamedev/godot-mcp-server` works too. (Manual
+   `npm install -g @npgamedev/godot-mcp-server` works too. The written config
+   pins the server version this toolkit was tested with. To run the newest
+   server instead, switch to Latest in the dock's `.mcp.json` panel. (Manual
    alternative: copy `addons/godot_mcp_toolkit/.mcp.json.template` to your
-   project root and rename it `.mcp.json`.)
+   project root and rename it `.mcp.json`; a hand-written config can pin the
+   same way, by adding `@<version>` to the package name.)
 3. **Connect:** launch your MCP client from the project root. It discovers
    the plugin and authenticates automatically; the dock's peer count
    increments on connection.

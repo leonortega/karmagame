@@ -7,6 +7,7 @@ const Modules := preload("res://addons/godot_mcp_toolkit/core/modules.gd")
 const FileGuard = Modules.FileGuard
 const Untrusted = Modules.Untrusted
 const Helpers = Modules.CommandHelpers
+const ResponseLimits = Modules.ResponseLimits
 
 const ALLOWED_EXTENSIONS: Array[String] = ["gd", "cs", "gdshader", "gdshaderinc"]
 
@@ -78,7 +79,7 @@ static func _cmd_script_read(parameters: Dictionary) -> Dictionary:
 		var slice := lines.slice(clamped_start - 1, clamped_end)
 		var result_text := "\n".join(slice)
 		var result_bytes := result_text.to_utf8_buffer().size()
-		var cap_kb: int = ProjectSettings.get_setting("mcp_toolkit/limits/script_read_cap_kb", 256)
+		var cap_kb: int = ResponseLimits.effective_value(ResponseLimits.SCRIPT_READ_CAP_KB)
 		if result_bytes > cap_kb * 1024:
 			return MCPToolkitError.fail("FILE_TOO_LARGE",
 				"slice exceeds %d KB response cap; narrow the line range" % cap_kb)
@@ -99,7 +100,7 @@ static func _cmd_script_read(parameters: Dictionary) -> Dictionary:
 
 	# Full read with size cap.
 	var content_bytes := content.to_utf8_buffer().size()
-	var cap_kb: int = ProjectSettings.get_setting("mcp_toolkit/limits/script_read_cap_kb", 256)
+	var cap_kb: int = ResponseLimits.effective_value(ResponseLimits.SCRIPT_READ_CAP_KB)
 	if content_bytes > cap_kb * 1024:
 		var size_err := MCPToolkitError.fail("FILE_TOO_LARGE",
 			"file exceeds %d KB response cap" % cap_kb)
@@ -154,7 +155,11 @@ static func _cmd_script_write(server: Node, parameters: Dictionary) -> Dictionar
 
 
 static func _cmd_script_edit(server: Node, parameters: Dictionary) -> Dictionary:
-	var err = MCPToolkitError.require(parameters, ["file_path", "old_string"])
+	# With an edits array the top-level old_string is absent, so only the single form
+	# requires it.
+	var uses_edits := parameters.has("edits")
+	var required := ["file_path"] if uses_edits else ["file_path", "old_string"]
+	var err = MCPToolkitError.require(parameters, required)
 	if err != null:
 		return err
 	var file_path := str(parameters.get("file_path", ""))
@@ -165,19 +170,28 @@ static func _cmd_script_edit(server: Node, parameters: Dictionary) -> Dictionary
 	if not (edit_extension in ALLOWED_EXTENSIONS):
 		return MCPToolkitError.fail("INVALID_PATH",
 			"script.edit only edits .gd, .cs, .gdshader, or .gdshaderinc files (got %s); use scene.create for .tscn, resource.write for .tres/.res, or a different tool for other file types" % file_path)
-	# new_string is required-present but "" is valid (an empty replacement deletes the
-	# span) — so it can't go through require(), which rejects an empty string. Check
-	# presence directly.
-	if not parameters.has("new_string"):
-		return MCPToolkitError.fail("INVALID_PARAMS", "missing new_string")
-	var old_string := str(parameters.get("old_string", ""))
-	var new_string := str(parameters.get("new_string", ""))
-	# Fail fast on a no-op / malformed edit before touching the file: a substitution
+
+	var edits: Array = []
+	if uses_edits:
+		# A top-level replace_all:false changes nothing, and clients that fill in
+		# optional defaults send it, so only a true one conflicts with edits.
+		var replace_all_set := bool(parameters.get("replace_all", false))
+		if parameters.has("old_string") or parameters.has("new_string") or replace_all_set:
+			return MCPToolkitError.fail("INVALID_PARAMS",
+				"pass either edits or old_string/new_string/replace_all, not both")
+		var edits_param = parameters.get("edits")
+		if not (edits_param is Array) or edits_param.is_empty():
+			return MCPToolkitError.fail("INVALID_PARAMS",
+				"edits must be a non-empty array of {old_string, new_string, replace_all?}")
+		edits = edits_param
+	else:
+		edits.append(parameters)
+	# Fail fast on a malformed or no-op edit before touching the file: a substitution
 	# that changes nothing would still churn undo/index/diagnostics for no effect.
-	if old_string == new_string:
-		return MCPToolkitError.fail("INVALID_PARAMS",
-			"old_string and new_string are identical — the edit would change nothing")
-	var replace_all := bool(parameters.get("replace_all", false))
+	for index in edits.size():
+		var shape_error := _check_edit_shape(edits[index], _edit_prefix(uses_edits, index))
+		if not shape_error.is_empty():
+			return shape_error
 
 	if not FileAccess.file_exists(file_path):
 		return MCPToolkitError.fail("NOT_FOUND", "no file at %s" % file_path, MCPToolkitError.HINT_FILE_PATH)
@@ -187,44 +201,100 @@ static func _cmd_script_edit(server: Node, parameters: Dictionary) -> Dictionary
 		return MCPToolkitError.fail("READ_FAILED",
 			"FileAccess error %d reading %s" % [read_error, file_path])
 
-	var match_count := prior_content.count(old_string)
-	if match_count == 0:
-		return MCPToolkitError.fail("NOT_FOUND",
-			"old_string not found in %s" % file_path,
-			"Re-read the file (script.read) and copy old_string byte-for-byte; whitespace and indentation must match exactly.")
-	if match_count > 1 and not replace_all:
-		return MCPToolkitError.fail("NOT_UNIQUE",
-			"old_string matches %d times in %s" % [match_count, file_path],
-			"Add surrounding context so old_string identifies one location, or set replace_all:true to replace all %d." % match_count)
-
-	var new_content: String
-	var replacements: int
-	if replace_all:
-		new_content = prior_content.replace(old_string, new_string)
-		replacements = match_count
-	else:
-		# Exactly one match: splice at the found offset rather than String.replace (which
-		# would substitute every occurrence), leaving every other byte untouched.
-		var at := prior_content.find(old_string)
-		new_content = prior_content.substr(0, at) + new_string + prior_content.substr(at + old_string.length())
-		replacements = 1
+	var applied := _apply_edits(prior_content, edits, file_path, uses_edits)
+	if applied.has("error"):
+		return applied
 
 	# The file existed (checked above), so the undo restores prior_content.
-	var result := await _commit_content(server, file_path, new_content, prior_content, true, edit_extension)
+	var result := await _commit_content(server, file_path, str(applied["content"]), prior_content, true, edit_extension)
 	if result.has("error"):
 		return result
-	result["replacements"] = replacements
+	result["replacements"] = applied["replacements"]
 	return result
+
+
+## Checks one edit's keys before the file is read. [param edit] is an element of
+## script.edit's edits array, or the top-level parameters for the single form;
+## [param prefix] names the element in the message ("" for the single form).
+## Returns an empty Dictionary when the edit is well formed, else an
+## [code]INVALID_PARAMS[/code] failure envelope.
+static func _check_edit_shape(edit: Variant, prefix: String) -> Dictionary:
+	if not (edit is Dictionary):
+		return MCPToolkitError.fail("INVALID_PARAMS",
+			"%smust be an object {old_string, new_string, replace_all?}" % prefix)
+	var old_string := str(edit.get("old_string", ""))
+	if old_string.is_empty():
+		return MCPToolkitError.fail("INVALID_PARAMS", "%sold_string is required" % prefix)
+	# new_string is required-present but "" is valid (an empty replacement deletes the
+	# span) — so it can't go through require(), which rejects an empty string. Check
+	# presence directly.
+	if not edit.has("new_string"):
+		return MCPToolkitError.fail("INVALID_PARAMS", "%smissing new_string" % prefix)
+	if old_string == str(edit.get("new_string", "")):
+		return MCPToolkitError.fail("INVALID_PARAMS",
+			"%sold_string and new_string are identical — the edit would change nothing" % prefix)
+	return {}
+
+
+## Applies [param edits] to [param content] in order, each against the text the
+## earlier ones leave. Nothing is written here: the caller commits the result once,
+## so a failing edit leaves the file untouched. Each edit is a Dictionary already
+## checked by [method _check_edit_shape]; [param uses_edits] prefixes each failure with
+## the edit's index (the edits form). Returns
+## [code]{content, replacements}[/code], or a [code]NOT_FOUND[/code] /
+## [code]NOT_UNIQUE[/code] failure envelope for the first edit that doesn't match once.
+static func _apply_edits(content: String, edits: Array, file_path: String, uses_edits: bool) -> Dictionary:
+	var edited := content
+	var replacements := 0
+	for index in edits.size():
+		var edit: Dictionary = edits[index]
+		var prefix := _edit_prefix(uses_edits, index)
+		var order_hint := " Edits apply in order, so match the text the earlier edits leave." if uses_edits else ""
+		# A top-level replace_all beside edits is rejected, so the edits form points at the element.
+		var replace_all_target := "on edits[%d] " % index if uses_edits else ""
+		var old_string := str(edit.get("old_string", ""))
+		var new_string := str(edit.get("new_string", ""))
+		var replace_all := bool(edit.get("replace_all", false))
+
+		var match_count := edited.count(old_string)
+		if match_count == 0:
+			return MCPToolkitError.fail("NOT_FOUND",
+				"%sold_string not found in %s" % [prefix, file_path],
+				"Re-read the file (script.read) and copy old_string byte-for-byte; whitespace and indentation must match exactly." + order_hint)
+		if match_count > 1 and not replace_all:
+			return MCPToolkitError.fail("NOT_UNIQUE",
+				"%sold_string matches %d times in %s" % [prefix, match_count, file_path],
+				"Add surrounding context so old_string identifies one location, or set replace_all:true %sto replace all %d." % [replace_all_target, match_count] + order_hint)
+
+		if replace_all:
+			edited = edited.replace(old_string, new_string)
+			replacements += match_count
+		else:
+			# Exactly one match: splice at the found offset rather than String.replace (which
+			# would substitute every occurrence), leaving every other byte untouched.
+			var at := edited.find(old_string)
+			edited = edited.substr(0, at) + new_string + edited.substr(at + old_string.length())
+			replacements += 1
+	return {"content": edited, "replacements": replacements}
+
+
+## The message prefix naming edit [param index] of an edits array, or "" when
+## [param uses_edits] is false (the single old_string/new_string form).
+static func _edit_prefix(uses_edits: bool, index: int) -> String:
+	return "edits[%d]: " % index if uses_edits else ""
 
 
 ## Writes [param content] to [param file_path], wrapping it in an editor UndoRedo
 ## action, reindexing the file, and — for a .gd file — attaching inline
-## diagnostics plus the stale-live-instance hint. Shared by [method _cmd_script_write]
-## (whole-file) and [method _cmd_script_edit] (surgical) so both take the identical
-## write/undo/index/diagnose pipeline. [param prior_content] is the file's content
-## before this write (empty when [param existed] is false) — the undo restores it,
-## or deletes the file when it did not exist. [param extension] is the lowercased
-## file extension, used to gate the .gd-only diagnostics.
+## diagnostics and, when it compiles, reloading the script the editor has cached, so
+## the nodes running it run the new code. The undo and redo reload it the same way. On
+## Godot 4.2.0 and 4.2.1, where an in-place reload is unsafe, none of them reloads, and a
+## compiling edit of an existing file gets a stale-instance hint instead. Shared by
+## [method _cmd_script_write] (whole-file) and [method _cmd_script_edit] (surgical) so
+## both take the identical write/undo/index/diagnose pipeline. [param prior_content] is
+## the file's content before this write (empty when [param existed] is false) — the undo
+## restores it, or deletes the file when it did not exist. [param extension] is the
+## lowercased file extension, used to gate the .gd-only diagnostics.
 ## Returns the success envelope [code]{bytes, undoable, indexed, valid?, diagnostics?, hint?}[/code],
 ## or a [method MCPToolkitError.fail] envelope on a write failure.
 static func _commit_content(server: Node, file_path: String, content: String,
@@ -234,11 +304,12 @@ static func _commit_content(server: Node, file_path: String, content: String,
 		return MCPToolkitError.fail("WRITE_FAILED",
 			"could not open %s for write (err %d)" % [file_path, write_error])
 
+	var reload_safe := Modules.VersionUtils.in_place_reload_safe()
 	var _undo := MCPToolkitUndoRedoAction.begin("script_write: %s" % file_path) \
-		.do_method(server.undo_helpers._write_file_silent.bind(file_path, content))
+		.do_method(server.undo_helpers._write_file_silent.bind(file_path, content, reload_safe))
 	var undoable := _undo.is_active()
 	if existed:
-		_undo.undo_method(server.undo_helpers._write_file_silent.bind(file_path, prior_content))
+		_undo.undo_method(server.undo_helpers._write_file_silent.bind(file_path, prior_content, reload_safe))
 	else:
 		_undo.undo_method(server.undo_helpers._delete_file_silent.bind(file_path))
 	_undo.commit_recorded()
@@ -251,18 +322,21 @@ static func _commit_content(server: Node, file_path: String, content: String,
 
 	# Inline GDScript diagnostics — same validation as script_check.
 	if extension == "gd":
-		var validation := _validate_gdscript(content)
+		var validation := _validate_gdscript(content, file_path)
 		result["valid"] = validation["valid"]
 		result["diagnostics"] = validation["diagnostics"]
-
-		# Proactive stale-live-instance hint. Editing an EXISTING .gd
-		# that compiled OK on Godot < 4.4 won't reach a live instance until relaunch
-		# (added members AND changed bodies; a fresh node doesn't help either —
-		# empirically characterised, boundary 4.3->4.4). Append to the response hint
-		# (validation guidance first, stale nudge in the recency slot).
-		var version := Modules.VersionUtils.get_engine_version_ints()
-		if Modules.StaleInstanceHint.should_warn_on_write(existed, validation["valid"], extension, version.x, version.y):
-			result["hint"] = Modules.StaleInstanceHint.write_hint(Modules.VersionUtils.get_engine_version_pair())
+		# Godot < 4.4 never reloads a cached script after a write, and 4.4+ only on a
+		# later scan, so the nodes already running it would keep the old code. The
+		# toolkit never applies a source that failed the check above. Where an in-place
+		# reload is unsafe, an edit that compiles stays for an editor restart, and the
+		# hint says so.
+		if reload_safe:
+			if bool(validation["valid"]):
+				# The outcome goes unread: the response reports the check this source passed.
+				Modules.ScriptReload.reload_cached_script(file_path, content)
+		elif existed and bool(validation["valid"]):
+			result["hint"] = Modules.StaleInstanceHint.write_hint(
+					Modules.VersionUtils.get_engine_version_pair())
 
 	return result
 
@@ -308,7 +382,7 @@ static func _cmd_script_check(parameters: Dictionary) -> Dictionary:
 		return MCPToolkitError.fail("READ_FAILED",
 			"FileAccess error %d reading %s" % [read_error, file_path])
 
-	var validation := _validate_gdscript(content)
+	var validation := _validate_gdscript(content, file_path)
 	return MCPToolkitSuccess.ok({
 		"file_path": file_path,
 		"valid": validation["valid"],
@@ -318,58 +392,73 @@ static func _cmd_script_check(parameters: Dictionary) -> Dictionary:
 
 ## Validate GDScript source via GDScript.new().reload() — safe in-process parse.
 ## DO NOT use ResourceLoader.load() with CACHE_MODE_IGNORE here:
-## it corrupts already-loaded scripts on ALL Godot versions (P-056).
-## Shared by script_write (inline diagnostics) and script_check.
+## it corrupts already-loaded scripts on ALL Godot versions.
 ##
-## Diagnostics carry only real fields: the error entry gains "line" (the actual
-## parse/compile error line) when the 4.5+ Logger capture recovered it from the
-## reload error; on 4.2-4.4 (file-tail capture — no structured line) the key is
-## omitted, never a fabricated 0. "col" is never emitted — columns are
-## lsp_diagnostics' domain.
-static func _validate_gdscript(source: String) -> Dictionary:
-	# Strip class_name to prevent false-positive conflict (P-053).
-	# GDScript.new().reload() registers a second copy of the name, colliding
-	# with the already-registered global class. Blanking the line preserves
-	# line numbers so any real errors still report correct positions.
-	var lines := source.split("\n")
-	for i in lines.size():
-		if lines[i].strip_edges().begins_with("class_name "):
-			lines[i] = ""
-			break
-	# Snapshot LogBuffer position so we can scan errors produced by reload().
-	# _next_id is the ID the next pushed entry will receive; since_id uses
-	# "entries with id > since_id", so subtract 1 to include that first entry.
-	var pre_id: int = Modules.LogBuffer._next_id - 1
-	var script := GDScript.new()
-	script.source_code = "\n".join(lines)
-	var is_valid := script.reload(false) == OK
+## The compile probe (see [code]core/gdscript_source.gd[/code]) renames the
+## script's [code]class_name[/code], so the copy neither clashes with the global
+## class the editor registered for [param file_path] nor loses its own type, and
+## checks the original name the way the engine does: a name that hides a
+## built-in type, a native class, another script's global class or an autoload
+## singleton is an error on the declaration's line. An empty
+## [param file_path] stands for source with no file.
+##
+## Diagnostics carry only real fields. A class-name clash carries "line" on
+## every version. A compile error carries "line" (the actual parse/compile error
+## line) when the 4.5+ Logger capture recovered it from the reload error; on
+## 4.2-4.4 (file-tail capture — no structured line) the key is omitted, never a
+## fabricated 0. "col" is never emitted — columns are lsp_diagnostics' domain.
+static func _validate_gdscript(source: String, file_path: String = "") -> Dictionary:
+	var verdict := Modules.GDScriptSource.judge(source, file_path)
+	var diagnostics: Array = []
+	var conflict := str(verdict["conflict"])
+	if conflict != "":
+		diagnostics.append({
+			"severity": "error",
+			"message": conflict,
+			"line": int(verdict["conflict_line"]),
+		})
+	# A clash does not hide a compile error elsewhere in the file.
+	if not bool(verdict["compiles"]):
+		diagnostics.append_array(_compile_error_diagnostics(str(verdict["decisive_source"])))
+	return MCPToolkitSuccess.ok({"valid": bool(verdict["valid"]), "diagnostics": diagnostics})
+
+
+## Re-runs the probe compile that failed with its errors printed, then reads
+## them back: the error entry and any autoload or preload hints.
+## [param probe_source] is the probe's decisive source from
+## [code]GDScriptSource.judge()[/code]. Returns the diagnostics as
+## [code][{severity, message, line?}][/code].
+static func _compile_error_diagnostics(probe_source: String) -> Array:
+	# The first entry the re-run pushes gets the cursor's id; since_id reads
+	# "entries with id > since_id", so subtract 1 to include it.
+	var pre_id: int = Modules.LogBuffer.get_cursor() - 1
+	Modules.GDScriptSource.print_compile_errors(probe_source)
 
 	var diagnostics: Array = []
-	if not is_valid:
-		var error_diagnostic := {
-			"severity": "error",
-			"message": _compile_error_message(Modules.VersionUtils.get_engine_version_pair()),
-		}
-		# The real error line, recovered from the Logger capture of the reload
-		# error this call just triggered (an in-memory script reports under a
-		# synthetic "gdscript://…" path, so the latch match is ours — the
-		# snapshot-to-scan window runs synchronously on the main thread). -1
-		# (nothing recovered — 4.2-4.4, or a failed Logger hook) omits the key.
-		var real_line: int = Modules.LogBuffer.find_script_error_line_since(pre_id)
-		if real_line > 0:
-			error_diagnostic["line"] = real_line
-		diagnostics.append(error_diagnostic)
-		# Scan reload errors for unresolved identifiers that match autoloads.
-		# Hint entries carry no line — the hint is about an identifier, not a
-		# source position.
-		var hints := _check_autoload_hints(pre_id)
-		hints.append_array(_check_preload_hints(pre_id))
-		for hint in hints:
-			diagnostics.append({
-				"severity": "hint",
-				"message": hint,
-			})
-	return MCPToolkitSuccess.ok({"valid": is_valid, "diagnostics": diagnostics})
+	var error_diagnostic := {
+		"severity": "error",
+		"message": _compile_error_message(Modules.VersionUtils.get_engine_version_pair()),
+	}
+	# The real error line, recovered from the Logger capture of the reload
+	# error this call just triggered (an in-memory script reports under a
+	# synthetic "gdscript://…" path, so the latch match is ours — the
+	# snapshot-to-scan window runs synchronously on the main thread). -1
+	# (nothing recovered — 4.2-4.4, or a failed Logger hook) omits the key.
+	var real_line: int = Modules.LogBuffer.find_script_error_line_since(pre_id)
+	if real_line > 0:
+		error_diagnostic["line"] = real_line
+	diagnostics.append(error_diagnostic)
+	# Scan reload errors for unresolved identifiers that match autoloads.
+	# Hint entries carry no line — the hint is about an identifier, not a
+	# source position.
+	var hints := _check_autoload_hints(pre_id)
+	hints.append_array(_check_preload_hints(pre_id))
+	for hint in hints:
+		diagnostics.append({
+			"severity": "hint",
+			"message": hint,
+		})
+	return diagnostics
 
 
 ## Version-aware compile-error diagnostic message. editor_get_console surfaces editor
@@ -396,7 +485,7 @@ static func _check_autoload_hints(pre_id: int) -> Array:
 	var seen := {}
 	var hints: Array = []
 	for entry in entries:
-		var msg: String = str(entry.get("message", ""))
+		var msg := Modules.GDScriptSource.strip_probe_suffix(str(entry.get("message", "")))
 		var m := _autoload_hint_re.search(msg)
 		if m == null:
 			continue
@@ -422,7 +511,7 @@ static func _check_preload_hints(pre_id: int) -> Array:
 	var seen := {}
 	var hints: Array = []
 	for entry in entries:
-		var msg: String = str(entry.get("message", ""))
+		var msg := Modules.GDScriptSource.strip_probe_suffix(str(entry.get("message", "")))
 		var m := _preload_hint_re.search(msg)
 		if m == null:
 			continue

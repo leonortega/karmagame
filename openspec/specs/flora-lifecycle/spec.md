@@ -67,12 +67,11 @@ New worlds SHALL seed each fruiting kind `TUNING.floraHeadroom` (2) below its fl
 - **THEN** the bite is refused, stock stays 0, and no Vida, PA, karma, or seed changes hands
 
 ### Requirement: Last-fruit message promises recovery
-Eating the last fruit SHALL log that the plant will bear fruit again (never that it dries forever), matching the regrow mechanic.
+Eating a non-leaf fruit patch in a single bite (which always depletes the plant) SHALL log that the plant will bear fruit again (never that it dries forever), matching the regrow mechanic. Leaf-clumps are exempt.
 
 #### Scenario: Honest last-fruit text
-- **WHEN** the player eats the last berry of a bush
-- **THEN** the feed entry says the bush will bear fruit again alongside the −15 karma
-
+- **WHEN** the player eats a fruit patch in one bite (any remaining amount)
+- **THEN** the feed entry says the bush will bear fruit again alongside the -15 karma
 ### Requirement: Old oaks shelter from ground predators
 The refuge table SHALL include `old-oak` (max size 3, no fruit, sparse spawn). Hiding in an old-oak SHALL blind ground predators (zorro, lobo, saponpc) to the hidden agent exactly as other refuges do (camp rule unchanged). The Halcón SHALL NOT be blinded by canopy: it perceives and strikes agents hidden in old-oaks.
 

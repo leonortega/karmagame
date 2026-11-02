@@ -45,13 +45,8 @@ static func step_jev(state: Dictionary, a: Dictionary, dt: float) -> void:
 
 
 static func _jev_gates(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if KarmaAI.ai_hide_tick(state, a, dt):
-		return true
-	if KarmaAI.is_hunted(state, a) and KarmaAI.ai_try_hide(state, a):
-		return true
-	if KarmaAI.ai_thirst(state, a, dt):
-		return true
-	if KarmaAI.ai_urgent_seek(state, a, dt):
+	# The shared survival gates, plus the species' nut-dropping rule.
+	if KarmaAI.jev_gates_common(state, a, dt):
 		return true
 	if bool(a.get("carriedNut", false)) and KarmaAI.is_hungry(a):
 		a["carriedNut"] = false

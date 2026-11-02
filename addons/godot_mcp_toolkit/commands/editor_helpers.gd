@@ -1,8 +1,12 @@
 @tool
 extends RefCounted
-## Shared helpers used across multiple command handlers.
-## Eliminates duplication of scene-node resolution, class hierarchy
-## checks, file deletion, directory creation, and log-level detection.
+## Static helpers the editor command handlers share.
+##
+## Property coercion and compound property reads and writes, the text-filter compile,
+## scene-node and class resolution, scene tabs, file deletion and parent folders, the
+## filesystem index waits after a write or a delete, the Godot 4.3 tooltip-timer guard,
+## the file-create collision decision, batch failure summaries and the asset write
+## bracket.
 
 ## NOTE: This file is preloaded by core/modules.gd, so it CANNOT import core/modules.gd
 ## (circular dependency). Use direct preloads for dependencies instead.
@@ -10,6 +14,7 @@ const Coerce := preload("res://addons/godot_mcp_toolkit/contract/coerce.gd")
 const FileGuard := preload("res://addons/godot_mcp_toolkit/security/file_guard.gd")
 const VersionUtils := preload("res://addons/godot_mcp_toolkit/versioning/mcp_version_utils.gd")
 const PropertySetCheck := preload("res://addons/godot_mcp_toolkit/contract/property_set_check.gd")
+const DeclaredTypeFitter := preload("res://addons/godot_mcp_toolkit/contract/declared_type_fitter.gd")
 
 
 # -- Property coercion ---------------------------------------------------------
@@ -89,6 +94,8 @@ static func _detect_double_escaped_regex(pattern: String) -> String:
 ## Returns {"ok": true} on success, {"ok": false, "code": ..., "error": ...}
 ## on failure. Success results include an "_undo" key with info for the caller
 ## to register UndoRedo (type, effective path, old value, old resource refs).
+## A write that landed on a shared external sub-resource also carries
+## [code]"shared_external": true[/code] beside its warning.
 ##
 ## When make_unique is true and the target sub-resource is external (.tres),
 ## it is automatically duplicated as an inline copy before setting.
@@ -203,6 +210,7 @@ static func set_property_compound(
 	if result.get("ok", false) \
 			and target is Resource \
 			and _is_external_resource(target as Resource):
+		result["shared_external"] = true
 		result["warning"] = (
 			"Value was set on a shared external sub-resource in memory. "
 			+ "This change may not persist after save/reload. "
@@ -295,14 +303,14 @@ static func _check_set_readback(
 	return _check_set_readback_value(before, after, coerced, original_path)
 
 
-## Map the [method describe_set_drop] tri-state onto the {ok:…} result shape the
-## compound-path callers expect. A clean write keeps the historical
+## Map the [code]PropertySetCheck.describe_set_drop[/code] tri-state onto the {ok:…}
+## result shape the compound-path callers expect. A clean write returns
 ## {"ok": true, "value": coerced}; an ADJUSTED write adds a "warning" (the compound
 ## callers already propagate result["warning"]); a DROPPED write is SET_FAILED.
 static func _check_set_readback_value(
 	before: Variant, after: Variant, coerced: Variant, original_path: String,
 ) -> Dictionary:
-	var outcome := describe_set_drop(before, after, coerced, original_path)
+	var outcome := PropertySetCheck.describe_set_drop(before, after, coerced, original_path)
 	match str(outcome.get("status", "")):
 		"dropped":
 			return {"ok": false, "code": "SET_FAILED", "error": str(outcome.get("error", ""))}
@@ -312,25 +320,10 @@ static func _check_set_readback_value(
 			return {"ok": true, "value": coerced}
 
 
-## Property-set-outcome classifier — delegates to the runtime-safe pure leaf
-## [code]contract/property_set_check.gd[/code] (the SSOT shared with the runtime
-## autoload's [code]runtime.set_property[/code]). Kept here as
-## [code]Helpers.describe_set_drop[/code] so the editor node/scene property-set
-## paths reach it through their existing helper facade with no call-site churn.
-## Returns the tri-state {"status": "ok" | "adjusted" (+warning) | "dropped" (+error)}.
-static func describe_set_drop(
-	before: Variant, after: Variant, coerced: Variant, path: String,
-) -> Dictionary:
-	return PropertySetCheck.describe_set_drop(before, after, coerced, path)
-
-
 ## Check whether a property name exists on an object instance.
 ## Uses get_property_list() which covers built-in, @export, and metadata.
 static func _has_property(obj: Object, property_name: String) -> bool:
-	for p in obj.get_property_list():
-		if p["name"] == property_name:
-			return true
-	return false
+	return not DeclaredTypeFitter.property_entry(obj, property_name).is_empty()
 
 
 # -- Scene node resolution -----------------------------------------------------

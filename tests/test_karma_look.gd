@@ -41,8 +41,16 @@ func test_bar_text_fills_proportionally() -> void:
 	assert_str(KarmaHud.bar(0.5, 4)).is_equal("■■□□")
 
 
+# HUD reads go through player(state); blank states carry no body.
+func _with_player(species := "raton") -> Dictionary:
+	var s := KarmaState.blank_state(species, 0.0, 0.0)
+	(s["agents"] as Array).append(KarmaState.mk_agent({"speciesKey": species, "x": 500.0, "y": 500.0}))
+	KarmaState.possess_member(s)
+	return s
+
+
 func test_vital_fracs_derive_from_state() -> void:
-	var s := KarmaState.blank_state("raton", 0.0, 0.0)
+	var s := _with_player()
 	KarmaState.player(s)["hp"] = 50.0
 	KarmaState.player(s)["hambre"] = 25.0
 	KarmaState.player(s)["sed"] = 75.0
@@ -52,7 +60,7 @@ func test_vital_fracs_derive_from_state() -> void:
 
 
 func test_edad_line_reads_seconds_and_animal_years() -> void:
-	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
+	var prime := _with_player()
 	KarmaState.player(prime)["edad"] = 40.0
 	var line := KarmaHud.edad_line(prime)
 	assert_bool(line.contains("40s")).is_true()
@@ -60,13 +68,13 @@ func test_edad_line_reads_seconds_and_animal_years() -> void:
 
 
 func test_edad_line_shows_spanish_stage() -> void:
-	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
+	var prime := _with_player()
 	KarmaState.player(prime)["edad"] = 40.0
 	assert_bool(KarmaHud.edad_line(prime).contains("joven")).is_true()
-	var worn := KarmaState.blank_state("raton", 0.0, 0.0)
-	worn["edad"] = 100.0
+	var worn := _with_player()
+	KarmaState.player(worn)["edad"] = 100.0
 	assert_bool(KarmaHud.edad_line(worn).contains("maduro")).is_true()
-	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
+	var frail := _with_player()
 	KarmaState.player(frail)["edad"] = 200.0
 	var line := KarmaHud.edad_line(frail)
 	assert_bool(line.contains("frágil")).is_true()

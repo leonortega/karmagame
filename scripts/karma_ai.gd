@@ -130,7 +130,8 @@ static func ai_base(state: Dictionary, a: Dictionary, dt: float) -> void:
 			ai_buy_adaptation(state, a)
 	if float(a.get("lureTimer", 0.0)) > 0.0:
 		var p: Variant = KarmaState.nearest_hunter(float(a["x"]), float(a["y"]), state, float(KarmaData.TUNING["shoutLureRange"]), a)
-		if p != null:
+		# A taunt pulls other predators in; the possessed body follows input only.
+		if p != null and str((p as Dictionary).get("brain", "")) != "PLAYER":
 			var d: float = Vector2(float(a["x"]), float(a["y"])).distance_to(Vector2(float((p as Dictionary)["x"]), float((p as Dictionary)["y"])))
 			if d == 0.0:
 				d = 1.0
@@ -290,10 +291,14 @@ static func ai_seek_water(state: Dictionary, a: Dictionary, dt: float) -> bool:
 	return true
 
 
+# The thirst gate shared by ai_thirst and the water-as-wander-POI arm: below
+# the personal water threshold and more thirsty than hungry.
+static func is_thirsty(a: Dictionary) -> bool:
+	return float(a.get("sed", 100.0)) < water_threshold(a) and seeks_water(a)
+
+
 static func ai_thirst(state: Dictionary, a: Dictionary, dt: float) -> bool:
-	if float(a.get("sed", 100.0)) >= water_threshold(a):
-		return false
-	if not seeks_water(a):
+	if not is_thirsty(a):
 		return false
 	if ai_drink(state, a, float(KarmaData.TUNING["drinkRange"])):
 		a["stillT"] = 0.0
@@ -409,10 +414,11 @@ static func is_hunted(state: Dictionary, a: Dictionary) -> bool:
 	var ax: float = float(a["x"])
 	var ay: float = float(a["y"])
 	var max_d: float = fear_range_for(a)
+	var max_d2: float = max_d * max_d
 	for o in state["agents"]:
 		if not KarmaPredators.can_eat_agent(o, a):
 			continue
-		if KarmaUtils.dist2(ax, ay, float(o["x"]), float(o["y"])) < max_d * max_d:
+		if KarmaUtils.dist2(ax, ay, float(o["x"]), float(o["y"])) < max_d2:
 			return true
 	return false
 

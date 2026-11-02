@@ -7,7 +7,7 @@ extends Node
 ## WS peer accept/poll + auth-handshake framing, notifier owns notification
 ## framing/sends, server_request_router + dispatch_lane own request routing and
 ## lane dispatch, and scene_lease / mutation_watchdog / unfocused_sleep_controller
-## / lsp_publisher own their domains. All command logic lives in per-domain
+## / lsp_publisher / peer_compat own their domains. All command logic lives in per-domain
 ## modules under commands/.
 
 signal client_connected(peer_count: int)
@@ -17,11 +17,16 @@ signal command_received(method: String)
 ## (set_reported_lsp_status) so the dock refreshes exactly on change — no polling,
 ## no stale label even if the status is re-assessed later (e.g. on an LSP call).
 signal lsp_status_changed
+## Emitted when the connected MCP server's compatibility verdict is set (a peer
+## authenticated) or cleared (the last peer disconnected), so the dock shows or hides
+## its below-floor line. The verdict itself comes from get_peer_compat().
+signal compat_status_changed
 ## Emitted after the session token is re-written to a new user:// path following a
 ## user-path change, carrying that new token path. The plugin (registry lifecycle
 ## owner) re-publishes the entry via ensure_registered, which preserves any active
-## runtime_port/runtime_pid — register would null them and break Mode-B discovery
-## for a game running across the rename.
+## runtime_port/runtime_pid, because register's startup reap would delete the
+## <hash>.runtime.json that holds them and break Mode-B discovery for a game
+## running across the rename.
 signal token_rewritten(token_path: String)
 ## Emitted when the listen state changes — a fresh bind, a listen conflict
 ## (pinned port occupied / scan band exhausted / lost rebind) raised or cleared,
@@ -47,6 +52,8 @@ const DispatchLane := preload("res://addons/godot_mcp_toolkit/transport/dispatch
 const UnfocusedSleepController := preload("res://addons/godot_mcp_toolkit/core/unfocused_sleep_controller.gd")
 const LspPublisher := preload("res://addons/godot_mcp_toolkit/paths/lsp_publisher.gd")
 const PortConfig := preload("res://addons/godot_mcp_toolkit/transport/port_config.gd")
+const PeerCompat := preload("res://addons/godot_mcp_toolkit/transport/peer_compat.gd")
+const ResponseLimits = Modules.ResponseLimits
 
 # Default editor scan band (inclusive). GODOT_MCP_EDITOR_PORT pins an exact port
 # (bind-exact-or-fail); GODOT_MCP_EDITOR_PORT_MIN/_MAX relocate the band. Resolved
@@ -91,6 +98,13 @@ const _AUTH_TIMEOUT_MS := 2000
 # Callables (auth-ack payload, boost-on-authed, lease cleanup on close) and drives
 # it via _poll_connections → transport.pump().
 var _transport: WsTransport = null
+# The absolute path of the token file this server last wrote, in the form the
+# registry publishes. Every publish site reads it through
+# get_published_token_path(), so a failed re-write after a rename leaves the old
+# file, which still holds the live token, published, until a Regenerate Token
+# writes a new token to the new path: this then records that file, and the next
+# publish names it. Empty until a write succeeds.
+var _written_token_path: String = ""
 var _poll_frame_counter := 0
 # Resolved listen-port configuration (PortConfig.resolve result). A non-empty
 # "error" is fatal — the editor server does not listen and the dock shows why.
@@ -131,6 +145,19 @@ var editor_plugin: EditorPlugin = null
 ## string name. Populated in start(); command closures access it via
 ## server.undo_helpers.
 var undo_helpers: Node = null
+
+## True while a local server build is configured, set by plugin.gd from the
+## mcp_toolkit/server/local_path editor setting or GODOT_MCP_DEV_SERVER_PATH. Such a
+## build's version says nothing about the wire contract it speaks, so the connect-time
+## version check is skipped and one line per connection says so. A flag, so this
+## transport never reads EditorSettings itself.
+var skip_version_check: bool = false
+
+# The last authenticated MCP server's floor verdict and the once-per-session record of
+# printed below-floor errors live in peer_compat.gd. This file keeps the trigger points
+# (judge after auth, clear on the last disconnect), the console output, the
+# compat_status_changed signal the dock binds, and the delegating get_peer_compat().
+var _peer_compat: PeerCompat = PeerCompat.new()
 
 # -- Mutation serialisation ---------------------------------------------------
 # When multiple WebSocket peers are connected, mutation commands must not
@@ -205,6 +232,15 @@ func get_bound_port() -> int:
 	return _transport.get_bound_port() if _transport != null else -1
 
 
+## The token path the registry entry should name: the absolute path of the token
+## file this server last wrote. Before any write succeeds it falls back to the
+## live path from MCPAuth.get_published_token_path().
+func get_published_token_path() -> String:
+	if _written_token_path.is_empty():
+		return MCPAuth.get_published_token_path()
+	return _written_token_path
+
+
 ## The GDScript LSP endpoint THIS editor's setting points at (default
 ## 127.0.0.1:6005). Thin static delegate to lsp_publisher.gd (C9) — kept here because
 ## plugin.gd + the registry callers call MCPServer.resolve_lsp_endpoint() statically;
@@ -225,6 +261,16 @@ func set_reported_lsp_status(status: Dictionary) -> void:
 
 func get_reported_lsp_status() -> Dictionary:
 	return _lsp.get_reported_lsp_status() if _lsp != null else {}
+
+
+## The last authenticated MCP server's compatibility verdict, for the dock. Returns
+## { "state": String, "server_version": String, "min_toolkit": String,
+## "message": String }: state is one of peer_compat.gd's STATE_* constants, and
+## message is the below-floor error (without its log prefix) for a *_below_floor
+## state, else "". With several MCP servers connected, the last one to authenticate
+## wins.
+func get_peer_compat() -> Dictionary:
+	return _peer_compat.get_verdict()
 
 
 func get_command_methods() -> Array:
@@ -255,27 +301,46 @@ func _on_user_path_changed() -> void:
 ## Re-write the current in-memory token to the new user:// path after a
 ## config/name change. Does NOT generate a new token — existing connections
 ## stay authenticated. Announces the new token path so the registry owner
-## (plugin.gd) re-publishes the entry runtime-preservingly.
+## (core/plugin_composer.gd) re-publishes the entry runtime-preservingly.
 func _rewrite_token_after_rename() -> void:
 	if _transport == null:
 		return  # No running transport → no token to re-write, nothing bound.
-	var write_err := MCPAuth.write_token(_transport.get_token())
+	var write_err := _write_token_file(_transport.get_token())
 	if write_err != OK:
 		push_warning("[MCPServer] failed to re-write token after rename (err %d)" % write_err)
 	else:
 		print("[MCPServer] token re-written to %s" % MCPAuth.get_token_path())
 	# Announce the new token path; the plugin re-publishes via ensure_registered so
-	# an active game's runtime_port/runtime_pid survive the rename (register nulls
-	# them). The server doesn't reach into the registry from the rename path.
-	if _transport.get_bound_port() > 0:
+	# an active game's runtime_port/runtime_pid survive the rename (register's
+	# startup reap would delete the <hash>.runtime.json that holds them). The
+	# server doesn't reach into the registry from the rename path.
+	if _should_announce_token_path(write_err, _transport.get_bound_port()):
 		token_rewritten.emit(MCPAuth.get_token_path())
+
+
+# True when a re-written token's path should reach the registry: the write
+# succeeded and the listener is bound. After a failed write the old path stays
+# published, since it still holds the live token; announcing the new one would
+# point the bridge at a file that may not exist. While unbound, the next bind's
+# register() publishes the live path instead. Pure.
+static func _should_announce_token_path(write_err: int, bound_port: int) -> bool:
+	return write_err == OK and bound_port > 0
+
+
+# Writes the token to the live token path and, when the write succeeds, records
+# that file as the one the registry publishes. Returns OK or the write's error.
+func _write_token_file(token: String) -> int:
+	var write_err := MCPAuth.write_token(token)
+	if write_err == OK:
+		_written_token_path = MCPAuth.get_published_token_path()
+	return write_err
 
 
 func regenerate_token() -> void:
 	var token := MCPAuth.generate_token()
 	if _transport != null:
 		_transport.set_token(token)
-	var write_err := MCPAuth.write_token(token)
+	var write_err := _write_token_file(token)
 	if write_err != OK:
 		push_warning("[MCPServer] failed to write rotated token (err %d)" % write_err)
 	else:
@@ -312,7 +377,7 @@ func start() -> void:
 	# dock + LSP watch come up and can surface the error); skip the listen path.
 	if _transport != null:
 		_transport.set_token(token)
-	var write_err := MCPAuth.write_token(token)
+	var write_err := _write_token_file(token)
 	if write_err != OK:
 		push_warning("[MCPServer] failed to write token (err %d); auth will still be enforced but bridge may not find the file" % write_err)
 	else:
@@ -348,6 +413,13 @@ func _init_transport() -> void:
 		"Free the port, or change %s (or unset it to use the scanned band)." % _ENV_PIN)
 	_transport.set_handlers(_handle_message, _build_auth_ack, _on_peer_authed,
 		_on_peer_closed, _on_transport_bound, _on_listen_conflict_changed)
+	_transport.set_buffer_kb_source(_effective_ws_buffer_kb)
+
+
+# The editor sizes each accepted peer from the effective ws_buffer_kb, so an env
+# override the server pushes reaches the next connection the editor accepts.
+func _effective_ws_buffer_kb() -> int:
+	return ResponseLimits.effective_value(ResponseLimits.WS_BUFFER_KB)
 
 
 # Log the resolved listen-port config at startup: the port + source (so both the
@@ -520,6 +592,7 @@ func _init_lsp_publisher() -> void:
 	_lsp = LspPublisher.new()
 	_lsp.set_bound_port_provider(func() -> int:
 		return _transport.get_bound_port() if _transport != null else -1)
+	_lsp.set_token_path_provider(func() -> String: return get_published_token_path())
 	_lsp.set_status_changed_handler(func() -> void: lsp_status_changed.emit())
 
 
@@ -538,7 +611,7 @@ func stop() -> void:
 # LSP settings-watch trigger points (the mechanism lives in lsp_publisher.gd, C9).
 # start() connects the watch (resolve baseline + listen on EditorSettings.settings_changed
 # for a mid-session GDScript LSP port/host change → debounced registry re-publish);
-# stop() disconnects it (I12 symmetry). Thin null-guarded delegates so the lifecycle
+# stop() disconnects exactly what start() connected. Thin null-guarded delegates so the lifecycle
 # sequencing stays here while the child owns the watch + debounce + re-publish.
 func _connect_lsp_settings_watch() -> void:
 	if _lsp != null:
@@ -593,6 +666,8 @@ func _poll_connections() -> void:
 		var authed_now := _transport.get_authed_count()
 		if authed_now == 0:
 			_unfocused.restore()
+			_peer_compat.clear()
+			compat_status_changed.emit()
 		client_disconnected.emit(authed_now)
 
 
@@ -601,7 +676,7 @@ func _poll_connections() -> void:
 
 # The transport delivers each raw frame here. We parse, then route: unauthenticated
 # peers go through the transport's auth handshake (we additionally run the
-# human-only version-mismatch check); authenticated peers go to dispatch. The
+# human-only version check); authenticated peers go to dispatch. The
 # transport awaits this, so dispatch stays sequential within a poll tick.
 func _handle_message(peer: WebSocketPeer, text: String) -> void:
 	var parser := JSON.new()
@@ -617,21 +692,22 @@ func _handle_message(peer: WebSocketPeer, text: String) -> void:
 
 	if not _transport.is_authed(peer):
 		if _transport.validate_auth(peer, message):
-			# Version mismatch check — human-only (editor console), nothing on the
-			# MCP wire. Runs only after a successful auth, like the pre-extraction
-			# handshake. A pre-handshake server sends no version → skip.
-			var server_ver: String = str(message.get("version", ""))
-			if not server_ver.is_empty():
-				_check_version_mismatch(Modules.VersionUtils.read_plugin_version(), server_ver)
+			# The version check is human-only (editor console and dock), nothing on
+			# the MCP wire, and runs only after a successful auth. A 1.0.x server sends
+			# its version as `version` and declares no floor.
+			var server_ver := str(message.get("server_version", message.get("version", "")))
+			var min_toolkit := str(message.get("min_toolkit", ""))
+			_check_peer_compat(server_ver, min_toolkit)
 		return
 
 	await _router.route_request(peer, message)
 
 
 # Supplies the Mode-A auth-ack payload to the transport: the bare {authed:true} plus
-# this editor's Godot + plugin versions and its display mode (the runtime sends
-# {authed:true} only). `headless` is the wire signal the server reads to branch its
-# headless-degraded tool assertions. Pure — no side effects; the boost/signal happen in
+# this editor's Godot + plugin versions, its display mode and its declared server floor
+# (the runtime sends {authed:true} only). `headless` is the wire signal the server reads
+# to branch its headless-degraded tool assertions; `min_server` is what the server
+# judges its own version against. Pure — no side effects; the boost/signal happen in
 # _on_peer_authed.
 func _build_auth_ack(_message: Dictionary) -> Dictionary:
 	var vi := Engine.get_version_info()
@@ -640,6 +716,7 @@ func _build_auth_ack(_message: Dictionary) -> Dictionary:
 		"godot_version": "%d.%d.%d" % [vi["major"], vi["minor"], vi["patch"]],
 		"version": Modules.VersionUtils.read_plugin_version(),
 		"headless": Modules.VersionUtils.is_headless(),
+		"min_server": Modules.VersionUtils.MIN_SERVER_VERSION,
 	}
 
 
@@ -659,6 +736,28 @@ func _on_peer_authed(count: int) -> void:
 # here (the aggregate uses the transport's batch result).
 func _on_peer_closed(peer: WebSocketPeer, _was_authed: bool) -> void:
 	_scene_lease.on_peer_closed(peer)
+
+
+# The connect-time version check against server_ver and the server's declared toolkit
+# floor min_toolkit ("" when it declares none). The floor verdict comes from the
+# peer_compat child: a local server build skips the check with one line per
+# connection, a side below the other's floor gets one error in place of the
+# product-version message (printed once per state and server version), and otherwise
+# the product-version message runs. Never refuses the connection.
+func _check_peer_compat(server_ver: String, min_toolkit: String) -> void:
+	var toolkit_ver: String = Modules.VersionUtils.read_plugin_version()
+	var line := _peer_compat.assess(server_ver, min_toolkit, toolkit_ver,
+			Modules.VersionUtils.MIN_SERVER_VERSION, skip_version_check)
+	compat_status_changed.emit()
+	var state := _peer_compat.get_state()
+	if state == PeerCompat.STATE_SKIPPED:
+		print("[MCPServer] " + line)
+	elif state == PeerCompat.STATE_OK:
+		# A pre-handshake server sends no version: nothing to compare.
+		if not server_ver.is_empty():
+			_check_version_mismatch(toolkit_ver, server_ver)
+	elif not line.is_empty():
+		push_error("[MCPServer] " + line)
 
 
 func _check_version_mismatch(local: String, remote: String) -> void:

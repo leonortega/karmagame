@@ -1,7 +1,16 @@
 # AGENTS.md — karmagame (Godot 4)
 
+Instructions for any coding agent working in this repo (Claude Code, Codex, Cursor,
+Codebuff, or anything else). Read this file before touching code; it applies to every
+change. Nothing here assumes a particular assistant, tool, MCP, or operating system —
+if a capability isn't available in your environment, do the equivalent by hand and say
+so in the completion message rather than skipping it.
+
 Godot 4.7, GDScript, zero third-party deps (addons: gdUnit4 + godot-mcp-toolkit only).
 Repo root IS the Godot project (`project.godot`).
+
+`godot` below means any Godot 4.7 binary — on `PATH`, a `.exe`, an `.app`, a flatpak,
+whatever this machine has. Substitute its real path/name.
 
 ## Layout
 
@@ -17,31 +26,45 @@ Repo root IS the Godot project (`project.godot`).
 - Simulation = pure static funcs on `Dictionary` state (no autoloads); only `Main` owns I/O
 - Numbers live in `KarmaData.TUNING` — no magic numbers, no rebalancing without a spec change
 - `_physics_process` for movement/tick, `_unhandled_input` for verbs (never poll `Input` in `_process`)
+- State fixtures: `KarmaState.blank_state()` has NO possessed body (`new_run()` possesses one).
+  Tests that drive the player through `KarmaGame`/`KarmaState.player()` must append a body
+  with `brain = "PLAYER"` themselves — see the `_with_player` / `_player_state` / `_t1_scene`
+  fixtures. A missing body makes `player()` return `null`, which aborts the test body and
+  turns later assertions into silent passes.
 
 ## Commands
 
-- Run: open in Godot 4 editor, F5 (or `godot --path .`)
-- Tests: gdUnit4 dock, or `godot --headless --path . --test`
-- Syntax: editor parses on save; headless `--check-only` per script if needed
+- Run: open in the Godot editor and press F5, or `godot --path .`
+- Tests: `godot --headless --path . -s addons/gdUnit4/bin/GdUnitCmdTool.gd -a tests --ignoreHeadlessMode`
+  - `--ignoreHeadlessMode` is required for headless runs; UI/input tests need a windowed run.
+  - The `--test` flag only exists in test-enabled builds (`tests=yes`); stock binaries abort with
+    "compiled without support for unit tests" — use the gdUnit4 command above instead.
+  - The runner exits non-zero on failure. A parse error in any test file aborts the whole run,
+    and a runtime script error silently skips the rest of that suite — so a falling test count
+    is a red flag, not a pass.
+- Parse one script without running: `godot --headless -s <script.gd> --check-only --path .`
 
-## Workflow (standing)
+## Workflow
 
-TDD always: one discrete behavior per gdUnit4 test → red/green → next; never whole
-files up front. Apply `safe-refactor`, `solid`, `clean-code`, `ponytail` (+ review/audit),
-and `design-pattern-review` on every change as the work requires. MCPs only when necessary.
+- TDD always: one discrete behavior per gdUnit4 test → red/green → next; never whole files up front.
+- MCPs only when necessary.
 
-## Skill enforcement protocol
+## Skills
 
-Skills are not advisory — load and apply them via the `skill` tool (exact `id`) on every change:
+Skills inform every change; they are not a hard dependency on any one runtime.
 
-- **Apply start**: load `tdd-workflow` + `safe-refactor` (+ `godot-best-practices` for any
-  `.gd` work) before task 1. Every diff after that is judged through `solid` / `clean-code` /
-  `ponytail` (full): smallest behavior-preserving step, table before pattern, no magic numbers.
-- **Cross-cutting or new-pattern work**: load `design-pattern-review` during propose/plan.
-- **Before done**: run `ponytail-review` on the diff; `ponytail-audit` when 3+ files changed.
-- **Audit trail**: the completion message lists each loaded skill + one line on how it shaped the work.
+- Ids in use: `tdd-workflow`, `safe-refactor`, `solid`, `clean-code`, `ponytail`,
+  `ponytail-review`, `ponytail-audit`, `design-pattern-review`.
+- If your runtime exposes a skill-loading tool, load by exact id: `tdd-workflow` +
+  `safe-refactor` before task 1, `design-pattern-review` when the work is cross-cutting
+  or introduces a new pattern.
+- Whether loaded by tool or applied from memory, the bar is the same: judge every diff
+  through `solid` / `clean-code` / `ponytail` (full) — smallest behavior-preserving step,
+  table before pattern, no magic numbers, reuse an existing fixture before adding one.
+- Before done: review the diff for over-engineering; audit the whole repo when 3+ files changed.
+- Completion messages list each skill applied and one line on how it shaped the work.
 
 ## Verification gate
 
-Every change: touched scripts parse → gdUnit4 suite green → no duplicate global
-`class_name`/`func` collisions → main scene runs from F5.
+Every change: touched scripts parse → gdUnit4 suite green (full count, no silent suite
+aborts) → no duplicate global `class_name`/`func` collisions → main scene runs.

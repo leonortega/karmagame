@@ -14,16 +14,20 @@ func _fresh(species := "raton") -> Dictionary:
 	return KarmaState.new_run(species, 0.0, 0.0, 0, _rng)
 
 
-func test_sustainable_eat_pays() -> void:
+func test_one_bite_consumes_whole_patch() -> void:
 	var s := _fresh("raton")
 	var bush: Dictionary = (s["bushes"] as Array)[0]
 	bush["amount"] = 3
 	bush["alive"] = true
 	bush["mimic"] = false
+	bush["mimicEaten"] = true
 	KarmaState.player(s)["hp"] = 10.0
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_true()
-	assert_float(KarmaState.player(s)["hp"]).is_equal(25.0) # +15 berries
-	assert_float(s["pa"]).is_equal(5.0)
+	assert_float(KarmaState.player(s)["hp"]).is_equal(60.0) # 2*15 + 20
+	assert_float(s["pa"]).is_equal(10.0) # 2*5
+	assert_float(s["karma"]).is_equal(-15.0)
+	assert_bool(bush["alive"]).is_false()
+	assert_int(bush["amount"]).is_equal(0)
 
 
 func test_last_fruit_selfish() -> void:
@@ -45,6 +49,16 @@ func test_off_diet_refused() -> void:
 	bush["alive"] = true
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_false()
 	assert_int(bush["amount"]).is_equal(3)
+
+
+func test_lethal_strike_on_player_never_despawns_body() -> void:
+	var s := _fresh("raton")
+	var pl: Dictionary = KarmaState.player(s)
+	var zorro: Dictionary = KarmaState.spawn_fauna(s, "zorro", float(pl["x"]), float(pl["y"]))
+	KarmaAI.ai_hunt_eat(s, zorro, pl, 1.0 / 60.0)
+	assert_object(KarmaState.player(s)).is_not_null()
+	assert_object(KarmaState.player(s)).is_same(pl)
+	assert_float(pl["hp"]).is_equal(0.0)
 
 
 func test_carrion_lifecycle() -> void:
@@ -153,6 +167,8 @@ func test_wander_poi_prefers_food_over_water() -> void:
 func test_wander_poi_falls_back_to_water() -> void:
 	var s := _poi_world()
 	var a := KarmaState.spawn_fauna(s, "raton", 500.0, 500.0)
+	a["caution_water"] = 1.0 # pin the thirst edge (spawn rolls it unseeded)
+	a["sed"] = 40.0
 	(s["waters"] as Array).append({"x": 600.0, "y": 500.0, "r": 20.0, "kind": "charco"})
 	var poi: Variant = KarmaGame.wander_poi(s, a)
 	assert_bool(poi != null).is_true()
@@ -223,7 +239,9 @@ func test_raton_wander_travels_to_distant_patch() -> void:
 
 func test_zorro_wander_travels_to_water() -> void:
 	var s := _bare_world("zorro")
-	var a := KarmaState.spawn_fauna(s, "zorro", 500.0, 500.0)
+	var	a := KarmaState.spawn_fauna(s, "zorro", 500.0, 500.0)
+	a["caution_water"] = 1.0 # pin the thirst edge (spawn rolls it unseeded)
+	a["sed"] = 40.0
 	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
 	a["pounceCd"] = 0.0
 	a["strikeCd"] = 0.0
@@ -237,7 +255,9 @@ func test_zorro_wander_travels_to_water() -> void:
 
 func test_halcon_wander_travels_to_water() -> void:
 	var s := _bare_world("halcon")
-	var a := KarmaState.spawn_fauna(s, "halcon", 500.0, 500.0)
+	var	a := KarmaState.spawn_fauna(s, "halcon", 500.0, 500.0)
+	a["caution_water"] = 1.0 # pin the thirst edge (spawn rolls it unseeded)
+	a["sed"] = 40.0
 	a["verbCds"] = [0.0, 0.0, 0.0, 0.0, 0.0]
 	a["strikeCd"] = 0.0
 	a["grounded"] = false
@@ -283,6 +303,42 @@ func test_mates_drift_toward_player() -> void:
 		KarmaGame.wander_mates(s, 0.1, _rng)
 	var d1 := Vector2(float(m["x"]), float(m["y"])).distance_to(Vector2(float(KarmaState.px(s)), float(KarmaState.py(s))))
 	assert_bool(d0 - d1 > 50.0).is_true()
+
+
+func test_possession_clears_hiding_state() -> void:
+	# A census host taken over mid-hide (a predator was chasing it at death)
+	# must not hand the player an invisible, input-frozen body.
+	var s := _fresh("raton")
+	var pl: Variant = KarmaState.player(s)
+	(pl as Dictionary)["hp"] = 0.0
+	var host: Dictionary = KarmaState.spawn_fauna(s, "raton", 300.0, 300.0)
+	host["hidden"] = true
+	host["hideRef"] = {}
+	var order: Array = s["agents"]
+	order.clear()
+	order.append(pl)
+	order.append(host)
+	KarmaState.possess_member(s)
+	var body: Dictionary = KarmaState.player(s)
+	assert_bool(body == host).is_true()
+	assert_str(str(body["brain"])).is_equal("PLAYER")
+	assert_bool(bool(body.get("hidden", false))).is_false()
+	assert_bool(body.get("hideRef") == null).is_true()
+
+
+func test_sated_wanderer_skips_water_poi() -> void:
+	# Sated animals shall not detour to water (ai-survival): a sated wanderer
+	# with nothing else in range falls through to jitter, not pond-parking.
+	var s := _bare_world("halcon")
+	s["carrions"] = []
+	var a := KarmaState.spawn_fauna(s, "halcon", 500.0, 500.0)
+	(s["waters"] as Array).append({"x": 560.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	assert_bool(KarmaGame.wander_poi(s, a) == null).is_true()
+	a["caution_water"] = 1.0 # pin the thirst edge (spawn rolls it unseeded)
+	a["sed"] = 40.0
+	var poi: Variant = KarmaGame.wander_poi(s, a)
+	assert_bool(poi != null).is_true()
+	assert_float(Vector2(float((poi as Dictionary)["x"]), float((poi as Dictionary)["y"])).distance_to(Vector2(560.0, 500.0))).is_less(1.0)
 
 
 func test_strike_heals_attacker_to_adapted_max() -> void:

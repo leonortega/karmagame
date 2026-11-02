@@ -114,6 +114,26 @@ static func _rebuild_projects_json() -> void:
 	_RegistryProjection.rebuild()
 
 
+# -- Double-open check ---------------------------------------------------------
+
+
+# True when the entry was written by an editor process other than this one.
+static func _is_other_editor_entry(existing: Dictionary, my_pid: int) -> bool:
+	var existing_pid := int(existing.get("pid", 0))
+	return existing_pid > 0 and existing_pid != my_pid
+
+
+# True when another PID's entry may belong to a live second editor on this
+# project. OS.is_process_running() is documented for this process's own children
+# only. Windows and Linux report every other editor as not running, and only
+# macOS 4.3+ answers for GUI apps, so it cannot tell on every platform whether
+# another editor is alive. The caller has already bound `port`, and two
+# processes cannot listen on one port, so an entry naming `port` was left by an
+# editor that is gone. An entry naming another port may still be live. Pure.
+static func _should_warn_double_open(existing: Dictionary, my_pid: int, port: int) -> bool:
+	return _is_other_editor_entry(existing, my_pid) and int(existing.get("port", -1)) != port
+
+
 # -- Lifecycle (public façade) -------------------------------------------------
 
 
@@ -132,12 +152,20 @@ static func register(port: int, token_path: String, lsp_host: String, lsp_port: 
 	var key := _project_key()
 	var my_pid := OS.get_process_id()
 	var my_entry := _build_entry(key, port, token_path, lsp_host, lsp_port, null, null)
-	# Warn on double-open (same project in two editors).
+	# Another PID's entry is a second editor on this project or a leftover from
+	# one that did not exit cleanly; one naming this editor's port is a leftover.
 	var existing := _read_entry()
-	if not existing.is_empty():
-		var existing_pid := int(existing.get("pid", 0))
-		if existing_pid > 0 and existing_pid != my_pid and OS.is_process_running(existing_pid):
-			push_warning("[MCPRegistry] already registered from PID %d; overwriting with PID %d" % [existing_pid, my_pid])
+	var existing_pid := int(existing.get("pid", 0))
+	if _should_warn_double_open(existing, my_pid, port):
+		push_warning(
+				"[MCPRegistry] found an entry from PID %d (another editor on this project, or one that did not exit cleanly); overwriting with PID %d"
+				% [existing_pid, my_pid]
+		)
+	elif _is_other_editor_entry(existing, my_pid):
+		print(
+				"[MCPRegistry] replaced an entry from PID %d, an editor that did not exit cleanly"
+				% existing_pid
+		)
 	# Write own entry file — no race: each editor writes a unique file.
 	_write_entry(my_entry)
 	# Rebuild projects.json from all entry files (idempotent).
@@ -197,17 +225,23 @@ static func clear_runtime() -> void:
 	release_lock()
 
 
-## Deferred re-verify: called a few seconds after initial register() to
-## ensure our entry file still exists and projects.json is up to date.
-## In the entry-file architecture this is mostly a rebuild trigger —
-## our entry file can't be clobbered by another editor (unique path).
+## Deferred re-verify and live re-publish: makes sure this editor's entry file
+## exists and carries the [param port], [param token_path] and LSP endpoint
+## passed in, then rebuilds projects.json. Callers pass the live values, so a
+## rename that moved the token file or a changed LSP setting reaches the
+## registry. A second editor on the same project shares the entry file and its
+## register() overwrites it; the entry then carries that editor's PID, so this
+## call re-creates its own entry rather than patching the other one.
 static func ensure_registered(port: int, token_path: String, lsp_host: String, lsp_port: int) -> void:
 	var key := _project_key()
 	var my_pid := OS.get_process_id()
 	var entry := _read_entry()
 	if not entry.is_empty() and int(entry.get("pid", 0)) == my_pid:
-		# Entry file present with our PID — refresh the LSP endpoint (a live
-		# re-publish may pass a changed port/host) and rebuild projects.json.
+		# Our own entry: refresh the published fields in place. pid, started_at
+		# and godot_version keep the values register() wrote: the server orders
+		# LSP claimants by started_at, so the entry is patched, never rebuilt.
+		entry["port"] = port
+		entry["token_path"] = token_path
 		entry["lsp_host"] = lsp_host
 		entry["lsp_port"] = lsp_port
 		_write_entry(entry)

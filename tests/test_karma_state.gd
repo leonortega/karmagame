@@ -98,6 +98,38 @@ func test_reincarnate_carries_census() -> void:
 	assert_int(int((n["census"] as Dictionary)["counts"]["sapo"])).is_equal(int((s["census"] as Dictionary)["counts"]["sapo"]))
 
 
+func test_reincarnate_keeps_a_single_player_body() -> void:
+	var s := KarmaState.new_run("raton", 40.0, 30.0, 0, _rng)
+	s["dead"] = true
+	s["pendingNext"] = "sapo"
+	var n := KarmaState.reincarnate(s, _rng)
+	var players := 0
+	for a in n["agents"]:
+		if str((a as Dictionary).get("brain", "")) == "PLAYER":
+			players += 1
+	assert_int(players).is_equal(1)
+
+
+func test_reincarnate_possesses_the_new_species_body() -> void:
+	var s := KarmaState.new_run("raton", 40.0, 30.0, 0, _rng)
+	s["dead"] = true
+	s["pendingNext"] = "sapo"
+	var n := KarmaState.reincarnate(s, _rng)
+	var pl: Dictionary = KarmaState.player(n) as Dictionary
+	assert_str(str(pl["speciesKey"])).is_equal("sapo")
+
+
+func test_reincarnated_life_survives_the_next_tick() -> void:
+	var s := KarmaState.new_run("raton", 40.0, 30.0, 0, _rng)
+	var old_body: Dictionary = KarmaState.player(s) as Dictionary
+	old_body["hp"] = 0.0
+	s["dead"] = true
+	s["pendingNext"] = "sapo"
+	s = KarmaState.reincarnate(s, _rng)
+	KarmaGame.update(s, 0.1, _rng)
+	assert_bool(bool(s["dead"])).is_false()
+
+
 func _member_positions(s: Dictionary, sp: String) -> Array:
 	var pts := []
 	for a in s["agents"]:

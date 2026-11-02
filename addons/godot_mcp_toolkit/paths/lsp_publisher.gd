@@ -12,7 +12,9 @@ extends RefCounted
 ## against the last published one (live re-publish on change). (2) INBOUND: the MCP
 ## server reports the authoritative verdict via set_reported_lsp_status (it can do
 ## reliable cross-process liveness the editor cannot); the dock renders whatever was
-## last reported and refreshes exactly on change.
+## last reported and refreshes exactly on change. A reported verdict holds until the
+## server reports again or the endpoint setting changes: it describes the old
+## endpoint, so a re-publish drops it and the dock falls back to the published one.
 ##
 ## Editor-side ONLY — and TAINTED by design: resolve_lsp_endpoint() and the watch
 ## name EditorInterface directly (they read network/language_server/* and connect to
@@ -47,7 +49,8 @@ var _last_lsp_host: String = ""
 var _last_lsp_port: int = -1
 # Authoritative LSP verdict the MCP server last reported (editor.set_lsp_status). The
 # editor can't read its own LSP bind status, so the server tells us and the dock
-# renders it. {} until a server connects.
+# renders it. {} until a server connects; kept until the server reports again or the
+# endpoint setting changes.
 var _reported_lsp_status: Dictionary = {}
 
 # Injected seams (wired once by mcp_server._init_lsp_publisher). Keep the
@@ -60,6 +63,10 @@ var _on_status_changed: Callable = Callable()
 #   the watch needs it to skip re-publishing before/after the server is listening,
 #   exactly as the pre-extraction watch read _transport.get_bound_port()).
 var _bound_port_provider: Callable = Callable()
+# _token_path_provider: func() -> String — the token path the registry entry names
+#   (the server tracks the file it last wrote), so a re-publish never points the
+#   entry at a token file the server failed to write.
+var _token_path_provider: Callable = Callable()
 
 
 ## The GDScript LSP endpoint THIS editor's setting points at (default
@@ -93,6 +100,12 @@ func set_bound_port_provider(bound_port_provider: Callable) -> void:
 	_bound_port_provider = bound_port_provider
 
 
+## Wire the source of the token path to publish (the server owns which token file
+## it last wrote). Call once at construction, before any re-publish.
+func set_token_path_provider(token_path_provider: Callable) -> void:
+	_token_path_provider = token_path_provider
+
+
 ## The MCP server reports the authoritative LSP verdict here — it can do reliable
 ## cross-process liveness (process.kill) and the real connection/root-verify, which
 ## the editor cannot (no engine API for its own LSP bind status). The dock renders
@@ -112,8 +125,8 @@ func get_reported_lsp_status() -> Dictionary:
 ## Re-publish the registry entry when the editor's GDScript LSP port/host
 ## setting changes mid-session, so the published endpoint never goes stale.
 ## EditorSettings.settings_changed fires globally; we debounce by comparing the
-## re-resolved endpoint against the last published one. Connected from start(),
-## disconnected in stop() (I12 symmetry).
+## re-resolved endpoint against the last published one. Connected from start();
+## stop() disconnects exactly what start() connected.
 func connect_settings_watch() -> void:
 	var lsp := resolve_lsp_endpoint()
 	_last_lsp_host = lsp["host"]
@@ -136,9 +149,23 @@ func _on_editor_settings_changed() -> void:
 	if bound_port <= 0:
 		return
 	var lsp := resolve_lsp_endpoint()
-	if lsp["host"] == _last_lsp_host and lsp["port"] == _last_lsp_port:
+	var endpoint_changed: bool = lsp["host"] != _last_lsp_host or lsp["port"] != _last_lsp_port
+	if not endpoint_changed:
 		return  # LSP endpoint unchanged — ignore unrelated editor-setting churn.
 	_last_lsp_host = lsp["host"]
 	_last_lsp_port = lsp["port"]
-	RegistryClient.ensure_registered(bound_port, MCPAuth.get_published_token_path(), lsp["host"], lsp["port"])
+	var token_path: String = (_token_path_provider.call() if _token_path_provider.is_valid()
+			else MCPAuth.get_published_token_path())
+	RegistryClient.ensure_registered(bound_port, token_path, lsp["host"], lsp["port"])
 	print("[MCPServer] LSP endpoint changed -> re-published %s:%d" % [lsp["host"], lsp["port"]])
+	_after_republish(endpoint_changed)
+
+
+## Settle the reported verdict after a re-publish and tell the dock to redraw. When the
+## endpoint changed, the server's verdict was about the old one, so it is dropped and
+## the dock shows the newly published endpoint until the server reports again.
+func _after_republish(endpoint_changed: bool) -> void:
+	if endpoint_changed:
+		_reported_lsp_status = {}
+	if _on_status_changed.is_valid():
+		_on_status_changed.call()

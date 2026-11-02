@@ -4,8 +4,9 @@ extends RefCounted
 ##
 ## Two capture strategies, selected automatically at setup():
 ##
-## Godot 4.5+  — Logger subclass (compiled at runtime via GDScript.new()
-##               to avoid parse errors on older versions). Captures
+## Godot 4.5+  — a native Logger (built through ClassDB) running a
+##               capture script that extends RefCounted, so a project's
+##               own class_name Logger cannot shadow it. Captures
 ##               print(), printerr(), push_warning(), push_error(),
 ##               engine errors, shader errors. Zero latency.
 ##
@@ -24,13 +25,19 @@ const VersionUtils := preload("res://addons/godot_mcp_toolkit/versioning/mcp_ver
 
 const _CAPACITY := 500
 const _POLL_INTERVAL_MS := 200
-const _SCRIPT_ERROR_LATCH_CAPACITY := 16
+# As long as the ring, so every script error the ring still holds keeps its
+# location.
+const _SCRIPT_ERROR_LATCH_CAPACITY := _CAPACITY
 
 # -- Shared state (Mutex-protected) ------------------------------------------
 
 static var _mutex: Mutex = Mutex.new()
 static var _entries: Array = []
 static var _next_id: int = 0
+# Id of the newest entry the ring dropped to stay within _CAPACITY, -1 when it
+# dropped none: entries after a cursor are all still held only while this is
+# at or below it.
+static var _evicted_through_id: int = -1
 # Structured {id, file, line} locations of captured SCRIPT errors (Logger
 # error_type 2), latched beside their console entries. A separate side-channel
 # on purpose: console entries keep their {id, timestamp_unix, level, message}
@@ -125,6 +132,42 @@ static func find_script_error_line_since(since_id: int) -> int:
 	return found
 
 
+## Removes from the buffer the script errors captured after [param since_id]
+## under the script path [param file], and returns them.
+##
+## Serves a compile whose errors are read back and then dropped, so they never
+## reach the console readers. Returns [code]{complete, errors}[/code]:
+## [code]errors[/code] holds one [code]{line, message}[/code] per captured
+## error, oldest first, with [code]message[/code] "" when the console entry is
+## gone; [code]complete[/code] is false when an entry after
+## [param since_id] has already left the ring, so [code]errors[/code] may miss
+## some. Only the 4.5+ Logger latches script errors, so on 4.2-4.4
+## [code]errors[/code] is empty.
+static func take_script_errors_since(since_id: int, file: String) -> Dictionary:
+	_mutex.lock()
+	var errors: Array = []
+	var taken_ids := {}
+	var kept_locations: Array = []
+	for location in _script_error_locations:
+		if int(location["id"]) > since_id and str(location["file"]) == file:
+			taken_ids[int(location["id"])] = errors.size()
+			errors.append({"line": int(location["line"]), "message": ""})
+		else:
+			kept_locations.append(location)
+	_script_error_locations = kept_locations
+	var kept_entries: Array = []
+	for entry in _entries:
+		var entry_id := int(entry["id"])
+		if taken_ids.has(entry_id):
+			errors[int(taken_ids[entry_id])]["message"] = str(entry["message"])
+		else:
+			kept_entries.append(entry)
+	_entries = kept_entries
+	var complete := _evicted_through_id <= since_id
+	_mutex.unlock()
+	return {"complete": complete, "errors": errors}
+
+
 # Appends one entry and returns its id. Caller must hold _mutex.
 static func _append_entry_unlocked(level: String, message: String) -> int:
 	var entry := {
@@ -135,7 +178,7 @@ static func _append_entry_unlocked(level: String, message: String) -> int:
 	}
 	_next_id += 1
 	if _entries.size() >= _CAPACITY:
-		_entries.pop_front()
+		_evicted_through_id = int(_entries.pop_front()["id"])
 	_entries.append(entry)
 	return int(entry["id"])
 
@@ -205,6 +248,7 @@ static func clear() -> void:
 	_entries.clear()
 	_script_error_locations.clear()
 	_next_id = 0
+	_evicted_through_id = -1
 	_mutex.unlock()
 
 
@@ -265,34 +309,61 @@ static func compose_error_message(prefix: String, code: String, rationale: Strin
 
 
 static func _setup_logger() -> void:
-	_use_logger = true
-	# Compile the Logger subclass at runtime so no file on disk contains
-	# "extends Logger" — avoids parse errors on Godot 4.2-4.4.
-	var script := GDScript.new()
-	script.source_code = _LOGGER_SOURCE
-	var err := script.reload()
-	if err != OK:
-		push_warning("[LogBuffer] Logger hook compile failed (err %d), falling back to file tail" % err)
-		_use_logger = false
+	_logger_ref = _create_logger()
+	if _logger_ref == null:
 		_setup_file_tail()
 		return
-	_logger_ref = script.new()
-	# Pass a reference to this script so the logger can call push() / compose_error_message().
-	_logger_ref.set_meta("_log_buffer", load("res://addons/godot_mcp_toolkit/logging/log_buffer.gd"))
-	# Godot 4.7 stopped surfacing the separate path-bearing "Failed to load script" error
-	# during editor script scans, leaving the script path only in the structured _log_error
-	# callback's file arg. Flag 4.7+ so the logger appends the engine-style "   at:" location
-	# line to script errors and the filename stays captured; 4.5/4.6 keep prior byte-for-byte
-	# output (their separate load error already carries the path).
-	_logger_ref.set_meta("_append_error_location",
-		VersionUtils.is_at_least(VersionUtils.get_engine_version_pair(), "4.7"))
+	_use_logger = true
 	# Dynamic call — OS.add_logger() only exists in 4.5+; static reference
 	# causes a parse error on 4.2-4.4 even inside a guarded branch.
 	OS.call("add_logger", _logger_ref)
 
 
+# Builds the logger the 4.5+ strategy registers: a native Logger running the capture
+# script, with the metas the script reads. Returns null after a warning when the script
+# fails to compile, or when the logger ends up without a live script instance to call.
+# Registers nothing; the caller owns registration.
+static func _create_logger() -> Object:
+	# The capture script never names Logger: a script that extends Logger by name
+	# resolves a project's global class_name Logger before the native class, and its
+	# compile fails. So the script extends RefCounted and is attached to a native
+	# Logger built through ClassDB, which never resolves script classes.
+	var script := GDScript.new()
+	script.source_code = _LOGGER_SOURCE
+	var err := script.reload()
+	var logger: Object = null
+	if err == OK:
+		logger = ClassDB.instantiate(&"Logger")
+		if logger != null:
+			logger.set_script(script)
+		# set_script keeps the script even when its instance fails to build, and a
+		# native Logger binds no _log_message, so this answers only through a live
+		# script instance.
+		if logger == null or not logger.has_method(&"_log_message"):
+			err = ERR_CANT_CREATE
+	if err != OK:
+		push_warning("[LogBuffer] Logger hook compile failed (err %d), falling back to file tail" % err)
+		return null
+	# Pass a reference to this script so the logger can call push() / compose_error_message().
+	logger.set_meta("_log_buffer", load("res://addons/godot_mcp_toolkit/logging/log_buffer.gd"))
+	# Godot 4.7 stopped surfacing the separate path-bearing "Failed to load script" error
+	# during editor script scans, leaving the script path only in the structured _log_error
+	# callback's file arg. Flag 4.7+ so the logger appends the engine-style "   at:" location
+	# line to script errors and the filename stays captured; 4.5/4.6 keep prior byte-for-byte
+	# output (their separate load error already carries the path).
+	logger.set_meta("_append_error_location",
+		VersionUtils.is_at_least(VersionUtils.get_engine_version_pair(), "4.7"))
+	return logger
+
+
+# The capture script attached to the native Logger. The engine calls _log_message and
+# _log_error by name on the script instance; @tool keeps it a real instance in the
+# editor, where a non-tool script would only get a placeholder. The source must never
+# name the class it runs on (see _create_logger), and as a single-quoted literal it
+# holds no single quote, comments included.
 const _LOGGER_SOURCE := '
-extends Logger
+@tool
+extends RefCounted
 
 func _log_message(message: String, error: bool) -> void:
 	var buf = get_meta("_log_buffer")
@@ -309,7 +380,7 @@ func _log_error(function_name: String, file_path: String, line: int,
 		return
 	var level: String = "warning" if error_type == 1 else "error"
 	var prefix: String = "WARNING" if error_type == 1 else "ERROR"
-	# error_type 2 == Logger.ERR_SCRIPT: only script errors carry a .gd source path worth
+	# error_type 2 is the engine ERR_SCRIPT type: only script errors carry a .gd source path worth
 	# preserving. The 4.7+ flag (set at setup from the engine version) enables the location
 	# line; see compose_error_message.
 	var append_location: bool = bool(get_meta("_append_error_location", false)) and error_type == 2

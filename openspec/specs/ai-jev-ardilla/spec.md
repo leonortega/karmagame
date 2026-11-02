@@ -23,8 +23,7 @@ The system SHALL obtain each AI ardilla's macro intent by sending one batched Na
 #### Scenario: Player parity of effects
 
 - **WHEN** the ranked winner is eat on an edible patch within eat range
-- **THEN** the patch loses one fruit and the ardilla gains the same HP as a player eat
-
+- **THEN** the patch is fully consumed in one bite and the ardilla gains the same HP as a player eat
 ### Requirement: Nut carrying survives across intents
 
 Carried-nut state SHALL live on the agent, not in the intent: an ardilla that picks up a nut and whose intent then expires or is replaced SHALL still carry the nut, and its next menu SHALL offer burying. A hungry carrier SHALL eat the nut (dropping it) exactly as the ladder does today, through the same path.

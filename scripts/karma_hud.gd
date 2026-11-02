@@ -21,25 +21,26 @@ static func other_panel_lines(state: Dictionary) -> Array:
 
 
 static func control_rows(state: Dictionary) -> Array:
+	var pl: Variant = KarmaState.player(state)
 	var sk: String = str(state["speciesKey"])
 	var rows: Array = [{"key": "WASD/Flechas", "label": "moverse", "cd": 0.0}]
 	var e_cd: float = 0.0
 	var e_extra: String = ""
-	if sk == "zorro" and float(KarmaState.player(state).get("pounceCd", 0.0)) > 0.0:
-		e_cd = float(KarmaState.player(state)["pounceCd"])
+	if sk == "zorro" and float(pl.get("pounceCd", 0.0)) > 0.0:
+		e_cd = float(pl["pounceCd"])
 	if sk == "topo":
-		if float(KarmaState.player(state).get("digCd", 0.0)) > 0.0:
-			e_cd = float(KarmaState.player(state)["digCd"])
+		if float(pl.get("digCd", 0.0)) > 0.0:
+			e_cd = float(pl["digCd"])
 		e_extra = " (%d/%d)" % [int(state.get("dug", 0)), int(KarmaData.TUNING["digMax"])]
 	rows.append({"key": "E", "label": str(KarmaData.CONTROLS_E.get(sk, "comer/cazar")) + e_extra, "cd": e_cd})
 	if sk in KarmaData.CONTROLS_Q:
-		rows.append({"key": "Q", "label": "gritar", "cd": float(KarmaState.player(state).get("shoutCd", 0.0))})
+		rows.append({"key": "Q", "label": "gritar", "cd": float(pl.get("shoutCd", 0.0))})
 	if KarmaData.CONTROLS_V.has(sk):
-		rows.append({"key": "V", "label": str(KarmaData.CONTROLS_V[sk]), "cd": float(KarmaState.player(state).get("senseCd", 0.0))})
+		rows.append({"key": "V", "label": str(KarmaData.CONTROLS_V[sk]), "cd": float(pl.get("senseCd", 0.0))})
 	if sk in KarmaData.CONTROLS_C:
-		var nut: String = " (nuez en lomo: C enterrar)" if bool(KarmaState.player(state).get("carriedNut", false)) else ""
+		var nut: String = " (nuez en lomo: C enterrar)" if bool(pl.get("carriedNut", false)) else ""
 		rows.append({"key": "C", "label": "llevar/enterrar" + nut, "cd": 0.0})
-	rows.append({"key": "H", "label": "salir (hambre y sed siguen)" if bool(KarmaState.player(state).get("hidden", false)) else "esconderse", "cd": 0.0})
+	rows.append({"key": "H", "label": "salir (hambre y sed siguen)" if bool(pl.get("hidden", false)) else "esconderse", "cd": 0.0})
 	rows.append({"key": "B", "label": "tienda (1-3 comprar)", "cd": 0.0})
 	return rows
 
@@ -112,22 +113,13 @@ static func weather_line(state: Dictionary) -> String:
 
 
 static func prompt_line(state: Dictionary) -> String:
-	if bool(KarmaState.player(state).get("hidden", false)):
+	var pl: Variant = KarmaState.player(state)
+	if bool(pl.get("hidden", false)):
 		return "Oculto — H salir · hambre y sed siguen drenando"
-	var px: float = float(KarmaState.px(state))
-	var py: float = float(KarmaState.py(state))
-	var hide_range: float = float(KarmaData.TUNING["hideRange"])
-	var near: Array = []
-	for r in state.get("refuges", []):
-		if KarmaUtils.dist2(float(r["x"]), float(r["y"]), px, py) <= hide_range * hide_range:
-			near.append(r)
-	var fit: Variant = null
-	for r in near:
-		if KarmaState.refuge_fits(state, r):
-			fit = r
-			break
-	if fit != null:
-		return "H esconderse (%s)" % str((fit as Dictionary)["type"])
-	if not near.is_empty():
+	var probe: Dictionary = KarmaState.probe_refuges(state, float(pl["x"]), float(pl["y"]),
+		float(KarmaData.TUNING["hideRange"]))
+	if probe["fit"] != null:
+		return "H esconderse (%s)" % str((probe["fit"] as Dictionary)["type"])
+	if bool(probe["near"]):
 		return "No cabes aquí (tamaño %d)" % KarmaState.eff_size(state)
 	return ""

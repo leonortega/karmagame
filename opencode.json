@@ -7,8 +7,21 @@
     },
     "godot-mcp-toolkit": {
       "type": "local",
-      "command": ["cmd", "/c", "npx", "-y", "@npgamedev/godot-mcp-server"]
+      "command": ["cmd", "/c", "npx", "-y", "@npgamedev/godot-mcp-server@1.1.0"],
+      "environment": {
+        "GODOT_MCP_CONFIG_VERSION": "1",
+        "npm_config_prefer_offline": "true"
+      }
     }
   },
-  "plugin": ["opencode-godot-toolkit"]
+  "skills": {
+    "paths": [".opencode/node_modules/opencode-godot-toolkit/skills"]
+  },
+  "instructions": [".opencode/node_modules/opencode-godot-toolkit/rules/godot.md"],
+  "lsp": {
+    "gdscript": {
+      "command": ["node", ".opencode/node_modules/opencode-godot-toolkit/dist/godot-lsp-bridge.js"],
+      "extensions": [".gd"]
+    }
+  }
 }

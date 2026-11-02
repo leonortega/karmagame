@@ -156,9 +156,9 @@ func test_zorro_does_not_hunt_distant_oruga() -> void:
 
 
 func test_lobo_does_not_begin_hunt_on_t1_player() -> void:
-	var s := KarmaState.blank_state("raton", 0.0, 0.0)
-	KarmaState.player(s)["x"] = 500.0
-	KarmaState.player(s)["y"] = 500.0
+	# _t1_scene possesses a raton body at (500, 500): the hunter must size up
+	# that T1 player and stay off hunt.
+	var s := _t1_scene(false)
 	var lobo := KarmaState.spawn_fauna(s, "lobo", 650.0, 500.0)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 20261023

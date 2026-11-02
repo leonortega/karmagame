@@ -82,7 +82,7 @@ func test_thirst_acts_below_personal_line_when_thirstier() -> void:
 	a["caution_water"] = 1.0
 	a["sed"] = 50.0
 	a["hambre"] = 90.0
-	(s["waters"] as Array).append({"x": 520.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	(s["waters"] as Array).append({"x": 520.0, "y": 500.0, "r": 20.0, "kind": "charco", "level": 1.0})
 	assert_bool(KarmaAI.ai_thirst(s, a, 0.1)).is_true()
 	assert_bool(float(a["sed"]) > 50.0).is_true()
 
@@ -93,7 +93,7 @@ func test_thirst_ignores_above_personal_line() -> void:
 	a["caution_water"] = 0.0
 	a["sed"] = 50.0
 	a["hambre"] = 90.0
-	(s["waters"] as Array).append({"x": 520.0, "y": 500.0, "r": 20.0, "kind": "charco"})
+	(s["waters"] as Array).append({"x": 520.0, "y": 500.0, "r": 20.0, "kind": "charco", "level": 1.0})
 	assert_bool(KarmaAI.ai_thirst(s, a, 0.1)).is_false()
 	assert_float(float(a["sed"])).is_equal(50.0)
 

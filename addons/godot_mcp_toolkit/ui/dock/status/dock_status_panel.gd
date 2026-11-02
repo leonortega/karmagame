@@ -21,6 +21,7 @@ extends VBoxContainer
 
 const Modules := preload("res://addons/godot_mcp_toolkit/core/modules.gd")
 const RegistryClient = Modules.RegistryClient
+const DockThemeOverride = Modules.DockThemeOverride
 
 # Shared label colors: amber for any warning state, gray for idle/informational.
 const _WARN_COLOR := Color(1.0, 0.8, 0.2)
@@ -46,6 +47,10 @@ var _lsp_label: Label = null
 # port-config error. Repainted by refresh() from the server's get_port_warning();
 # hidden until active.
 var _port_warning_label: Label = null
+# Below-floor warning — the connected MCP server or this toolkit is below the other's
+# declared floor. Repainted by refresh_compat() from the server's get_peer_compat();
+# hidden otherwise.
+var _compat_label: Label = null
 # First tick (ms) at which the current playtest was seen running — drives the
 # runtime label's waiting→not-reachable escalation. -1 while no playtest runs.
 var _playtest_seen_ms: int = -1
@@ -75,6 +80,15 @@ func _init(server: Node) -> void:
 	_port_warning_label.add_theme_font_size_override("font_size", 12)
 	_port_warning_label.visible = false
 	add_child(_port_warning_label)
+
+	# Below-floor warning — also under the status row: the connection works, but one
+	# side needs updating or pinning, and the console line is easy to miss.
+	_compat_label = Label.new()
+	_compat_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_compat_label.add_theme_color_override("font_color", _WARN_COLOR)
+	_compat_label.add_theme_font_size_override("font_size", 12)
+	_compat_label.visible = false
+	add_child(_compat_label)
 
 	# The .mcp.json warning panel is inserted here (index 1) by the dock via
 	# insert_warning_panel(), so it sits between the status row and the labels
@@ -139,8 +153,23 @@ func refresh() -> void:
 	_update_port_warning()
 	var count: int = _server.get_authed_peer_count()
 	_peer_label.text = "%d peer%s" % [count, "" if count == 1 else "s"]
+	refresh_compat()
 	refresh_runtime()
 	refresh_lsp()
+
+
+## Show the below-floor warning while the connected MCP server or this toolkit is
+## below the other's declared floor, from the server's get_peer_compat(); hide it
+## otherwise. The dock routes server.compat_status_changed here.
+func refresh_compat() -> void:
+	if _compat_label == null:
+		return
+	var compat: Dictionary = {}
+	if _server != null and _server.has_method("get_peer_compat"):
+		compat = _server.get_peer_compat()
+	var below_floor := str(compat.get("state", "")).ends_with("_below_floor")
+	_compat_label.visible = below_floor
+	_compat_label.text = "⚠️ " + str(compat.get("message", "")) if below_floor else ""
 
 
 ## Repaint the runtime label from the playtest/runtime-port state. Called on the
@@ -158,22 +187,22 @@ func refresh_runtime() -> void:
 		var rt_port := RegistryClient.get_runtime_port()
 		if rt_port > 0:
 			_runtime_label.text = "Runtime: listening on 127.0.0.1:%d" % rt_port
-			_runtime_label.add_theme_color_override("font_color", Color(0.5, 1.0, 0.5))
+			DockThemeOverride.set_color(_runtime_label, "font_color", Color(0.5, 1.0, 0.5))
 		elif Time.get_ticks_msec() - _playtest_seen_ms > _RUNTIME_REACH_GRACE_MS:
 			_runtime_label.text = "Runtime: not reachable — check the game console"
-			_runtime_label.add_theme_color_override("font_color", _WARN_COLOR)
+			DockThemeOverride.set_color(_runtime_label, "font_color", _WARN_COLOR)
 		else:
 			_runtime_label.text = "Runtime: game running, waiting for port..."
-			_runtime_label.add_theme_color_override("font_color", _WARN_COLOR)
+			DockThemeOverride.set_color(_runtime_label, "font_color", _WARN_COLOR)
 	else:
 		_playtest_seen_ms = -1
 		_runtime_label.text = "Runtime: not running (start playtest with F5)"
-		_runtime_label.add_theme_color_override("font_color", _IDLE_COLOR)
+		DockThemeOverride.set_color(_runtime_label, "font_color", _IDLE_COLOR)
 
 
 ## LSP status indicator. The MCP server reports the authoritative verdict
 ## (editor.set_lsp_status) — the editor can't read its own LSP bind status, and
-## in-engine cross-process liveness is unreliable on Windows, so the dock renders
+## the engine cannot tell whether another editor process is alive, so the dock renders
 ## what the server determined. Falls back to the configured (published) endpoint
 ## until an MCP server connects. The dock routes server.lsp_status_changed here.
 func refresh_lsp() -> void:
@@ -202,7 +231,8 @@ func refresh_lsp() -> void:
 				_lsp_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2))
 				_lsp_label.tooltip_text = str(st.get("detail", "GDScript LSP not reachable."))
 		return
-	# No server has reported yet — show the configured (published) endpoint.
+	# No verdict for the current endpoint (none reported yet, or the endpoint setting
+	# changed since the last report) — show the configured (published) endpoint.
 	var ep := RegistryClient.get_lsp_endpoint()
 	if ep.is_empty():
 		_lsp_label.text = "LSP: —"

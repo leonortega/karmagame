@@ -58,8 +58,8 @@ func test_prime_speed_is_base_speed() -> void:
 
 
 func test_frail_raton_slower_than_prime() -> void:
-	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
-	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
+	var prime := _with_player()
+	var frail := _with_player()
 	KarmaState.player(frail)["edad"] = 140.0
 	assert_bool(KarmaState.eff_speed(frail) < KarmaState.eff_speed(prime)).is_true()
 	assert_bool(abs(KarmaState.eff_speed(frail) - float(KarmaData.SPECIES["raton"]["speed"]) * 0.55) < 1.0).is_true()
@@ -72,14 +72,14 @@ func test_prime_zorro_chase_still_closes_on_prime_raton() -> void:
 
 
 func test_frail_regenerates_less_than_prime() -> void:
-	var prime := KarmaState.blank_state("raton", 0.0, 0.0)
-	var frail := KarmaState.blank_state("raton", 0.0, 0.0)
+	var prime := _with_player()
+	var frail := _with_player()
 	KarmaState.player(prime)["hp"] = 50.0
 	KarmaState.player(frail)["hp"] = 50.0
 	KarmaState.player(frail)["edad"] = 140.0
 	var max_hp := KarmaState.eff_max_hp_for(prime)
-	KarmaUtils.update_needs(prime, max_hp, 10.0)
-	KarmaUtils.update_needs(frail, max_hp, 10.0)
+	KarmaUtils.update_needs(KarmaState.player(prime), max_hp, 10.0)
+	KarmaUtils.update_needs(KarmaState.player(frail), max_hp, 10.0)
 	assert_bool(float(KarmaState.player(frail)["hp"]) < float(KarmaState.player(prime)["hp"])).is_true()
 	assert_bool(float(KarmaState.player(prime)["hp"]) > 50.0).is_true()
 
@@ -109,14 +109,49 @@ func test_natural_death_leaves_carrion() -> void:
 	assert_int((s["carrions"] as Array).size()).is_equal(1)
 
 
+# blank_state has no possessed body (new_run possesses one); tests that drive
+# the player through KarmaGame must add the body themselves.
+func _with_player(species := "raton") -> Dictionary:
+	var s := KarmaState.blank_state(species, 0.0, 0.0)
+	var body := KarmaState.mk_agent({"speciesKey": species, "hp": float(KarmaData.SPECIES[species]["maxHp"]), "x": 500.0, "y": 500.0})
+	body["brain"] = "PLAYER"
+	body["cam"] = {"x": 0.0, "y": 0.0}
+	(s["agents"] as Array).append(body)
+	return s
+
+
 func test_player_old_age_judged_vejez() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
-	var s := KarmaState.blank_state("raton", 0.0, 0.0)
+	var s := _with_player()
 	KarmaState.player(s)["edad"] = 200.0
 	KarmaGame.update(s, 0.001, rng)
 	assert_bool(bool(s["dead"])).is_true()
 	assert_str(str(s["judgeReason"])).contains("Vejez")
+
+
+func test_player_death_keeps_possessed_body() -> void:
+	# The death screen reads player(state); despawning the body breaks every
+	# caller that assumes a possessed body exists.
+	var s := _with_player()
+	var body: Dictionary = KarmaState.player(s)
+	body["hp"] = 0.0
+	body["hambre"] = 0.0
+	body["sed"] = 0.0
+	KarmaGame.update_agents(s, 0.1)
+	assert_bool((s["agents"] as Array).has(body)).is_true()
+
+
+func test_player_death_fires_judgment() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var s := _with_player()
+	var body: Dictionary = KarmaState.player(s)
+	body["hp"] = 0.0
+	body["hambre"] = 0.0
+	body["sed"] = 0.0
+	KarmaGame.update(s, 0.016, rng)
+	assert_bool(bool(s["dead"])).is_true()
 
 
 func test_scaled_damage_prime_pair_is_base() -> void:
@@ -153,19 +188,19 @@ func test_predator_dict_feeds_scaled_damage() -> void:
 	var s := KarmaState.blank_state("oruga", 0.0, 0.0)
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	p["edad"] = 285.0
-	KarmaState.player(s)["edad"] = 0.0
+	s["edad"] = 0.0
 	assert_bool(KarmaData.scaled_damage(28.0, p, s) < 28.0).is_true()
 
 
 func test_contact_bite_prime_pair_uses_base() -> void:
-	var s := KarmaState.blank_state("raton", 0.0, 0.0)
+	var s := _with_player("raton")
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
 	assert_bool(abs(float(KarmaState.player(s)["hp"]) - (100.0 - 28.0)) < 0.01).is_true()
 
 
 func test_contact_bite_frail_victim_takes_more() -> void:
-	var s := KarmaState.blank_state("raton", 0.0, 0.0)
+	var s := _with_player("raton")
 	KarmaState.player(s)["edad"] = 120.0
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
@@ -173,7 +208,7 @@ func test_contact_bite_frail_victim_takes_more() -> void:
 
 
 func test_contact_bite_old_attacker_deals_less() -> void:
-	var s := KarmaState.blank_state("raton", 0.0, 0.0)
+	var s := _with_player("raton")
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	p["edad"] = 285.0
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
@@ -181,7 +216,7 @@ func test_contact_bite_old_attacker_deals_less() -> void:
 
 
 func test_contact_curl_halves_scaled_result() -> void:
-	var s := KarmaState.blank_state("oruga", 0.0, 0.0)
+	var s := _with_player("oruga")
 	KarmaState.player(s)["stillT"] = 1.0
 	KarmaState.player(s)["curlCd"] = 0.0
 	KarmaState.player(s)["moved"] = false
@@ -191,7 +226,7 @@ func test_contact_curl_halves_scaled_result() -> void:
 
 
 func test_contact_bristle_reflects_scaled_result() -> void:
-	var s := KarmaState.blank_state("oruga", 0.0, 0.0)
+	var s := _with_player("oruga")
 	KarmaState.player(s)["bristled"] = true
 	var p := KarmaPredators.mk_predator(s, "zorro", 0.0, 0.0, 1)
 	KarmaPredators.strike_contact(s, p, KarmaData.PRED["zorro"], 0.0)
@@ -202,7 +237,7 @@ func test_contact_bristle_reflects_scaled_result() -> void:
 # Failed kill verbs wound, burn cooldown, and open a decision-gated escape window.
 
 func _predator_prey_setup(species: String, edad: float, prey_hp: float, prey_species: String = "") -> Array:
-	var s := KarmaState.blank_state(species, 0.0, 0.0)
+	var s := KarmaState.blank_state(prey_species if prey_species != "" else species, 0.0, 0.0)
 	var z := KarmaState.spawn_fauna(s, species, 500.0, 500.0)
 	z["edad"] = edad
 	z["hp"] = 50.0
@@ -413,8 +448,8 @@ func test_frail_topo_tremor_cd_longer_than_prime() -> void:
 
 
 func test_frail_halcon_thermal_lasts_longer_than_prime() -> void:
-	var prime := KarmaState.blank_state("halcon", 0.0, 0.0)
-	var frail := KarmaState.blank_state("halcon", 0.0, 0.0)
+	var prime := _with_player("halcon")
+	var frail := _with_player("halcon")
 	KarmaState.player(frail)["edad"] = 300.0
 	KarmaState.spawn_fauna(prime, "raton", float(KarmaState.px(prime)) + 10.0, float(KarmaState.py(prime)))
 	KarmaState.spawn_fauna(frail, "raton", float(KarmaState.px(frail)) + 10.0, float(KarmaState.py(frail)))

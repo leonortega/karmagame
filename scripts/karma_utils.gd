@@ -26,6 +26,22 @@ static func mk_patch(kind: String, x: float, y: float, amount: int, extra: Dicti
 	return p
 
 
+static func mk_refuge(type: String, x: float, y: float, extra: Dictionary = {}) -> Dictionary:
+	var r: Dictionary = {"type": type, "x": x, "y": y, "dug": false}
+	match type:
+		"burrow-M":
+			r["maxSize"] = 2
+			r["climbOnly"] = false
+		"leafroll":
+			r["maxSize"] = 1
+			r["orugaOnly"] = true
+		_:
+			r["maxSize"] = 0
+	for k in extra:
+		r[k] = extra[k]
+	return r
+
+
 static func area_scale() -> float:
 	return float(KarmaData.WORLD["w"]) * float(KarmaData.WORLD["h"]) / float(KarmaData.BASE_AREA)
 
@@ -44,7 +60,7 @@ static func dist2(ax: float, ay: float, bx: float, by: float) -> float:
 static func nearest_from(ax: float, ay: float, list: Array, max_d: float) -> Variant:
 	var best: Variant = null
 	var bd: float = max_d * max_d
-	for o in list:
+	for o: Variant in list:
 		if o == null:
 			continue
 		var dx: float = ax - float(o["x"])
@@ -59,7 +75,7 @@ static func nearest_from(ax: float, ay: float, list: Array, max_d: float) -> Var
 static func nearest_hunter_in_fears(ax: float, ay: float, list: Array, fears: Array, max_d: float) -> Variant:
 	var best: Variant = null
 	var bd: float = max_d * max_d
-	for o in list:
+	for o: Variant in list:
 		if o == null:
 			continue
 		if not str(o.get("speciesKey", "")) in fears:
@@ -86,7 +102,7 @@ static func thirstier(t: Dictionary) -> bool:
 static func nearest_water_for(state: Dictionary, ax: float, ay: float, max_d: float) -> Variant:
 	var best: Variant = null
 	var bd: float = max_d
-	for w in state.get("waters", []):
+	for w: Dictionary in state.get("waters", []):
 		if float(w.get("level", 1.0)) <= 0.0:
 			continue
 		var r: float = float(w["r"])
@@ -103,7 +119,7 @@ static func nearest_water_for(state: Dictionary, ax: float, ay: float, max_d: fl
 
 
 static func inside_water(state: Dictionary, x: float, y: float, margin: float = 0.0) -> bool:
-	for w in state.get("waters", []):
+	for w: Dictionary in state.get("waters", []):
 		var dx: float = x - float(w["x"])
 		var dy: float = y - float(w["y"])
 		var r: float = float(w["r"]) + margin
@@ -115,7 +131,7 @@ static func inside_water(state: Dictionary, x: float, y: float, margin: float = 
 static func nudge_dry(state: Dictionary, pt: Dictionary, dry_margin: float = 0.0) -> Dictionary:
 	for _pass in 10:
 		var moved: bool = false
-		for w in state.get("waters", []):
+		for w: Dictionary in state.get("waters", []):
 			var dx: float = float(pt["x"]) - float(w["x"])
 			var dy: float = float(pt["y"]) - float(w["y"])
 			var d: float = Vector2(dx, dy).length()
@@ -188,21 +204,21 @@ static func solid_radius(refuge_type: String) -> float:
 
 static func collect_solids(state: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	for r in state.get("refuges", []):
+	for r: Dictionary in state.get("refuges", []):
 		# Scent marks, threads, shadows, and wallows warn or snare; they never block.
 		if str(r.get("type", "")) in ["scent-post", "silk-thread", "shadow-disc", "wallow", "foam-ring"]:
 			continue
 		out.append({"x": r["x"], "y": r["y"], "r": solid_radius(str(r["type"]))})
-	for key in KarmaState.FLORA_KEYS:
+	for key: String in KarmaState.FLORA_KEYS:
 		if key == "clumps":
 			continue
 		var extra: float = 2.0 if key == "oaks" else 0.0
-		for p in state.get(key, []):
+		for p: Dictionary in state.get(key, []):
 			if bool(p.get("alive", false)) and int(p.get("amount", 0)) > 0:
 				out.append({"x": p["x"], "y": p["y"], "r": float(KarmaData.TUNING["solidPlant"]) + extra})
-	for k in state.get("rocks", []):
+	for k: Dictionary in state.get("rocks", []):
 		out.append({"x": k["x"], "y": k["y"], "r": float(KarmaData.TUNING["solidRock"]), "rock": true})
-	for w in state.get("waters", []):
+	for w: Dictionary in state.get("waters", []):
 		out.append({"x": w["x"], "y": w["y"], "r": float(w["r"]), "water": true})
 	return out
 
@@ -217,7 +233,7 @@ static func skips_water(species_key: String, grounded: bool) -> bool:
 static func resolve_collisions(state: Dictionary, pos: Vector2, radius: float, skip_rock: bool, skip_water: bool, solids: Array = []) -> Vector2:
 	var list: Array = solids if not solids.is_empty() else collect_solids(state)
 	var p: Vector2 = pos
-	for s in list:
+	for s: Dictionary in list:
 		if skip_rock and bool(s.get("rock", false)):
 			continue
 		if skip_water and bool(s.get("water", false)):
@@ -237,7 +253,7 @@ static func los_blocked(state: Dictionary, fx: float, fy: float, tx: float, ty: 
 	if flying:
 		return false
 	var list: Array = solids if not solids.is_empty() else collect_solids(state)
-	for s in list:
+	for s: Dictionary in list:
 		if bool(s.get("water", false)):
 			continue
 		if float(s["r"]) < float(KarmaData.TUNING["solidRefuge"]):

@@ -50,9 +50,9 @@ const FOODDEF := {
 const PRED := {
 	"zorro": {"name": "Zorro", "speed": 100.0, "perception": 230.0, "damage": 28.0, "body": 26.0, "size": 3,
 		"preyTiers": [0, 1], "preyMates": true, "snapOnly": true, "fears": ["lobo"], "color": "#c8532a"},
-	"lobo": {"name": "Lobo", "speed": 150.0, "perception": 280.0, "damage": 35.0, "body": 32.0, "size": 4,
+	"lobo": {"name": "Lobo", "speed": 150.0, "perception": 280.0, "damage": 38.0, "body": 32.0, "size": 4,
 		"preyTiers": [2], "fears": [], "color": "#4a3b52"},
-	"halcon": {"name": "Halcón", "speed": 215.0, "perception": 340.0, "damage": 15.0, "body": 18.0, "size": 3,
+	"halcon": {"name": "Halcón", "speed": 215.0, "perception": 340.0, "damage": 30.0, "body": 18.0, "size": 3,
 		"preySizes": [1, 2], "fears": [], "color": "#ce93d8"},
 }
 const PRED_FALLBACK := {"name": "Depredador", "speed": 150.0, "perception": 250.0, "damage": 20.0,

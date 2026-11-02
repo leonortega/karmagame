@@ -9,9 +9,9 @@ static func mk_predator(state: Dictionary, species_key: String, x: float, y: flo
 	var speed: float = float(t["speed"]) + (25.0 if player_tier == 0 and species_key == "zorro" else 0.0)
 	return {"speciesKey": species_key, "brain": "AI",
 		"hp": float(KarmaData.SPECIES[species_key]["maxHp"]), "hambre": 100.0, "sed": 100.0, "edad": 0.0,
-		"x": x, "y": y, "wx": x, "wy": y, "speed": speed,
+		"x": x, "y": y, "speed": speed,
 		"mode": "wander", "campT": 0.0, "huntT": 0.0, "restT": 0.0, "satedT": 0.0,
-		"fleeLatch": false, "huntingPlayer": false, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": [],
+		"huntingPlayer": false, "karma": 0.0, "pa": 0.0, "owned": {}, "lifeLog": [],
 		"caution_food": randf(), "caution_water": randf()}
 
 
@@ -20,7 +20,10 @@ static func eff_speed(p: Dictionary) -> float:
 	return float(p.get("speed", 100.0)) * KarmaData.speed_mult_for(str(p.get("speciesKey", "raton")), float(p.get("edad", 0.0)))
 
 
-static func can_eat(actor_species: String, target_species: String, dist: float) -> bool:
+# Species-level trophic rule, without geometry: could actor_species ever eat
+# target_species? Split out so scans can reject a pair before paying for a
+# distance computation (is_hunted runs this for every agent pair, every tick).
+static func can_eat_species(actor_species: String, target_species: String) -> bool:
 	var t: Variant = KarmaData.PRED.get(actor_species, null)
 	var v: Variant = KarmaData.SPECIES.get(target_species, null)
 	if t == null or v == null:
@@ -37,9 +40,20 @@ static func can_eat(actor_species: String, target_species: String, dist: float) 
 				return false
 		else:
 			return false
-	# Optimal foraging: a size gap of 2+ only pays off at touching range, and
-	# only for species whose row says so (zorro snap). Halcon keeps its reach.
-	if bool((t as Dictionary).get("snapOnly", false)) and float((t as Dictionary)["size"]) - float(v["size"]) >= 2.0 and dist > float(KarmaData.TUNING["snapRange"]):
+	return true
+
+
+# Optimal foraging: a size gap of 2+ only pays off at touching range, and
+# only for species whose row says so (zorro snap). Halcon keeps its reach.
+static func _snap_limited(actor_species: String, target_species: String) -> bool:
+	var t: Dictionary = KarmaData.PRED[actor_species] as Dictionary
+	return bool(t.get("snapOnly", false)) and float(t["size"]) - float((KarmaData.SPECIES[target_species] as Dictionary)["size"]) >= 2.0
+
+
+static func can_eat(actor_species: String, target_species: String, dist: float) -> bool:
+	if not can_eat_species(actor_species, target_species):
+		return false
+	if _snap_limited(actor_species, target_species) and dist > float(KarmaData.TUNING["snapRange"]):
 		return false
 	return true
 
@@ -47,8 +61,14 @@ static func can_eat(actor_species: String, target_species: String, dist: float) 
 static func can_eat_agent(actor: Dictionary, target: Dictionary) -> bool:
 	if actor == target:
 		return false
+	var ak: String = str(actor.get("speciesKey", ""))
+	var tk: String = str(target.get("speciesKey", ""))
+	if not can_eat_species(ak, tk):
+		return false
+	if not _snap_limited(ak, tk):
+		return true
 	var d: float = Vector2(float(actor["x"]), float(actor["y"])).distance_to(Vector2(float(target["x"]), float(target["y"])))
-	return can_eat(str(actor.get("speciesKey", "")), str(target.get("speciesKey", "")), d)
+	return can_eat(ak, tk, d)
 
 
 static func threatens_mate(actor: Dictionary, mate: Dictionary) -> bool:
@@ -69,15 +89,17 @@ static func camouflaged_state(state: Dictionary) -> bool:
 
 
 static func canopy_blind(state: Dictionary, pred: Dictionary) -> bool:
-	if not bool(KarmaState.player(state).get("hidden", false)):
+	var pl: Variant = KarmaState.player(state)
+	if not bool(pl.get("hidden", false)):
 		return false
-	if str((KarmaState.player(state).get("hideRef", {}) as Dictionary).get("type", "")) == "old-oak" and str(pred.get("speciesKey", "")) == "halcon":
+	if str((pl.get("hideRef", {}) as Dictionary).get("type", "")) == "old-oak" and str(pred.get("speciesKey", "")) == "halcon":
 		return false
 	return true
 
 
 static func curled_state(state: Dictionary) -> bool:
-	return str(state["speciesKey"]) == "oruga" and float(KarmaState.player(state).get("stillT", 0.0)) >= 0.01 and float(KarmaState.player(state).get("curlCd", 0.0)) <= 0.0 and not bool(KarmaState.player(state).get("moved", false))
+	var pl: Variant = KarmaState.player(state)
+	return str(state["speciesKey"]) == "oruga" and float(pl.get("stillT", 0.0)) >= 0.01 and float(pl.get("curlCd", 0.0)) <= 0.0 and not bool(pl.get("moved", false))
 
 
 static func nearest_rival(state: Dictionary, a: Dictionary, rnge: float) -> Variant:
@@ -96,12 +118,14 @@ static func hunt_player(state: Dictionary, p: Dictionary, dt: float) -> void:
 	# A predator bites the possessed body on contact; the species AI owns the chase.
 	if not KarmaData.PRED.has(str(p.get("speciesKey", ""))):
 		return
+	# Playerless worlds (fauna-only simulations) have nobody to bite.
+	if KarmaState.player(state) == null:
+		return
 	var t: Dictionary = KarmaData.PRED.get(str(p.get("speciesKey", "")), KarmaData.PRED_FALLBACK)
 	if camp_step(state, p, dt):
 		return
-	var victim: Dictionary = KarmaState.player(state)
 	var dp: float = Vector2(KarmaState.px(state), KarmaState.py(state)).distance_to(Vector2(float(p["x"]), float(p["y"])))
-	if camouflaged_state(KarmaState.player(state)) and str(p.get("speciesKey", "")) == "zorro":
+	if camouflaged_state(state) and str(p.get("speciesKey", "")) == "zorro":
 		return
 	if not player_edible_for(state, p, dp):
 		return
@@ -126,7 +150,7 @@ static func camp_step(state: Dictionary, p: Dictionary, dt: float) -> bool:
 				p["y"] = float(p["y"]) + dy / dd * eff_speed(p) * dt
 		return true
 	if bool(victim.get("hidden", false)) and bool(p.get("huntingPlayer", false)):
-		if not canopy_blind(victim, p):
+		if not canopy_blind(state, p):
 			return false
 		p["mode"] = "camp"
 		p["campT"] = float(KarmaData.TUNING["campTime"])
@@ -137,6 +161,8 @@ static func camp_step(state: Dictionary, p: Dictionary, dt: float) -> bool:
 
 static func strike_contact(state: Dictionary, p: Dictionary, t: Dictionary, dp: float) -> void:
 	var victim: Dictionary = KarmaState.player(state)
+	if victim == null:
+		return
 	if bool(victim.get("hidden", false)) or dp >= float(state["sp"]["radius"]) + float(t["body"]) / 2.0 or float(victim.get("invuln", 0.0)) > 0.0:
 		return
 	var dmg: float = KarmaData.scaled_damage(float(t["damage"]), p, victim)
@@ -146,7 +172,7 @@ static func strike_contact(state: Dictionary, p: Dictionary, t: Dictionary, dp: 
 		victim["invuln"] = float(KarmaData.TUNING["predatorInvuln"])
 		KarmaState.add_log(state, null, "¡Espinas! El zarpazo se revierte")
 		return
-	if curled_state(victim):
+	if curled_state(state):
 		dmg = ceil(dmg / 2.0)
 		victim["curlCd"] = float(KarmaData.TUNING["curlCd"])
 	victim["hp"] = float(victim["hp"]) - dmg

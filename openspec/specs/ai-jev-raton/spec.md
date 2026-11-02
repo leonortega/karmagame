@@ -23,8 +23,7 @@ The system SHALL obtain each AI raton's macro intent by sending one batched Nano
 #### Scenario: Player parity of effects
 
 - **WHEN** the ranked winner is eat on an edible patch within eat range
-- **THEN** the patch loses one fruit and the raton gains the same HP as a player eat
-
+- **THEN** the patch is fully consumed in one bite and the raton gains the same HP as a player eat
 ### Requirement: Micro steering never waits for the API
 
 The system SHALL steer every AI raton every physics tick toward its current intent, eat contact patches, trek to distant food when hungry, drink water within drink range, hide/flee when hunted, and tick needs and cooldowns regardless of pending or failed macro answers. Wander intent SHALL fall through to the social-verb path (groom/share) when not hungry so no karma behavior is lost.

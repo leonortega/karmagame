@@ -14,13 +14,19 @@ const DockSectionCard := preload("res://addons/godot_mcp_toolkit/ui/dock/dock_se
 const DockStatusPanel := preload("res://addons/godot_mcp_toolkit/ui/dock/status/dock_status_panel.gd")
 const DockLimitsSection := preload("res://addons/godot_mcp_toolkit/ui/dock/limits/dock_limits_section.gd")
 const DockUnfocusedControl := preload("res://addons/godot_mcp_toolkit/ui/dock/limits/dock_unfocused_control.gd")
+const DockOptionalStepsControl := preload("res://addons/godot_mcp_toolkit/ui/dock/limits/dock_optional_steps_control.gd")
 const DockAuditSection := preload("res://addons/godot_mcp_toolkit/ui/dock/security/dock_audit_section.gd")
 const DockMcpJsonPanel := preload("res://addons/godot_mcp_toolkit/ui/dock/mcp/dock_mcp_json_panel.gd")
+const DockUpdateBadge := preload("res://addons/godot_mcp_toolkit/ui/dock/update/dock_update_badge.gd")
+const UpdateCheckRunner = Modules.UpdateCheckRunner
 
 # Toast severity constants (match EditorToaster.Severity).
 const _TOAST_INFO := 0
 const _TOAST_WARNING := 1
 const _TOAST_ERROR := 2
+
+const _SETUP_WIZARD_TOOLTIP := (
+	"Walk through every setup step again. Nothing changes until you press a button inside a step.")
 
 var _server: Node = null
 var _audit_path: String = ""
@@ -29,7 +35,7 @@ var _audit_path: String = ""
 var _status_panel: DockStatusPanel = null
 
 # .mcp.json health surface — shared missing/malformed/read-only warning panel +
-# the tri-mode footer button + read-only cache + write/open/fix flow (own sub-panel).
+# the write-or-open footer button + read-only cache + write/open flow (own sub-panel).
 var _mcp_json_panel: DockMcpJsonPanel = null
 
 # Unfocused-responsive mode — opt-in toggle + 3-state indicator (own sub-panel).
@@ -47,18 +53,29 @@ var _nodejs_status_warning: Label = null
 # onboarding wizard do; it never owns these behaviors.
 var _write_flow: MCPJsonWriteFlow = null
 var _dialog_presenter: ToolkitDialogPresenter = null
+# The composer-owned update check; the dock only hosts its badge.
+var _update_check: UpdateCheckRunner = null
+# Starts a setup-wizard run for the footer's Setup Wizard button. The dock does not
+# own the wizard: the plugin does, and the composer passes this in.
+var _start_setup_wizard: Callable = Callable()
 
 # Lightweight timer for runtime-status polling during playtests.
 var _runtime_timer: Timer = null
 
 
+## Binds the dock to the server and the composer-owned collaborators.
+## [param on_setup_wizard_requested] is called, with no arguments, when the user
+## presses the footer's Setup Wizard button.
 func bind(
 		server: Node, audit_path: String,
-		write_flow: MCPJsonWriteFlow, dialog_presenter: ToolkitDialogPresenter) -> void:
+		write_flow: MCPJsonWriteFlow, dialog_presenter: ToolkitDialogPresenter,
+		update_check: UpdateCheckRunner, on_setup_wizard_requested: Callable) -> void:
 	_server = server
 	_audit_path = audit_path
 	_write_flow = write_flow
 	_dialog_presenter = dialog_presenter
+	_update_check = update_check
+	_start_setup_wizard = on_setup_wizard_requested
 	_server.client_connected.connect(_on_client_connected)
 	_server.client_disconnected.connect(_on_client_disconnected)
 	_server.command_received.connect(_on_command_received)
@@ -68,6 +85,9 @@ func bind(
 	# Listen state (fresh bind, pinned/band conflict, port-config error) — repaint
 	# the instant the server's state changes, in addition to the initial pull below.
 	_server.port_status_changed.connect(_on_port_status_changed)
+	# The connected server's floor verdict — show or clear the below-floor line as
+	# soon as a peer authenticates or the last one leaves.
+	_server.compat_status_changed.connect(_on_compat_status_changed)
 	_refresh_status()
 
 
@@ -95,9 +115,11 @@ func _build_ui() -> void:
 	var scale := EditorInterface.get_editor_scale()
 	add_theme_constant_override("separation", int(4 * scale))
 
+	# == Update badge (first child, hidden unless a newer version is published) ==
+	add_child(DockUpdateBadge.new(_update_check, Callable(self, "_toast")))
+
 	# == Status section (compact, pinned at top) ==============================
 	var status_section := DockSectionCard.make_section("Server Status")
-	status_section.size_flags_vertical = 0  # fixed height
 	add_child(status_section)
 	var sc: VBoxContainer = status_section.get_meta("content")
 
@@ -107,7 +129,7 @@ func _build_ui() -> void:
 	sc.add_child(_status_panel)
 
 	# .mcp.json health panel — the shared missing/malformed/read-only warning sits
-	# right after the server status row (prominent); its tri-mode button lives in
+	# right after the server status row (prominent); its write-or-open button lives in
 	# the footer (placement = orchestrator) but is driven by this panel (meaning).
 	# Create the button now so the panel can bind it; the footer positions it below.
 	# The warning panel is hosted inside the status panel (between the status row and
@@ -116,6 +138,11 @@ func _build_ui() -> void:
 	mcp_json_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_mcp_json_panel = DockMcpJsonPanel.new(mcp_json_btn, Callable(self, "_toast"), _write_flow)
 	_status_panel.insert_warning_panel(_mcp_json_panel)
+	# The Info dialog reads the badge's cached read-only state through the
+	# presenter, so the two agree. Set here, not in bind(): the panel exists only
+	# once the UI is built.
+	if _dialog_presenter != null:
+		_dialog_presenter.set_read_only_source(_mcp_json_panel.is_read_only_active)
 
 	# Node.js availability — shared detection.
 	var node_check := NodejsCheck.check()
@@ -153,11 +180,13 @@ func _build_ui() -> void:
 	_unfocused_control = DockUnfocusedControl.new(_server)
 	sc.add_child(_unfocused_control)
 
-	# == Collapsible sections (titles always visible) =========================
-	var sections_vbox := VBoxContainer.new()
-	sections_vbox.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	# The setup wizard's optional-steps setting, the other machine-wide preference
+	# here. The control owns its setting I/O and repaints itself on a change.
+	sc.add_child(DockOptionalStepsControl.new())
+
+	# == Collapsible sections (one scroll area, spare height below) ===========
+	var sections_vbox := DockSectionCard.make_scroll_area(self)
 	sections_vbox.add_theme_constant_override("separation", int(2 * scale))
-	add_child(sections_vbox)
 
 	# -- Audit Log section (collapsed by default) -----------------------------
 	# The panel owns the audit settings + view/clear buttons + the lazy log
@@ -172,6 +201,10 @@ func _build_ui() -> void:
 	limits_section.regenerate_token_requested.connect(_on_regen_token)
 	lc.add_child(limits_section)
 
+	# A dock dragged short keeps every section header in view and scrolls the
+	# open sections, while Server Status and the footer stay pinned around them.
+	DockSectionCard.apply_header_floor(sections_vbox)
+
 	# == Footer (pinned at bottom) ============================================
 	var footer := PanelContainer.new()
 	footer.add_theme_stylebox_override("panel", DockSectionCard.make_section_style())
@@ -181,30 +214,32 @@ func _build_ui() -> void:
 	var footer_row := HBoxContainer.new()
 	footer.add_child(footer_row)
 
-	var skills_btn := Button.new()
-	skills_btn.text = "Companion Skills"
-	skills_btn.tooltip_text = "Open Companion Skills folder"
-	skills_btn.pressed.connect(_open_companion_skills)
-	skills_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_row.add_child(skills_btn)
-
-	var extensions_btn := Button.new()
-	extensions_btn.text = "Extensions"
-	extensions_btn.tooltip_text = "Browse MCP Toolkit extensions"
-	extensions_btn.pressed.connect(_on_extensions_pressed)
-	extensions_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_row.add_child(extensions_btn)
+	footer_row.add_child(_make_footer_button(
+			"Companion Skills", "Open Companion Skills folder", _open_companion_skills))
+	footer_row.add_child(_make_footer_button(
+			"Extensions", "Browse MCP Toolkit extensions", _on_extensions_pressed))
 
 	# Built above (status section) so _mcp_json_panel could bind it; the footer owns
 	# only its placement. Label/tooltip/colour/action are driven by the panel.
+	mcp_json_btn.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	footer_row.add_child(mcp_json_btn)
 
-	var info_btn := Button.new()
-	info_btn.text = "Info / Help"
-	info_btn.pressed.connect(_on_info_pressed)
-	info_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	footer_row.add_child(info_btn)
+	footer_row.add_child(_make_footer_button("Info / Help", "Info / Help", _on_info_pressed))
+	footer_row.add_child(_make_footer_button(
+			"Setup Wizard", _SETUP_WIZARD_TOOLTIP, _on_setup_wizard_pressed))
 
+
+# A footer button that shares the row equally and trims its label with an ellipsis
+# when the dock is narrow, instead of widening the row. The tooltip carries the full
+# label for a trimmed button.
+func _make_footer_button(label: String, tooltip: String, on_pressed: Callable) -> Button:
+	var button := Button.new()
+	button.text = label
+	button.tooltip_text = tooltip
+	button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.pressed.connect(on_pressed)
+	return button
 
 
 # ---------------------------------------------------------------------------
@@ -251,6 +286,13 @@ func _on_command_received(method: String) -> void:
 func _on_lsp_status_changed() -> void:
 	if _status_panel != null:
 		_status_panel.refresh_lsp()
+
+
+# Floor-verdict signal — route to the status panel's below-floor line. Separate
+# handler so bind() can connect before _build_ui exists.
+func _on_compat_status_changed() -> void:
+	if _status_panel != null:
+		_status_panel.refresh_compat()
 
 
 # Listen-state signal (fresh bind / conflict raised or cleared / config error) —
@@ -329,6 +371,11 @@ func _on_extensions_pressed() -> void:
 func _on_info_pressed() -> void:
 	if _dialog_presenter != null:
 		_dialog_presenter.show_info(_server)
+
+
+func _on_setup_wizard_pressed() -> void:
+	if _start_setup_wizard.is_valid():
+		_start_setup_wizard.call()
 
 
 # ---------------------------------------------------------------------------

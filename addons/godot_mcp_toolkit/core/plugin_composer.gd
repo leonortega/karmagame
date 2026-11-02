@@ -5,8 +5,8 @@ extends RefCounted
 ##
 ## compose() builds the whole object graph (registry, server, debug bridge,
 ## command registrar, extensions, export plugin, log buffer, user-path monitor,
-## registry registration, playtest watcher, write flow + dialog presenter, dock)
-## and returns the owning Handle.
+## registry registration, playtest watcher, write flow + dialog presenter, update
+## check, dock) and returns the owning Handle.
 ## The orchestrator (plugin.gd) calls compose() once from _enter_tree, holds the
 ## Handle, drives it (poll_playtest each _process), and calls Handle.dispose()
 ## once from _exit_tree. This owns wiring, not lifecycle phases: the phase
@@ -24,21 +24,29 @@ const MCPServer := preload("res://addons/godot_mcp_toolkit/transport/mcp_server.
 const DockHost := preload("res://addons/godot_mcp_toolkit/core/dock_host.gd")
 const MCPJsonWriteFlow := preload("res://addons/godot_mcp_toolkit/ui/mcp_json_write_flow.gd")
 const ToolkitDialogPresenter := preload("res://addons/godot_mcp_toolkit/ui/toolkit_dialog_presenter.gd")
-const MCPAuth := preload("res://addons/godot_mcp_toolkit/security/auth.gd")
+const UpdateCheckRunner = Modules.UpdateCheckRunner
 const ExtensionLoader := preload("res://addons/godot_mcp_toolkit/extensions/extension_loader.gd")
 const BuiltinCommandRegistration := preload("res://addons/godot_mcp_toolkit/transport/builtin_command_registration.gd")
 const PlaytestEndDetector := preload("res://addons/godot_mcp_toolkit/core/playtest_end_detector.gd")
 const DebugBridge := preload("res://addons/godot_mcp_toolkit/transport/debug_bridge.gd")
+const ResponseLimits = Modules.ResponseLimits
 # Teardown counterpart of PlaytestCommands.register(..., debug_bridge): dispose()
-# calls PlaytestCommands.clear_debug_bridge() as the I12 reverse of that register.
+# calls PlaytestCommands.clear_debug_bridge() to undo exactly what that register set.
 const PlaytestCommands := preload("res://addons/godot_mcp_toolkit/commands/playtest/playtest_commands.gd")
 
 
 ## Composes the plugin's collaborator graph and returns the owning Handle.
-## on_user_path_changed is the orchestrator's own handler for the user-path
-## monitor's signal — injected so the handler stays on the orchestrator without
-## the composer poking a plugin private.
-static func compose(plugin: EditorPlugin, on_user_path_changed: Callable) -> Handle:
+##
+## [param plugin] is the EditorPlugin host the graph's debugger and export plugins
+## register with. [param on_user_path_changed] is the orchestrator's own handler for
+## the user-path monitor's signal, injected so the handler stays on the orchestrator
+## without the composer poking a plugin private. [param on_setup_wizard_requested] is
+## the orchestrator's handler for the dock footer's Setup Wizard button, handed to the
+## dock because the orchestrator owns the wizard. Returns the Handle that owns the
+## graph; its dispose() tears the graph down.
+static func compose(
+		plugin: EditorPlugin, on_user_path_changed: Callable,
+		on_setup_wizard_requested: Callable) -> Handle:
 	var handle := Handle.new()
 	handle._plugin = plugin
 
@@ -100,9 +108,18 @@ static func compose(plugin: EditorPlugin, on_user_path_changed: Callable) -> Han
 	handle._write_flow = write_flow
 	handle._dialog_presenter = dialog_presenter
 
+	# The update check runs whether or not the dock is shown, so it is a plugin
+	# child the dock's badge reads, never a dock behavior.
+	var update_check := UpdateCheckRunner.new()
+	update_check.name = "MCPUpdateCheck"
+	plugin.add_child(update_check)
+	handle._update_check = update_check
+
 	# -- Toolkit dock (bottom panel on ≤4.5, EditorDock on 4.6+; DockHost owns the seam) --
 	var dock: Control = preload("res://addons/godot_mcp_toolkit/ui/dock/dock.tscn").instantiate()
-	dock.bind(server, Modules.Audit.get_log_path(), write_flow, dialog_presenter)
+	dock.bind(
+			server, Modules.Audit.get_log_path(), write_flow, dialog_presenter, update_check,
+			on_setup_wizard_requested)
 	handle._dock = dock
 	handle._dock_host = DockHost.add(plugin, dock, "MCP Toolkit")
 
@@ -126,21 +143,31 @@ static func _register_in_registry(server: Node) -> void:
 	var bound_port: int = server.get_bound_port()
 	if bound_port > 0:
 		var lsp := MCPServer.resolve_lsp_endpoint()
-		RegistryClient.register(bound_port, MCPAuth.get_published_token_path(), lsp["host"], lsp["port"])
+		# The server names the token file it last wrote, so a failed re-write after
+		# a rename never publishes a file that does not hold the live token.
+		var token_path: String = str(server.get_published_token_path())
+		RegistryClient.register(bound_port, token_path, lsp["host"], lsp["port"])
 		# Deferred re-verify: concurrent editors may clobber our entry after
 		# our initial verify passes. Jittered delay ensures all editors have
 		# finished their initial registration before we re-check.
 		var _jitter := randf_range(5.0, 10.0)
 		server.get_tree().create_timer(_jitter).timeout.connect(
 			func():
+				# A plugin disable or reload inside the jitter frees the server and
+				# deregisters; re-publishing then would call a freed instance and
+				# write back an entry for an editor that has stopped serving.
+				if not is_instance_valid(server):
+					return
 				var lsp_re := MCPServer.resolve_lsp_endpoint()
-				RegistryClient.ensure_registered(bound_port, MCPAuth.get_published_token_path(), lsp_re["host"], lsp_re["port"]))
+				var token_path_re: String = str(server.get_published_token_path())
+				RegistryClient.ensure_registered(bound_port, token_path_re, lsp_re["host"], lsp_re["port"]))
 
 
 # Re-publish this editor's registry entry after the server re-writes its token to
-# a new user:// path. ensure_registered (not register) so an active playtest's
-# runtime_port/runtime_pid are preserved — otherwise Mode-B (running-game)
-# discovery dies for the rest of the session. Re-resolve the LSP endpoint at fire
+# a new user:// path. ensure_registered, not register: register's startup reap
+# deletes <hash>.runtime.json, where an active playtest's runtime_port/runtime_pid
+# live, and Mode-B (running-game) discovery would die for the rest of the
+# session. Re-resolve the LSP endpoint at fire
 # time, mirroring the startup registration, so a concurrent endpoint change isn't
 # reverted to a stale value.
 static func _republish_on_token_rewrite(server: Node, token_path: String) -> void:
@@ -161,7 +188,7 @@ static func _republish_on_token_rewrite(server: Node, token_path: String) -> voi
 ##
 ## The orchestrator reaches the collaborators it still needs post-compose via
 ## server() (menu, watcher wiring), dock() (menu), write_flow() + dialog_presenter()
-## (menu, onboarding wizard), and dock_host() (the reveal façade); the other five
+## (menu, onboarding wizard), and dock_host() (the reveal façade); the other six
 ## instances stay private and are touched only by dispose(). poll_playtest()
 ## drives the playtest watcher each _process; dispose() tears the graph down in the
 ## exact reverse order of compose() (behavior-critical ordering).
@@ -183,6 +210,7 @@ class Handle:
 	var _dock_host: Object = null  # EditorDock wrapper on 4.6+; null on ≤4.5 (control is its own handle)
 	var _write_flow: MCPJsonWriteFlow = null  # Shared .mcp.json confirm-then-write flow
 	var _dialog_presenter: ToolkitDialogPresenter = null  # Editor-global dialogs (info + catalog)
+	var _update_check: Node = null  # Update check runner, read by the dock's badge
 	var _extension_watcher: RefCounted = null  # Live hot-reload watcher (ExtensionLoader)
 	var _debug_bridge: RefCounted = null  # EditorDebuggerPlugin for debug.* commands
 	var _user_path_monitor = null  # UserPathMonitor — detects config/name changes
@@ -218,9 +246,9 @@ class Handle:
 			_playtest_end_detector.poll()
 
 	## Tear down the composed graph in reverse construction order. Behavior-critical
-	## ordering — dock → dialog presenter + write flow → user-path monitor →
+	## ordering — dock → update check → dialog presenter + write flow → user-path monitor →
 	## playtest watcher → extension watcher → debug bridge → export plugin →
-	## server+registry.
+	## server+registry → env overrides.
 	func dispose() -> void:
 		# Dock teardown. Free the CONTROL immediately (never queue_free) so its
 		# GDScript preload chain releases before ObjectDB's exit-time leak check.
@@ -244,6 +272,13 @@ class Handle:
 				_dock.free()
 			_dock = null
 			_dock_host = null
+
+		# Update check — a plugin child holding a timer and an HTTPRequest; free()
+		# it immediately for the same leak-check reason (its _exit_tree cancels the
+		# request and disconnects from ProjectSettings).
+		if _update_check != null:
+			_update_check.free()
+			_update_check = null
 
 		# Editor-global dialogs (info + extension catalog) — the presenter frees
 		# them immediately, for the same leak-check reason the dock control is
@@ -276,7 +311,8 @@ class Handle:
 				ProjectSettings.settings_changed.disconnect(_extension_watcher.on_settings_changed)
 		_extension_watcher = null
 
-		# Debugger bridge — unregister before server teardown (I12 symmetry).
+		# Debugger bridge — undo what compose() registered for it, before server
+		# teardown: the playtest commands' bridge, then the debugger plugin.
 		PlaytestCommands.clear_debug_bridge()
 		if _debug_bridge != null:
 			_debug_bridge.cleanup()
@@ -298,3 +334,8 @@ class Handle:
 			RegistryClient.deregister()
 			_server.free()
 			_server = null
+
+		# Env overrides are static state that outlives a plugin reload. With the
+		# server gone nothing pushes them any more, so drop them; the server pushes
+		# its set again once a client authenticates to the next server.
+		ResponseLimits.clear_env_overrides()

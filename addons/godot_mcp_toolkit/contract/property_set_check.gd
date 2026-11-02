@@ -6,9 +6,8 @@ extends RefCounted
 ## the target property (a wrong type), so a write can "succeed" while the value
 ## never lands — a false success that sends an LLM caller chasing a value that was
 ## never stored. This module brackets a set with before/after readbacks and reports
-## the drop. It is the single SSOT shared by every property-set path: the editor
-## node/scene handlers (via [code]commands/editor_helpers.gd[/code]) and the runtime
-## autoload's [code]runtime.set_property[/code] (via a direct preload).
+## the drop. It is the one classifier every property-set path uses, in the editor
+## and in the running game, so both sides judge a write alike.
 ##
 ## Runtime-clean by construction — it names only value types, [String] formatting,
 ## and [@GlobalScope] functions ([method @GlobalScope.type_string],
@@ -38,7 +37,9 @@ extends RefCounted
 ##       but the engine reshaped it (truncate/sanitize/clamp/normalize) so the stored
 ##       value ≠ the request; success + a warning naming property/requested/stored.
 ##   [code]{"status": "dropped", "error": String}[/code] — a silent wrong-type drop
-##       (cross-family, value unchanged, ≠ request) → the caller emits SET_FAILED.
+##       (cross-family, value unchanged, ≠ request), or an array the property refused
+##       (array readback still equal to [param before], ≠ request) → the caller emits
+##       SET_FAILED.
 static func describe_set_drop(
 	before: Variant, after: Variant, coerced: Variant, path: String,
 ) -> Dictionary:
@@ -55,6 +56,16 @@ static func describe_set_drop(
 	# Stored value equals the request → clean success (exact, int→float 5.0==5, set-to-same).
 	if _values_loosely_equal(after, coerced):
 		return {"status": "ok"}
+	# A live script instance refuses an array that does not fit an Array[T] member
+	# and keeps the old value without an error. Array onto Array is one family, so the
+	# gate below would read that refusal as a reshape. Arrays only: a scalar clamped
+	# to a bound it already held also reads back unchanged, and that write landed.
+	if typeof(coerced) == TYPE_ARRAY and typeof(before) == TYPE_ARRAY \
+			and typeof(after) == TYPE_ARRAY and after == before:
+		return {"status": "dropped", "error":
+			"property '%s' kept its value: the engine refused the array %s. " % [path,
+				_brief_set_value(coerced)]
+			+ "A typed array property (Array[T]) takes only elements of its element type."}
 	# Stored value ≠ requested. The convertible-family gate is the SINGLE arbiter of
 	# reshape-vs-drop on BOTH the changed- and unchanged-value paths:
 	#   • same family → the engine legitimately reshaped an in-family value
@@ -66,7 +77,7 @@ static func describe_set_drop(
 	#     Gating on the family (not on after == before) is what catches this
 	#     destructive-zero case that a non-zero prior exposes.
 	if before != null and _same_convertible_family(typeof(coerced), typeof(before)):
-		return {"status": "adjusted", "warning": _adjusted_warning(after, coerced, path)}
+		return {"status": "adjusted", "warning": adjusted_warning(after, coerced, path)}
 	# Cross-family → the write did not land as a real value (kept-old or zeroed).
 	return {"status": "dropped", "error":
 		"property '%s' rejected the value: expected type %s, got %s (%s). "
@@ -77,10 +88,30 @@ static func describe_set_drop(
 		+ "(e.g. {\"type\":\"Vector2\",\"x\":0,\"y\":0})."}
 
 
-## Warning text for an accepted-but-adjusted write, naming what was stored vs asked.
-static func _adjusted_warning(after: Variant, coerced: Variant, path: String) -> String:
-	return ("note: '%s' stored %s but you requested %s — the engine adjusted the value to fit %s."
+## Returns the warning for an accepted-but-adjusted write: it names the property
+## [param path], the stored value [param after] and the requested value
+## [param coerced]. A writer that adjusts a value itself before the set reports it
+## with this same text.
+static func adjusted_warning(after: Variant, coerced: Variant, path: String) -> String:
+	return ("note: '%s' stored %s but you requested %s — the value was adjusted to fit %s."
 		% [path, _brief_set_value(after), _brief_set_value(coerced), type_string(typeof(after))])
+
+
+## The warning a scalar property write reports, or "" for a clean write.
+##
+## When the readback [param outcome] from [method describe_set_drop] is
+## [code]"adjusted"[/code], the warning names the [param stored] value against the
+## caller's [param requested] one rather than the fitted value, so a clamp that
+## follows the fit reports what the caller sent. Otherwise it is the warning in
+## [param fit], the result of [code]DeclaredTypeFitter.fit[/code]; an empty
+## [param outcome] (a write that was not read back) also takes it.
+static func scalar_set_warning(
+	outcome: Dictionary, fit: Dictionary, stored: Variant, requested: Variant,
+	path: String,
+) -> String:
+	if outcome.get("status", "") == "adjusted":
+		return adjusted_warning(stored, requested, path)
+	return str(fit["warning"])
 
 
 ## True when assigning type [param t_coerced] onto a property of type

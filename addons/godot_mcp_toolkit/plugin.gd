@@ -11,15 +11,22 @@ const DockHost := preload("res://addons/godot_mcp_toolkit/core/dock_host.gd")
 const ToolMenu := preload("res://addons/godot_mcp_toolkit/core/tool_menu.gd")
 const DisableCleanupCoordinator := preload("res://addons/godot_mcp_toolkit/core/disable_cleanup_coordinator.gd")
 const MCPJsonEnablePrompt := preload("res://addons/godot_mcp_toolkit/ui/mcp_json_enable_prompt.gd")
+const MCPJsonWriteFlow := preload("res://addons/godot_mcp_toolkit/ui/mcp_json_write_flow.gd")
 const AutoloadRegistration := preload("res://addons/godot_mcp_toolkit/core/autoload_registration.gd")
+const SetupSteps = Modules.SetupSteps
+const SetupStepTracker = Modules.SetupStepTracker
 
-# The composed collaborator graph (server, dock, export plugin, watchers, debug
-# bridge, user-path monitor, playtest watcher). PluginComposer.compose() builds
-# it; the orchestrator drives it and calls _handle.dispose() on exit.
+# The Handle that owns the composed collaborator graph and frees it in dispose().
+# PluginComposer.compose() builds it; the orchestrator drives it and calls
+# _handle.dispose() on exit.
 var _handle = null
 
 var _tool_menu: ToolMenu = null
 var _wizard: OnboardingWizard = null
+# Set by _enable_plugin(), which the editor calls only for a mid-session enable, and
+# synchronously after _enter_tree, so the deferred _check_onboarding() sees it. A
+# plugin loaded at editor start never gets the call.
+var _enabled_mid_session: bool = false
 
 
 func _enter_tree() -> void:
@@ -40,11 +47,10 @@ func _enter_tree() -> void:
 	# wired inside compose() below).
 	AutoloadRegistration.ensure_registered()
 
-	# Construct + wire the whole collaborator graph (registry, server, debug
-	# bridge, command registrar, extensions, export plugin, log buffer, user-path
-	# monitor, registry registration, playtest watcher, write flow + dialog
-	# presenter, dock) and register in the system-wide registry.
-	_handle = PluginComposer.compose(self, _on_user_path_changed)
+	# Construct and wire the whole collaborator graph and register in the
+	# system-wide registry. PluginComposer owns the graph's members and their
+	# construction order.
+	_handle = PluginComposer.compose(self, _on_user_path_changed, _on_setup_wizard_requested)
 
 	# Tools > MCP Toolkit submenu + command palette (needs the server, dock, and
 	# shared UI collaborators the composer just built).
@@ -56,6 +62,11 @@ func _enter_tree() -> void:
 	# -- Per-user EditorSettings --
 	_register_editor_settings()
 
+	# A local server build turns the connect-time version check off; follow the
+	# setting live, so the next connection after a change already reflects it.
+	_sync_skip_version_check()
+	EditorInterface.get_editor_settings().settings_changed.connect(_sync_skip_version_check)
+
 	# Warn about untested future Godot versions (but don't block).
 	var _engine_ver := Modules.VersionUtils.get_engine_version_pair()
 	if not Modules.VersionUtils.is_at_most(_engine_ver, Modules.VersionUtils.GODOT_TESTED_MAX_VERSION):
@@ -66,11 +77,32 @@ func _enter_tree() -> void:
 
 	_wizard = OnboardingWizard.new(
 			self, _handle.server(), _handle.write_flow(), _handle.dialog_presenter())
+	_wizard.step_seen.connect(_on_setup_step_seen)
 	call_deferred("_check_onboarding")
 
 
+# Show the setup steps due now, if any: every step for a new user, or the missed
+# ones at an editor start.
 func _check_onboarding() -> void:
-	_wizard.check_and_show()
+	if _wizard == null:
+		return
+	var all_ids: Array[StringName] = SetupSteps.all_ids()
+	var unseen: Array[StringName] = SetupStepTracker.get_unseen(all_ids)
+	var show_optional := SetupSteps.shows_optional_steps(EditorInterface.get_editor_settings())
+	_wizard.show_run(SetupSteps.plan_run(
+			unseen, unseen.size() < all_ids.size(), show_optional, not _enabled_mid_session, false))
+
+
+func _on_setup_step_seen(step_id: StringName) -> void:
+	SetupStepTracker.mark_seen(step_id)
+
+
+# The dock's Setup Wizard button: a run of every step, whatever has been seen. The
+# wizard is built after the dock, so a press before then does nothing.
+func _on_setup_wizard_requested() -> void:
+	if _wizard == null:
+		return
+	_wizard.show_run(SetupSteps.plan_button_run())
 
 
 # Reveal the toolkit dock (select its tab + expand the bottom panel). The
@@ -86,11 +118,18 @@ func _process(_delta: float) -> void:
 		_handle.poll_playtest()
 
 
+# Mirror "a local server build is configured" onto the server, which keeps no
+# EditorSettings reads of its own.
+func _sync_skip_version_check() -> void:
+	if _handle != null and _handle.server() != null:
+		_handle.server().skip_version_check = MCPJsonWriteFlow.uses_local_server()
+
+
 func _on_user_path_changed() -> void:
 	# Static consumers that can't connect to signals themselves.
 	# Instance consumers (feature_settings, server) connect directly
 	# via bind_user_path_monitor().
-	OnboardingWizard.migrate_flag_after_rename()
+	SetupStepTracker.migrate_flag_after_rename()
 	Modules.LogBuffer.reset_tail_path()
 
 
@@ -102,13 +141,18 @@ func _exit_tree() -> void:
 		_wizard.teardown()
 		_wizard = null
 
+	# The editor-settings watch (the EditorSettings singleton outlives this plugin).
+	var editor_settings := EditorInterface.get_editor_settings()
+	if editor_settings.settings_changed.is_connected(_sync_skip_version_check):
+		editor_settings.settings_changed.disconnect(_sync_skip_version_check)
+
 	# Menus + command palette.
 	if _tool_menu != null:
 		_tool_menu.uninstall()
 		_tool_menu = null
 
-	# Composed graph (dock, monitor, watchers, debug bridge, export plugin,
-	# server + registry) — disposed in reverse construction order.
+	# Composed graph, disposed in reverse construction order (the order lives in
+	# PluginComposer).
 	if _handle != null:
 		_handle.dispose()
 		_handle = null
@@ -118,6 +162,8 @@ func _exit_tree() -> void:
 
 
 func _enable_plugin() -> void:
+	_enabled_mid_session = true
+
 	# First-enable registration shares the on-load self-heal path so the two can never
 	# diverge — an undo-free set_setting + save that persists to project.godot, which
 	# is what the game reads at F5 (rationale lives in AutoloadRegistration).
@@ -154,14 +200,19 @@ func _register_editor_settings() -> void:
 	var es := EditorInterface.get_editor_settings()
 	# [type, default, hint_string]. These live in EDITOR Settings (per-user,
 	# machine-wide), NOT Project Settings: the unfocused-responsive keys control a
-	# machine-global editor effect and are a personal battery/CPU preference, so
-	# they must never be committed to project.godot / VCS.
+	# machine-global editor effect and are a personal battery/CPU preference, the
+	# local server path names a folder on this machine, and showing optional setup
+	# steps is a personal preference across projects, so they must never be
+	# committed to project.godot / VCS.
 	var settings := {
-		"mcp_toolkit/personal/dock_default_visible": [TYPE_BOOL, true, ""],
 		"mcp_toolkit/performance/keep_editor_responsive_unfocused": [TYPE_BOOL, true,
 			"Keep the editor responsive (raise its unfocused frame rate) while an MCP client is connected, so commands stay snappy when the editor is unfocused. Off uses Godot's default low-power unfocused throttle. Raises background CPU. A toggle is also in the MCP Toolkit dock."],
 		"mcp_toolkit/performance/unfocused_responsive_sleep_usec": [TYPE_INT, 16666,
 			"Unfocused process sleep in µs applied while a client is connected (lower = higher fps = snappier but more CPU). 16666 ≈ 60 fps (default); 33333 ≈ 30 fps (power-saver). Not clamped."],
+		MCPJsonWriteFlow.LOCAL_PATH_SETTING: [TYPE_STRING, "",
+			"Absolute path to a local server build's dist/index.js (this machine only). Empty = the npm package. Falls back to the GODOT_MCP_DEV_SERVER_PATH environment variable. A local build turns the editor's version check off right away, and the server's after the next Write .mcp.json."],
+		SetupSteps.SHOW_OPTIONAL_STEPS_SETTING: [TYPE_BOOL, true,
+			"Show optional steps added by toolkit updates, in any project on this machine. Required steps still show. A toggle is also in the MCP Toolkit dock."],
 	}
 	for key in settings:
 		if not es.has_setting(key):

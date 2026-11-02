@@ -2,12 +2,13 @@
 
 These are **optional fine-tuning knobs** that most users never need to touch —
 the defaults are chosen to work well out of the box. They live under
-**Project → Project Settings → `mcp_toolkit/`** (enable *Advanced Settings* to
-see them) and can also be set with `ProjectSettings`.
+**Project → Project Settings → `mcp_toolkit/`** and can also be set with
+`ProjectSettings`.
 
-None of these values are clamped in code: the recommended ranges below are
-guidance, not enforced limits. An extreme value is allowed and is your
-responsibility.
+Apart from the response limits under **Limits**, whose ranges the dock and the
+Project Settings inspector both enforce, none of these values are clamped in
+code: the recommended ranges below are guidance, not enforced limits. An extreme
+value is allowed and is your responsibility.
 
 ## Concurrency
 
@@ -115,11 +116,19 @@ fields. The request-parameter names stay unit-appropriate (`offset`/`max_bytes`
 for bytes, `start_line`/`end_line` for lines) — only the response *shape* is
 uniform.
 
-### When a cap change takes effect (no restart)
+### When a cap change takes effect
 
-The limit settings below are read by the handler **on every call**, so a change —
-via the dock's spinbox, the Settings UI, or `meta_set_limits` — applies to the
-**very next call**. There is no restart and no reconnect.
+The read caps below (`save_read_cap_kb`, `script_read_cap_kb`) are read by the
+handler **on every call**, so a change to the project value, made in the dock or in
+Project Settings, applies to the **very next call**, with no restart and no
+reconnect. `ws_buffer_kb` is the exception: the editor sizes a connection's buffer
+when it accepts the connection, so a change applies from the next connection.
+
+Adding, changing or removing an env override in `.mcp.json` takes effect only
+after you restart your MCP client, which starts the server again with the new
+environment (see **Overrides from `.mcp.json`** below). While an env override is
+active, an edit in the dock or in Project Settings changes the project value, not
+the value in use.
 
 **The server is not pushed the value.** The MCP server advertises a *static*
 `max_bytes` schema bound as a sanity ceiling; the **toolkit enforces the real,
@@ -131,39 +140,75 @@ still be rejected: the live cap is authoritative.)
 
 ## Limits
 
+Each limit has a project value: the one stored in `project.godot`, which you edit
+in the dock or the Project Settings inspector. Both keep their own edits inside
+the limit's range and step. The editor uses a value set by hand in `project.godot`
+as set, except that it never goes below the limit's floor (64 KB for the two read
+caps, 256 KB for the WebSocket buffer). The dock and the inspector show such a
+value clamped to the range and rounded to the nearest step.
+
+**Overrides from `.mcp.json`.** Two limits can also be overridden on one machine
+by an environment variable in the `env` block of `.mcp.json`, given in bytes (see
+each limit below). The MCP server sends the override to the editor every time it
+connects. The editor uses it while it runs but never saves it to `project.godot`,
+so the rest of your team keeps the project value. The dock keeps showing the
+project value in the field and adds a line under the fields, for example:
+
+> Script cap in use: 1024 KB from GODOT_MCP_SCRIPT_READ_LIMIT (MCP client env).
+> This field applies once you remove the variable and restart your MCP client.
+
+The line shows the exact value in use. To drop an override, remove the variable
+from `.mcp.json` and restart your MCP client: the server connects again without
+it, and the line goes away.
+
+Version 1.0.3 and earlier saved an override into `project.godot` whenever the
+project settings were saved. If your `project.godot` holds a limit you never set
+there, it now counts as the project value: reset it in Project Settings.
+
 ### `mcp_toolkit/limits/save_read_cap_kb` — default `256`
 
-The largest window `save_read` returns in a single call, in KB (minimum 64). A
-`user://` file bigger than this cap can still be read in full by paging — see
-**Reading large data** above for the `offset` / `next_offset` loop. This is the
-only way to read a file larger than the WebSocket frame ceiling (see `ws_buffer_kb`
-below), because responses are sent whole.
+The largest window `save_read` returns in a single call, in KB (64–4096, in steps
+of 64). A `user://` file bigger than this cap can still be read in full by
+paging — see **Reading large data** above for the `offset` / `next_offset` loop.
+This is the only way to read a file larger than the WebSocket frame ceiling (see
+`ws_buffer_kb` below), because responses are sent whole.
 
 Raising this above `ws_buffer_kb` is a footgun: a window that would not fit the
 WebSocket buffer is rejected with `FILE_TOO_LARGE` before it is sent, rather than
 silently dropped. If you raise the cap, raise `ws_buffer_kb` to match (and note
 the runtime caveat below).
 
+No environment variable overrides this cap.
+
 ### `mcp_toolkit/limits/script_read_cap_kb` — default `256`
 
-The largest payload `script_read` returns in a single call, in KB. A project
-script bigger than this cap is read in full by paging on **lines** — see **Reading
-large data** above for the `start_line` / `next_start_line` loop. A full read that
-would exceed the cap is rejected with `FILE_TOO_LARGE` and a hint to use a line
-range.
+The largest payload `script_read` returns in a single call, in KB (64–4096, in
+steps of 64). A project script bigger than this cap is read in full by paging on
+**lines** — see **Reading large data** above for the `start_line` /
+`next_start_line` loop. A full read that would exceed the cap is rejected with
+`FILE_TOO_LARGE` and a hint to use a line range.
+
+`GODOT_MCP_SCRIPT_READ_LIMIT` in `.mcp.json` (in bytes) overrides this value on
+that machine, as described under **Overrides from `.mcp.json`** above. The dock
+names it in the script cap's line, and `project.godot` keeps the project value.
 
 ### `mcp_toolkit/limits/ws_buffer_kb` — default `1024`
 
-WebSocket per-peer buffer size, in KB (minimum 256). Raise it if you send very
-large payloads (e.g. big `script_write` bodies) and see truncated or dropped
-connections under load. Can also be overridden per-connection by the
-`GODOT_MCP_WS_BUFFER_LIMIT` env var in `.mcp.json`.
+WebSocket per-peer buffer size, in KB (256–8192, in steps of 256). Raise it if you
+send very large payloads (e.g. big `script_write` bodies) and see truncated or
+dropped connections under load.
 
-> **Runtime (exported game) caveat.** This setting tunes the **editor** server
-> only. The runtime server that runs inside an exported game uses a **fixed 1 MB
-> per-peer buffer** and ignores `ws_buffer_kb`, so raising `ws_buffer_kb` does
-> **not** raise the runtime ceiling — page large runtime reads with `save_read`'s
-> `offset` instead.
+`GODOT_MCP_WS_BUFFER_LIMIT` in `.mcp.json` (in bytes) overrides this value in the
+same way, and the dock names it in the WS buffer's line. The editor sizes a
+connection's buffer when it accepts the connection, so the override applies to
+connections accepted after the server sends it, not to the connection that sent
+it.
+
+> **Runtime (running game) caveat.** The runtime server inside the game sizes its
+> buffers from the project's own `ws_buffer_kb` (default 1 MB). An override from
+> `GODOT_MCP_WS_BUFFER_LIMIT` reaches only the editor, never the game. To raise
+> the runtime ceiling, raise the project value; otherwise page large runtime reads
+> with `save_read`'s `offset`.
 
 ## Listen ports (editor & runtime)
 
@@ -180,6 +225,7 @@ before launch) — the toolkit never writes them.
 | `GODOT_MCP_EDITOR_PORT_MIN` / `_MAX` | Editor channel | **Relocate** the scan band (inclusive) | `6550` / `6560` |
 | `GODOT_MCP_RUNTIME_PORT` | Runtime channel (the running game) | **Pin** — bind this exact port or fail | — (scan) |
 | `GODOT_MCP_RUNTIME_PORT_MIN` / `_MAX` | Runtime channel | **Relocate** the scan band (inclusive) | `6570` / `6585` |
+| `GODOT_MCP_RUNTIME` | Runtime channel | `0`, `false` or `off` **opts this run out**: no port, no registry entry ([below](#keeping-a-run-off-the-runtime-channel)) | — (on) |
 
 The same `GODOT_MCP_EDITOR_PORT` / `GODOT_MCP_RUNTIME_PORT` are **also read by the
 MCP server** to decide which port to **dial** — inherited by both processes, a pin
@@ -231,13 +277,125 @@ processes inherit the **same** value:
 - **Prefer Scanned mode** if you don't want to manage env on both sides — registry
   discovery keeps the two in agreement automatically.
 
+### Keeping a run off the runtime channel
+
+Any run of your project with the editor binary (a `--check-only` run aside) opens the runtime channel: a
+game launched from the editor, but also `godot --path .` from a shell, a
+headless `--script` test runner, or a CI job. Each one binds a runtime port and
+publishes it in the registry as the project's running game, replacing the game
+the MCP tools started, and clears that entry when it exits.
+
+Set `GODOT_MCP_RUNTIME=0` in the environment of a run to keep it off the
+runtime channel. `false` and `off` (any case) work too; unset, empty, or any
+other value leaves the channel on. The run prints one line saying the channel
+is off, binds no port, and leaves the registry alone:
+
+```bash
+GODOT_MCP_RUNTIME=0 godot --headless --path . --script res://tests/run_tests.gd
+```
+
+A game launched from the editor inherits the editor's environment, so an editor
+started with `GODOT_MCP_RUNTIME=0` set launches games that never open the
+runtime channel. A `game_start` re-probe (`runtime_poll: true`) names the
+variable in its hint.
+
+The MCP server never reads this variable. It covers only the running game's
+side: set it on the run you want to keep out, not in `.mcp.json`.
+
+## Server version (pin modes)
+
+**Write .mcp.json** names a server version in the config it writes, so your MCP
+client starts a server this toolkit was tested with. There are two modes:
+
+- **Pinned** (the default) runs the server version this toolkit was tested with.
+  When you update the toolkit, the next **Write .mcp.json** moves you to the
+  server version the new toolkit was tested with.
+- **Latest** runs the newest server release every time the client starts it. You
+  get server fixes as soon as they ship, and you may see a version warning until
+  you update the toolkit too.
+
+The MCP dock's `.mcp.json` panel shows which server the file runs, with one button
+that switches between the two (**Use latest** / **Pin to …**). The setup wizard's
+`.mcp.json` step offers the same choice. Either way, the toolkit asks before it
+changes `.mcp.json`, and it only touches its own entry. If the file was written by
+an older toolkit, or by this one for another version, the panel turns amber and
+offers to update it. If you set the version by hand, the panel offers to restore
+the recommended one and leaves the file alone until you press the button.
+
+### `mcp_toolkit/server/version` — default empty
+
+The project setting both modes use (**Project Settings → `mcp_toolkit/server/`**,
+with **Advanced Settings** on). It is saved in `project.godot`, so the whole team
+gets the same server.
+
+- empty: **Pinned**.
+- `latest`: **Latest**.
+- anything else: used as the npm version, range or tag (`1.0.5`, `~1.1.0`,
+  `next`). You keep a custom value compatible yourself. A spec npm can't resolve
+  fails when the client starts the server.
+
+### `mcp_toolkit/server/local_path` (editor setting) — default empty
+
+The absolute path to a local server build's `dist/index.js`, for working on the
+server itself. It's an **Editor Settings** value (**Editor → Editor Settings →
+`mcp_toolkit/server/`**), so it applies to this machine only. When it is set,
+**Write .mcp.json** writes `node <that path>` on every OS, and the pin modes don't
+apply. When it is empty, the toolkit falls back to the `GODOT_MCP_DEV_SERVER_PATH`
+environment variable, and then to the npm package.
+
+A local server path also turns the connect-time version check off on both sides,
+since a local build's version says nothing about the protocol it speaks. The
+editor stops checking from the next connection and prints one line per connection
+saying so. The server stops once **Write .mcp.json** has rewritten the entry (see
+`GODOT_MCP_SKIP_VERSION_CHECK` below) and you restart your MCP client.
+
+### `npm_config_prefer_offline`
+
+In Pinned mode the written entry also sets `npm_config_prefer_offline` to `"true"`.
+The pinned version never changes once it is published, so `npx` can start the copy
+it already downloaded without asking the npm registry first, and the server starts
+faster. Latest and any range or tag leave it out: with it set, `npx` would keep
+starting the cached copy and never fetch a newer release. The toolkit sets or
+removes this key on every write, so don't set it yourself.
+
+### `GODOT_MCP_SKIP_VERSION_CHECK`
+
+When the entry runs a local server build, the written entry also sets
+`GODOT_MCP_SKIP_VERSION_CHECK` to `"1"`, which turns the server's connect-time
+version check off. An npm entry leaves it out. The toolkit owns this key too: it
+sets or removes it on every write.
+
+### Restart your MCP client after a change
+
+`npx` caches each package spec separately, so a change of version reaches the
+server only when the client starts it again. After switching modes or updating,
+restart (or reconnect) your MCP client. The first start after a version change
+downloads that server, which takes a few seconds longer.
+
+### Other MCP clients
+
+The toolkit writes only the project's `.mcp.json`. For another client, put the
+same package spec, `@npgamedev/godot-mcp-server@<version>`, in that client's own
+config:
+
+| Client | Config | Where the spec goes |
+|---|---|---|
+| Claude Code | `.mcp.json` at the project root | `mcpServers.godot-mcp-toolkit.args`: `["-y", "@npgamedev/godot-mcp-server@<version>"]` |
+| Claude Desktop, Cursor, Windsurf | the client's own JSON config, `mcpServers` | the same `args` as above, with `"command": "npx"` |
+| VS Code | `.vscode/mcp.json`, `servers` | the same `args`, plus `"type": "stdio"` |
+| Codex | `~/.codex/config.toml`, `[mcp_servers.godot-mcp-toolkit]` | `args = ["-y", "@npgamedev/godot-mcp-server@<version>"]` |
+
+On Windows, use `"command": "cmd"` with `["/c", "npx", "-y", "@npgamedev/godot-mcp-server@<version>"]`.
+The server version this toolkit pins is in the dock's `.mcp.json` panel.
+
 ## macOS: launching your MCP client (Node / PATH)
 
 Modern GUI-launched MCP clients — Claude Desktop, VS Code, and Cursor — capture
 your login shell's environment and resolve a bare `npx` to a version-manager Node
-on their own, so the standard `npx -y @npgamedev/godot-mcp-server` config connects
-whether you launch the client from Finder/Dock or a terminal. The toolkit writes
-that standard command; there is nothing macOS-specific to configure.
+on their own, so the config the toolkit writes
+(`npx -y @npgamedev/godot-mcp-server@<version>`) connects whether you launch the
+client from Finder/Dock or a terminal. There is nothing macOS-specific to
+configure.
 
 **If a client won't connect on macOS**, work through these:
 
@@ -254,9 +412,10 @@ that standard command; there is nothing macOS-specific to configure.
 - **Zero-config alternative:** install Node from the **official nodejs.org
   installer**. It lands on the default `PATH`, so no shell setup is needed.
 
-**Point a Mac at a local server build** (development) by setting
-`GODOT_MCP_DEV_SERVER_PATH` in the environment to your built `dist/index.js` — the
-toolkit then emits a `node <that path>` command instead of the released `npx` form.
+**Point a Mac at a local server build** (development) with the
+`mcp_toolkit/server/local_path` editor setting (or the `GODOT_MCP_DEV_SERVER_PATH`
+environment variable) set to your built `dist/index.js`. The toolkit then writes a
+`node <that path>` command instead of the released `npx` form.
 
 ## Language server (LSP)
 
@@ -287,7 +446,8 @@ the familiar `lsp.serverHost` client setting.
 
 When the editor loses focus, Godot throttles its process loop to a low-power
 frame rate (the `interface/editor/unfocused_low_processor_mode_sleep_usec`
-editor setting, ~10 fps by default). The toolkit polls its WebSocket inside that
+editor setting, under `interface/editor/timers/` on Godot 4.7+, ~10 fps by
+default). The toolkit polls its WebSocket inside that
 loop, so an unfocused editor answers MCP commands only ~2–3 times per second.
 During a normal MCP session the editor *is* unfocused (you're looking at the chat
 window), so the toolkit raises the unfocused frame rate while a client is
@@ -351,6 +511,13 @@ could otherwise leave the setting stranded at the boosted value. To prevent that
   setting while the second is still connected, so the second runs at the default
   unfocused rate until its next fresh connection. This is a brief responsiveness
   dip, never a persistent change, and matches the toolkit's earlier behaviour.
+
+## Setup wizard
+
+The setup wizard remembers which steps you have seen by user and project name, so
+every copy of the project on this machine shares them, and the **Show optional
+steps added by toolkit updates** toggle (`mcp_toolkit/setup_wizard/show_optional_steps`)
+is an Editor Setting that each Godot version keeps separately.
 
 ---
 

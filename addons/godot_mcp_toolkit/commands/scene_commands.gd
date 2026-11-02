@@ -8,12 +8,19 @@ const Coerce = Modules.Coerce
 const FileGuard = Modules.FileGuard
 const Untrusted = Modules.Untrusted
 const Helpers = Modules.CommandHelpers
+const DeclaredTypeFitter = Modules.DeclaredTypeFitter
+const PropertySetCheck = Modules.PropertySetCheck
 
 const _TAB_CLOSE_NOISE_HINT := "Closing a non-active scene tab may produce a _set_main_scene_state error in the editor console. This is benign Godot engine noise — safe to ignore."
 
 # Max scene.query page size. Caps a single page so it can't exceed the transport
 # frame budget; a larger requested limit is clamped and disclosed in-band.
 const _QUERY_MAX_LIMIT := 200
+
+# Scene files the engine's own scene loaders read directly, with no import step.
+# Any other extension is treated as an imported scene, whose load goes through
+# its .import sidecar.
+const _NATIVE_SCENE_EXTENSIONS := ["tscn", "scn", "res"]
 
 
 static func register(registry: MCPToolkitCommandRegistry, server: Node) -> void:
@@ -411,78 +418,17 @@ static func _cmd_scene_create_node(parameters: Dictionary) -> Dictionary:
 
 	instance.name = requested_name
 
-	# Pre-coerce inline properties before UndoRedo (validation only). The raw wire
-	# value rides along so the post-set readback guard can give the bare-res://-string
-	# tagged-form hint (parity with node.set_property).
-	var properties_raw = parameters.get("properties", null)
-	var prop_coerced: Array = []  # [{name, value, old_value, raw}] — simple props (candidate for UndoRedo)
-	var prop_compound: Array = []  # [{name, raw_value}] — compound paths (direct set)
-	var prop_failed: Array = []
-	if properties_raw != null and typeof(properties_raw) == TYPE_DICTIONARY:
-		for key in (properties_raw as Dictionary).keys():
-			var prop_name := str(key)
-			# Compound paths (: or /) bypass coerce_for_property and use
-			# centralized set_property_compound (handles shader_parameter/ etc.)
-			if ":" in prop_name or "/" in prop_name:
-				prop_compound.append({"name": prop_name, "raw_value": properties_raw[key]})
-			else:
-				var result := Helpers.coerce_for_property(
-					instance, prop_name, properties_raw[key])
-				if result.get("ok", false):
-					prop_coerced.append({
-						"name": prop_name,
-						"value": result["value"],
-						"old_value": instance.get(prop_name),
-						"raw": properties_raw[key],
-					})
-				else:
-					prop_failed.append({
-						"name": prop_name,
-						"error": str(result.get("error", "")),
-					})
+	var prepared := _prepare_inline_properties(instance, parameters.get("properties", null))
+	var prop_compound: Array = prepared["compound"]
+	var prop_failed: Array = prepared["failed"]
 
 	parent_node.add_child(instance)
 	instance.set_owner(root)
-	# Set each simple prop, then read it back and classify the write. Coercion says a
-	# value is well-formed; it does NOT prove Object.set() stored it — set() is void and
-	# silently discards a wrong-type Variant. A DROPPED write is restored, reported in
-	# properties_failed, and excluded from both the UndoRedo rows and properties_set, so
-	# the response reflects only the writes that stored. Only landed props are undoable.
-	var landed: Array = []  # coerced props that stored (clean or engine-adjusted)
+	var written := _write_inline_properties(instance, prepared["simple"])
+	var landed: Array = written["landed"]
+	prop_failed.append_array(written["failed"])
 	var warnings: Array[String] = []
-	for prop in prop_coerced:
-		var prop_name: String = str(prop["name"])
-		# Disarm the Godot 4.3 tooltip-timer UAF before an editor_description write
-		# (no-op otherwise). Usually a no-op here — the new row is (re)built deferred —
-		# but it keeps every built-in editor_description write behind one guard.
-		Helpers.disarm_tooltip_uaf(instance, prop_name)
-		instance.set(prop_name, prop["value"])
-		var after = instance.get(prop_name)
-		# Bare res:// string on a Resource-typed property: a bare path silently fails to
-		# load, so steer to the tagged {type:"Resource", path:…} form BEFORE the generic
-		# drop guard (which would fire first with a vaguer message). Message mirrors
-		# node.set_property's scalar path so both tools report the same mistake identically.
-		var raw = prop["raw"]
-		if typeof(raw) == TYPE_STRING and str(raw).begins_with("res://") \
-				and not (prop["value"] is Resource) and not (after is String):
-			instance.set(prop_name, prop["old_value"])
-			prop_failed.append({"name": prop_name, "error":
-				"property '%s' expects a Resource, not a bare string path. " % prop_name +
-				"Use {\"type\": \"Resource\", \"path\": \"%s\"} as the value." % str(raw)})
-			continue
-		var outcome := Helpers.describe_set_drop(
-			prop["old_value"], after, prop["value"], prop_name)
-		match str(outcome.get("status", "")):
-			"dropped":
-				# A bound setter may have Variant-converted the wrong type to a ZERO and
-				# stored it; restore the prior so the drop is truly non-destructive.
-				instance.set(prop_name, prop["old_value"])
-				prop_failed.append({"name": prop_name, "error": str(outcome.get("error", ""))})
-			"adjusted":
-				warnings.append(str(outcome.get("warning", "")))
-				landed.append(prop)
-			_:
-				landed.append(prop)
+	warnings.assign(written["warnings"])
 	var _undo := MCPToolkitUndoRedoAction.begin("create %s" % requested_name, parent_node) \
 		.do_method(parent_node.add_child.bind(instance)) \
 		.do_method(instance.set_owner.bind(root)) \
@@ -536,6 +482,99 @@ static func _cmd_scene_create_node(parameters: Dictionary) -> Dictionary:
 	return response
 
 
+## Coerces and fits each inline property [param properties_raw] names for
+## scene.create_node's new [param instance], before the node enters the scene. A
+## compound path ([code]:[/code] or [code]/[/code]) is set later through
+## [code]Helpers.set_property_compound[/code], so it is only collected here.
+## [br][br]
+## Returns [code]{"simple": Array, "compound": Array, "failed": Array}[/code].
+## Each [code]simple[/code] row is
+## [code]{name, value, requested, fit, old_value, raw}[/code]: [code]value[/code] is
+## the fitted value to set, [code]requested[/code] the coerced value before the fit,
+## [code]fit[/code] the [code]DeclaredTypeFitter.fit[/code] result and [code]raw[/code]
+## the wire value, which the bare-res:// readback hint quotes. Each
+## [code]compound[/code] row is [code]{name, raw_value}[/code]; each
+## [code]failed[/code] row is [code]{name, error}[/code].
+static func _prepare_inline_properties(instance: Node, properties_raw: Variant) -> Dictionary:
+	var simple: Array = []
+	var compound: Array = []
+	var failed: Array = []
+	if typeof(properties_raw) != TYPE_DICTIONARY:
+		return {"simple": simple, "compound": compound, "failed": failed}
+	var properties: Dictionary = properties_raw
+	for key in properties.keys():
+		var prop_name := str(key)
+		if ":" in prop_name or "/" in prop_name:
+			compound.append({"name": prop_name, "raw_value": properties[key]})
+			continue
+		var result := Helpers.coerce_for_property(instance, prop_name, properties[key])
+		if not result.get("ok", false):
+			failed.append({"name": prop_name, "error": str(result.get("error", ""))})
+			continue
+		var fit := DeclaredTypeFitter.fit(instance, prop_name, result["value"])
+		if not str(fit["error"]).is_empty():
+			failed.append({"name": prop_name, "error": str(fit["error"])})
+			continue
+		simple.append({
+			"name": prop_name,
+			"value": fit["value"],
+			"requested": result["value"],
+			"fit": fit,
+			"old_value": instance.get(prop_name),
+			"raw": properties[key],
+		})
+	return {"simple": simple, "compound": compound, "failed": failed}
+
+
+## Sets each [param simple] row from [method _prepare_inline_properties] on
+## [param instance], then reads it back and classifies the write. Coercion says a
+## value is well-formed; it does not prove [method Object.set] stored it, since set()
+## is void and silently discards a wrong-type Variant. A dropped write is restored and
+## reported, so only the writes that stored count as landed and become undoable.
+## [br][br]
+## Returns [code]{"landed": Array, "failed": Array, "warnings": Array[String]}[/code]:
+## the rows that stored (clean or adjusted), [code]{name, error}[/code] rows for the
+## writes that did not, and a warning for each adjusted or fitted write.
+static func _write_inline_properties(instance: Node, simple: Array) -> Dictionary:
+	var landed: Array = []
+	var failed: Array = []
+	var warnings: Array[String] = []
+	for prop in simple:
+		var prop_name: String = str(prop["name"])
+		# Disarm the Godot 4.3 tooltip-timer UAF before an editor_description write
+		# (no-op otherwise). Usually a no-op here — the new row is (re)built deferred —
+		# but it keeps every built-in editor_description write behind one guard.
+		Helpers.disarm_tooltip_uaf(instance, prop_name)
+		instance.set(prop_name, prop["value"])
+		var after: Variant = instance.get(prop_name)
+		# Bare res:// string on a Resource-typed property: a bare path silently fails to
+		# load, so steer to the tagged {type:"Resource", path:…} form BEFORE the generic
+		# drop guard (which would fire first with a vaguer message). Message mirrors
+		# node.set_property's scalar path so both tools report the same mistake identically.
+		var raw: Variant = prop["raw"]
+		if typeof(raw) == TYPE_STRING and str(raw).begins_with("res://") \
+				and not (prop["value"] is Resource) and not (after is String):
+			instance.set(prop_name, prop["old_value"])
+			failed.append({"name": prop_name, "error":
+				"property '%s' expects a Resource, not a bare string path. " % prop_name +
+				"Use {\"type\": \"Resource\", \"path\": \"%s\"} as the value." % str(raw)})
+			continue
+		var outcome := PropertySetCheck.describe_set_drop(
+			prop["old_value"], after, prop["value"], prop_name)
+		if str(outcome.get("status", "")) == "dropped":
+			# A bound setter may have Variant-converted the wrong type to a ZERO and
+			# stored it; restore the prior so the drop is truly non-destructive.
+			instance.set(prop_name, prop["old_value"])
+			failed.append({"name": prop_name, "error": str(outcome.get("error", ""))})
+			continue
+		var warning := PropertySetCheck.scalar_set_warning(
+				outcome, prop["fit"], after, prop["requested"], prop_name)
+		if not warning.is_empty():
+			warnings.append(warning)
+		landed.append(prop)
+	return {"landed": landed, "failed": failed, "warnings": warnings}
+
+
 static func _cmd_scene_delete_node(parameters: Dictionary) -> Dictionary:
 	var root := _get_edited_root()
 	if root == null:
@@ -585,25 +624,15 @@ static func _cmd_scene_instantiate(server: Node, parameters: Dictionary) -> Dict
 	var guard := FileGuard.resolve_safe(packed_path)
 	if guard["error"] != null:
 		return MCPToolkitError.fail("PATH_DENIED", str(guard["reason"]))
-	if packed_path.get_extension().to_lower() != "tscn":
-		return MCPToolkitError.fail("INVALID_PATH",
-			"scene.instantiate only instantiates .tscn files (got %s); use resource.write for .tres, script.write for .gd/.cs" % packed_path)
-	if not FileAccess.file_exists(packed_path):
-		return MCPToolkitError.fail("NOT_FOUND",
-			"no scene file at %s; use scene.create first" % packed_path, MCPToolkitError.HINT_FILE_PATH)
-	var packed := ResourceLoader.load(packed_path)
-	if packed == null:
-		return MCPToolkitError.fail("LOAD_FAILED",
-			"ResourceLoader.load returned null for %s (corrupt file or dependency error — check editor_get_console)" % packed_path)
-	if not (packed is PackedScene):
-		return MCPToolkitError.fail("INVALID_CLASS",
-			"file at %s is not a PackedScene (got %s); scene.instantiate only works on .tscn files" % [
-				packed_path, packed.get_class()])
+	var loaded := _load_instanceable_scene(packed_path)
+	if not loaded["ok"]:
+		return loaded["failure"]
+	var packed: PackedScene = loaded["packed"]
 
 	# Batch mode: instances array present → instantiate N copies in one UndoRedo action.
 	var instances_raw = parameters.get("instances", null)
 	if typeof(instances_raw) == TYPE_ARRAY and (instances_raw as Array).size() > 0:
-		return _batch_instantiate(server, root, parent_node, packed as PackedScene,
+		return _batch_instantiate(server, root, parent_node, packed,
 			packed_path, parent_path, instances_raw as Array)
 
 	# Single mode (original behavior).
@@ -611,7 +640,7 @@ static func _cmd_scene_instantiate(server: Node, parameters: Dictionary) -> Dict
 	var transform_raw = parameters.get("transform", {})
 	var transform: Dictionary = transform_raw if typeof(transform_raw) == TYPE_DICTIONARY else {}
 
-	var target_name := as_name if as_name != "" else (packed as PackedScene).get_state().get_node_name(0)
+	var target_name := as_name if as_name != "" else packed.get_state().get_node_name(0)
 	if parent_node.has_node(NodePath(target_name)):
 		if as_name != "":
 			# Explicit name — idempotent return.
@@ -634,7 +663,7 @@ static func _cmd_scene_instantiate(server: Node, parameters: Dictionary) -> Dict
 			suffix += 1
 		target_name = target_name + str(suffix)
 
-	var instance: Node = (packed as PackedScene).instantiate()
+	var instance := _instantiate_for_edit(packed)
 	if instance == null:
 		return MCPToolkitError.fail("LOAD_FAILED",
 			"PackedScene.instantiate returned null for %s" % packed_path)
@@ -670,6 +699,78 @@ static func _cmd_scene_instantiate(server: Node, parameters: Dictionary) -> Dict
 	})
 
 
+## Loads the scene at [param packed_path] for scene.instantiate.
+##
+## Like an editor drop, it takes any file that loads as a PackedScene: a .tscn or
+## .scn, or a 3D model imported as a scene (.glb, .gltf, .fbx, .blend...).
+## Returns {"ok": true, "packed": <PackedScene>}, else
+## {"ok": false, "failure": <error envelope>}.
+static func _load_instanceable_scene(packed_path: String) -> Dictionary:
+	# The extension list comes from the registered loaders and scene importers.
+	# ResourceLoader.exists(path, "PackedScene") can't stand in for it: it ignores
+	# the type for any imported file, so it passes a texture.
+	var scene_extensions := ResourceLoader.get_recognized_extensions_for_type("PackedScene")
+	if not (packed_path.get_extension().to_lower() in scene_extensions):
+		return {"ok": false, "failure": MCPToolkitError.fail("INVALID_PATH",
+			"scene.instantiate only instantiates scenes: a .tscn or .scn, or a model imported as a scene (got %s); use resource.write for .tres, script.write for .gd/.cs" % packed_path)}
+	if not FileAccess.file_exists(packed_path):
+		return {"ok": false, "failure": _missing_scene_failure(packed_path)}
+	var packed := ResourceLoader.load(packed_path)
+	if packed == null:
+		return {"ok": false, "failure": _unloadable_scene_failure(packed_path)}
+	if not (packed is PackedScene):
+		return {"ok": false, "failure": MCPToolkitError.fail("INVALID_CLASS",
+			"file at %s is not a PackedScene (got %s); import a model as a scene to instance it" % [
+				packed_path, packed.get_class()])}
+	return {"ok": true, "packed": packed}
+
+
+## Returns the NOT_FOUND envelope for a scene.instantiate path with no file. A
+## missing .tscn can be made with scene.create; a missing model can't, so its
+## message points at adding and importing it instead.
+static func _missing_scene_failure(packed_path: String) -> Dictionary:
+	if _is_imported_scene_path(packed_path):
+		return MCPToolkitError.fail("NOT_FOUND",
+			"no model file at %s; add it to the project, then run editor_refresh so the editor imports it" % packed_path,
+			MCPToolkitError.HINT_FILE_PATH)
+	return MCPToolkitError.fail("NOT_FOUND",
+		"no scene file at %s; use scene.create first" % packed_path, MCPToolkitError.HINT_FILE_PATH)
+
+
+## Returns the LOAD_FAILED envelope for a scene.instantiate file that loaded as
+## null. An imported model with no .import sidecar yet has not been imported, which
+## a rescan fixes; anything else is a broken file or dependency.
+static func _unloadable_scene_failure(packed_path: String) -> Dictionary:
+	if _is_imported_scene_path(packed_path):
+		if not FileAccess.file_exists(packed_path + ".import"):
+			return MCPToolkitError.fail("LOAD_FAILED",
+				"%s has no .import sidecar, so the editor has not imported it yet; run editor_refresh and retry" % packed_path)
+		return MCPToolkitError.fail("LOAD_FAILED",
+			"ResourceLoader.load returned null for %s (its imported data is missing or the import failed — run editor_refresh to reimport it, and check editor_get_console)" % packed_path)
+	return MCPToolkitError.fail("LOAD_FAILED",
+		"ResourceLoader.load returned null for %s (corrupt file or dependency error — check editor_get_console)" % packed_path)
+
+
+## Whether [param packed_path] names a file an importer turns into a scene, such
+## as a .glb, rather than one a loader reads directly.
+static func _is_imported_scene_path(packed_path: String) -> bool:
+	return not (packed_path.get_extension().to_lower() in _NATIVE_SCENE_EXTENSIONS)
+
+
+## Instances [param packed] with its edit state, as the editor does when a scene is
+## dropped into another.
+##
+## Saving the owner scene then writes the node as a plain instance and stores only
+## what differs from the sub-scene. Without the edit state the node has no link to the
+## sub-scene's state, so the save writes the root's class ([code]type=[/code]),
+## compares the root's properties with the class defaults instead, and copies its
+## script, other non-default properties and groups into the owner scene. There they
+## override the sub-scene: later changes to those values in the sub-scene, such as a
+## new root script, never reach this instance.
+static func _instantiate_for_edit(packed: PackedScene) -> Node:
+	return packed.instantiate(PackedScene.GEN_EDIT_STATE_INSTANCE)
+
+
 ## Coerce one transform value (position/rotation/scale) for an instantiate call.
 ## Returns {"ok": true, "value": <coerced>} on success, else
 ## {"ok": false, "error": <message>}.
@@ -694,7 +795,7 @@ static func _batch_instantiate(
 ) -> Dictionary:
 	var node_refs: Array = []
 	# Per-entry outcome record: every entry — success OR failure —
-	# gets a dict so a partial batch no longer hides its failures. Built parallel
+	# gets a dict so a partial batch never hides its failures. Built parallel
 	# to `node_refs`; success entries are backfilled with their post-commit path
 	# below. `results[i]` lines up with `instances[i]`. `_result_slots` maps each
 	# surviving node to its slot so the deferred path read patches the right row.
@@ -707,9 +808,9 @@ static func _batch_instantiate(
 		var entry = instances[i]
 		var inst_dict: Dictionary = entry if typeof(entry) == TYPE_DICTIONARY else {}
 		var inst_name := str(inst_dict.get("name", ""))
-		var instance: Node = packed.instantiate()
+		var instance := _instantiate_for_edit(packed)
 		if instance == null:
-			# Previously a silent `continue` — the failed entry vanished. Record it.
+			# Record the failure; skipping the entry would drop it from the response.
 			results.append({
 				"index": i,
 				"success": false,
@@ -721,10 +822,11 @@ static func _batch_instantiate(
 		if not inst_name.is_empty():
 			instance.name = inst_name
 
-		# Per-key coerce failures used to `continue` the inner loop silently — the
-		# node still lands but the key was dropped invisibly. Capture each into
-		# `property_errors` on this (succeeding) entry instead of losing it.
+		# A key that fails to coerce is skipped, but the node still lands: record
+		# each failure in `property_errors` on this (succeeding) entry so the
+		# response reports the dropped key.
 		var property_errors: Array = []
+		var property_warnings: Array[String] = []
 
 		# Apply transform properties (position, rotation, scale).
 		for key in ["position", "rotation", "scale"]:
@@ -748,7 +850,13 @@ static func _batch_instantiate(
 					if typeof(coerced) == TYPE_DICTIONARY and (coerced as Dictionary).has("_coerce_error"):
 						property_errors.append({"property": prop_name, "error": str(coerced["_coerce_error"])})
 						continue
-					instance.set(prop_name, coerced)
+					var fit := DeclaredTypeFitter.fit(instance, prop_name, coerced)
+					if not str(fit["error"]).is_empty():
+						property_errors.append({"property": prop_name, "error": str(fit["error"])})
+						continue
+					instance.set(prop_name, fit["value"])
+					if not str(fit["warning"]).is_empty():
+						property_warnings.append(str(fit["warning"]))
 
 		# Only set owner on instance root (same as single-instance path).
 		parent_node.add_child(instance)
@@ -759,11 +867,14 @@ static func _batch_instantiate(
 			.undo_method(parent_node.remove_child.bind(instance))
 
 		node_refs.append(instance)
-		# Success row — path/class are filled after commit (see below). Carry any
-		# per-key coerce failures so they're no longer invisible.
+		# Success row — path/class are filled after commit (see below). Any per-key
+		# coerce failures and dropped fractions ride on the row so the response
+		# reports them.
 		var slot := {"index": i, "success": true}
 		if not property_errors.is_empty():
 			slot["property_errors"] = property_errors
+		if not property_warnings.is_empty():
+			slot["warnings"] = property_warnings
 		results.append(slot)
 		_result_slots.append(slot)
 

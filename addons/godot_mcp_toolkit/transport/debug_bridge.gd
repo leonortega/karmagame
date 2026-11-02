@@ -3,9 +3,9 @@ extends EditorDebuggerPlugin
 ## EditorDebuggerPlugin subclass — tracks debugger session state and
 ## provides continue-execution via send_message.
 ##
-## Registered/unregistered by plugin.gd via add_debugger_plugin /
-## remove_debugger_plugin (I12 symmetry). Session signals feed the
-## debug.state command; send_message("continue") feeds debug.continue.
+## The plugin's composition root registers it and its dispose() removes it.
+## Session signals feed the debug.state command; send_message("continue") feeds
+## debug.continue.
 
 ## Shared error-entry shape (timestamp + type vary by source; rest pass-through).
 const PlaytestLogReader := preload("res://addons/godot_mcp_toolkit/commands/playtest_log_reader.gd")
@@ -115,7 +115,8 @@ func get_error_buffer() -> Array:
 	return _error_buffer.duplicate()
 
 
-## Cleanup — called from plugin._exit_tree before remove_debugger_plugin.
+## Cleanup — called from the composition root's dispose() before
+## remove_debugger_plugin.
 func cleanup() -> void:
 	_disconnect_session()
 	_session = null

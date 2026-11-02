@@ -40,6 +40,11 @@ var _modal_panel: PanelContainer
 var _birth_t: float = 0.0
 var _judge_t: float = 0.0
 var _last_modal: String = ""
+# Per-species JEV dispatch tables (built once in _ready). Replaces the
+# repeated match blocks in _build_jev_body/_build_jev_agent_state/_apply_jev_answer.
+var _jev_body_builders: Dictionary = {}
+var _jev_state_builders: Dictionary = {}
+var _jev_answer_appliers: Dictionary = {}
 
 
 func _ready() -> void:
@@ -48,6 +53,7 @@ func _ready() -> void:
 	state = KarmaState.new_run(first, 0.0, 0.0, 0, rng)
 	state["introDone"] = false
 	state["introNext"] = first
+	_init_jev_dispatch()
 	_build_hud()
 	_build_modal()
 	_jev_http = HTTPRequest.new()
@@ -119,24 +125,16 @@ func _send_batch(species: String, due: Array) -> void:
 	_jev_http.request(KarmaJev.JEV_URL, ["Content-Type: application/json"], HTTPClient.METHOD_POST, JSON.stringify({"states": body["states"]}))
 
 
+func _init_jev_dispatch() -> void:
+	for sp: String in ["halcon", "raton", "ardilla", "sapo", "topo", "lobo", "oruga"]:
+		_jev_body_builders[sp] = Callable(KarmaJev, "build_%s_http_body_for" % sp)
+		_jev_state_builders[sp] = Callable(KarmaJev, "build_%s_state" % sp)
+		_jev_answer_appliers[sp] = Callable(KarmaJev, "apply_%s_answer" % sp)
+
+
 func _build_jev_body(species: String, due: Array) -> Dictionary:
-	match species:
-		"halcon":
-			return KarmaJev.build_halcon_http_body_for(state, due)
-		"raton":
-			return KarmaJev.build_raton_http_body_for(state, due)
-		"ardilla":
-			return KarmaJev.build_ardilla_http_body_for(state, due)
-		"sapo":
-			return KarmaJev.build_sapo_http_body_for(state, due)
-		"topo":
-			return KarmaJev.build_topo_http_body_for(state, due)
-		"lobo":
-			return KarmaJev.build_lobo_http_body_for(state, due)
-		"oruga":
-			return KarmaJev.build_oruga_http_body_for(state, due)
-		_:
-			return KarmaJev.build_http_body_for(state, due)
+	var builder: Callable = _jev_body_builders.get(species, Callable(KarmaJev, "build_http_body_for"))
+	return builder.call(state, due) as Dictionary
 
 
 func _build_jev_snapshot(species: String, agents: Array) -> Dictionary:
@@ -147,23 +145,8 @@ func _build_jev_snapshot(species: String, agents: Array) -> Dictionary:
 
 
 func _build_jev_agent_state(species: String, a: Dictionary) -> Dictionary:
-	match species:
-		"halcon":
-			return KarmaJev.build_halcon_state(state, a)
-		"raton":
-			return KarmaJev.build_raton_state(state, a)
-		"ardilla":
-			return KarmaJev.build_ardilla_state(state, a)
-		"sapo":
-			return KarmaJev.build_sapo_state(state, a)
-		"topo":
-			return KarmaJev.build_topo_state(state, a)
-		"lobo":
-			return KarmaJev.build_lobo_state(state, a)
-		"oruga":
-			return KarmaJev.build_oruga_state(state, a)
-		_:
-			return KarmaJev.build_state(state, a)
+	var builder: Callable = _jev_state_builders.get(species, Callable(KarmaJev, "build_state"))
+	return builder.call(state, a) as Dictionary
 
 
 func _on_jev_done(result: int, code: int, _headers: PackedStringArray, raw: PackedByteArray) -> void:
@@ -210,23 +193,8 @@ func _apply_flight(valid: Dictionary) -> void:
 
 
 func _apply_jev_answer(species: String, a: Dictionary, menu: Array, answer: Dictionary) -> bool:
-	match species:
-		"halcon":
-			return KarmaJev.apply_halcon_answer(state, a, menu, answer)
-		"raton":
-			return KarmaJev.apply_raton_answer(state, a, menu, answer)
-		"ardilla":
-			return KarmaJev.apply_ardilla_answer(state, a, menu, answer)
-		"sapo":
-			return KarmaJev.apply_sapo_answer(state, a, menu, answer)
-		"topo":
-			return KarmaJev.apply_topo_answer(state, a, menu, answer)
-		"lobo":
-			return KarmaJev.apply_lobo_answer(state, a, menu, answer)
-		"oruga":
-			return KarmaJev.apply_oruga_answer(state, a, menu, answer)
-		_:
-			return KarmaJev.apply_answer(state, a, menu, answer)
+	var applier: Callable = _jev_answer_appliers.get(species, Callable(KarmaJev, "apply_answer"))
+	return bool(applier.call(state, a, menu, answer))
 
 
 func _jev_log_agent_id(species: String, a: Dictionary) -> String:
@@ -620,11 +588,12 @@ func _set_text(key: String, txt: String) -> void:
 func _refresh_hud() -> void:
 	if _labels.is_empty():
 		return
+	var pl: Variant = KarmaState.player(state)
 	_set_text("species", "◆ %s T%d · ⏱ %s" % [str(state["sp"]["name"]), int(state["sp"]["tier"]), KarmaUtils.fmt_time(float(state.get("time", 0.0)))])
 	_set_text("vitals", "Vida %s %d/%d\nHambre %s %d\nSed %s %d" % [
-		KarmaHud.bar(KarmaHud.hp_frac(state), 10), int(ceil(float(KarmaState.player(state).get("hp", 0.0)))), int(KarmaState.eff_max_hp_for(state)),
-		KarmaHud.bar(KarmaHud.hunger_frac(state), 10), int(KarmaState.player(state).get("hambre", 0.0)),
-		KarmaHud.bar(KarmaHud.thirst_frac(state), 10), int(KarmaState.player(state).get("sed", 0.0))])
+		KarmaHud.bar(KarmaHud.hp_frac(state), 10), int(ceil(float(pl.get("hp", 0.0)))), int(KarmaState.eff_max_hp_for(state)),
+		KarmaHud.bar(KarmaHud.hunger_frac(state), 10), int(pl.get("hambre", 0.0)),
+		KarmaHud.bar(KarmaHud.thirst_frac(state), 10), int(pl.get("sed", 0.0))])
 	_set_text("karma", "◈ PA %d · Karma %d%s" % [int(state.get("pa", 0.0)), int(state.get("karma", 0.0)), " · MUERTO (R reencarnar)" if bool(state.get("dead", false)) else ""])
 	_set_text("edad", KarmaHud.edad_line(state))
 	_set_text("weather", KarmaHud.weather_line(state))
@@ -712,7 +681,8 @@ func _hp_bar(pos: Vector2, w: float, frac: float) -> void:
 func _draw() -> void:
 	if state.is_empty():
 		return
-	var cam_dict: Dictionary = KarmaState.player(state).get("cam", {})
+	var pl: Variant = KarmaState.player(state)
+	var cam_dict: Dictionary = pl.get("cam", {})
 	var cam: Vector2 = Vector2(float(cam_dict.get("x", 0.0)), float(cam_dict.get("y", 0.0)))
 	var font: Font = ThemeDB.fallback_font
 	_sync_label_font(font)
@@ -741,7 +711,7 @@ func _draw() -> void:
 		grid.append(Vector2(VIEW_W, gy - cam.y))
 		gy += step
 	draw_multiline(grid, KarmaDraw.GRID_LINE, 1.0)
-	for w in state.get("waters", []):
+	for w: Dictionary in state.get("waters", []):
 		var wpos: Vector2 = Vector2(float(w["x"]), float(w["y"])) - cam
 		if not view.has_point(wpos):
 			continue
@@ -755,7 +725,7 @@ func _draw() -> void:
 		_medal(wpos, 11.0, Color(0, 0, 0, 0.25), KarmaDraw.water_icon(str(w.get("kind", ""))), 13.0, font)
 		var wlabel: String = "seco" if bool(body["dry"]) else str(KarmaDraw.WATER_LABEL.get(str(w.get("kind", "")), "agua"))
 		_pill(wpos + Vector2(0, wr + 16.0), wlabel, font, 11)
-	for k in state.get("rocks", []):
+	for k: Dictionary in state.get("rocks", []):
 		var kpos: Vector2 = Vector2(float(k["x"]), float(k["y"])) - cam
 		if not view.has_point(kpos):
 			continue
@@ -763,7 +733,7 @@ func _draw() -> void:
 		draw_circle(kpos, 9.0, KarmaDraw.ROCK_BODY)
 		draw_circle(kpos + Vector2(-2, -2), 5.0, KarmaDraw.ROCK_TOP)
 		_medal(kpos, 7.0, Color(0, 0, 0, 0.2), "🪨", 10.0, font)
-	for r in state.get("refuges", []):
+	for r: Dictionary in state.get("refuges", []):
 		var rpos: Vector2 = Vector2(float(r["x"]), float(r["y"])) - cam
 		if not view.has_point(rpos):
 			continue
@@ -773,10 +743,10 @@ func _draw() -> void:
 		_medal(rpos, rr, rmedal, KarmaDraw.refuge_icon(rtype), KarmaDraw.refuge_emoji_size(rtype), font)
 		if rtype.begins_with("burrow"):
 			draw_circle(rpos, rr * 0.55, Color(0, 0, 0, 0.55))
-		if bool(KarmaState.player(state).get("hidden", false)) and KarmaState.player(state).get("hideRef") is Dictionary and KarmaUtils.dist2(float((KarmaState.player(state)["hideRef"] as Dictionary).get("x", -9999.0)), float((KarmaState.player(state)["hideRef"] as Dictionary).get("y", -9999.0)), float(r["x"]), float(r["y"])) < 1.0:
+		if bool(pl.get("hidden", false)) and pl.get("hideRef") is Dictionary and KarmaUtils.dist2(float((pl["hideRef"] as Dictionary).get("x", -9999.0)), float((pl["hideRef"] as Dictionary).get("y", -9999.0)), float(r["x"]), float(r["y"])) < 1.0:
 			draw_arc(rpos, rr + 3.0, 0, TAU, 32, Color("#80deea"), 2.0)
 		_pill(rpos + Vector2(0, rr + 16.0), str(KarmaDraw.REFUGE_LABEL.get(rtype, rtype)), font, 11)
-	for s in state.get("seedlings", []):
+	for s: Dictionary in state.get("seedlings", []):
 		var spos: Vector2 = Vector2(float(s["x"]), float(s["y"])) - cam
 		if not view.has_point(spos):
 			continue
@@ -786,8 +756,8 @@ func _draw() -> void:
 	var py: float = float(KarmaState.py(state))
 	var vis: float = KarmaState.eff_vision(state)
 	var vis2: float = vis * vis
-	for key in ["bushes", "shrubs", "patches", "clusters", "oaks", "clumps"]:
-		for p in state.get(key, []):
+	for key: String in ["bushes", "shrubs", "patches", "clusters", "oaks", "clumps"]:
+		for p: Dictionary in state.get(key, []):
 			var kind: String = str(p.get("kind", key))
 			var ppos: Vector2 = Vector2(float(p["x"]), float(p["y"])) - cam
 			if not view.has_point(ppos):
@@ -820,7 +790,7 @@ func _draw() -> void:
 			continue
 		ipos.y += sin(t * 4.0 + float(ins["x"]) * 0.13) * 1.5
 		_medal(ipos, 7.0, KarmaDraw.INSECT_MEDAL, KarmaDraw.food_icon("insects"), 12.0, font)
-	for c in state.get("carrions", []):
+	for c: Dictionary in state.get("carrions", []):
 		var cpos: Vector2 = Vector2(float(c["x"]), float(c["y"])) - cam
 		if not view.has_point(cpos):
 			continue
@@ -835,16 +805,16 @@ func _draw() -> void:
 	# Vision ring + agents + player.
 	var pcenter: Vector2 = Vector2(px, py) - cam
 	draw_arc(pcenter, vis, 0, TAU, 64, Color(1, 1, 1, 0.22), 1.0)
-	if float(KarmaState.player(state).get("thermalT", 0.0)) > 0.0:
+	if float(pl.get("thermalT", 0.0)) > 0.0:
 		draw_arc(pcenter, vis + 6.0, 0, TAU, 64, Color("#ffd54f"), 1.5)
-	if float(KarmaState.player(state).get("revealT", 0.0)) > 0.0:
+	if float(pl.get("revealT", 0.0)) > 0.0:
 		draw_arc(pcenter, vis * 0.5, 0, TAU, 48, Color("#80deea"), 1.5)
 	var tracked: Variant = KarmaState.tracked_carrion(state)
 	if tracked is Dictionary:
 		var tpos: Vector2 = Vector2(float((tracked as Dictionary)["x"]), float((tracked as Dictionary)["y"])) - cam
 		draw_line(pcenter, tpos, Color(1, 0.84, 0.31, 0.5), 1.5)
 		draw_arc(tpos, 14.0, 0, TAU, 24, Color("#ffd54f"), 2.0)
-	for a in state.get("agents", []):
+	for a: Dictionary in state.get("agents", []):
 		var sp: Dictionary = KarmaData.SPECIES.get(str(a.get("speciesKey", "raton")), KarmaData.SPECIES["raton"])
 		var col: Color = KarmaDraw.species_medal(str(a.get("speciesKey", "raton")))
 		if str(a.get("brain", "")) != "PLAYER" and str(a.get("speciesKey", "")) == str(state.get("speciesKey", "")):
@@ -866,7 +836,7 @@ func _draw() -> void:
 	var psp: Dictionary = state["sp"]
 	var pr: float = float(psp["radius"]) + 4.0
 	_medal(pp, pr, KarmaDraw.species_medal(str(state["speciesKey"])), KarmaDraw.species_icon(str(state["speciesKey"])), KarmaDraw.animal_emoji_size(str(state["speciesKey"])), font, Color("#ffffff"), 2.0)
-	var face: Vector2 = Vector2(float((KarmaState.player(state).get("face", {"x": 1.0}) as Dictionary).get("x", 1.0)), float((KarmaState.player(state).get("face", {"y": 0.0}) as Dictionary).get("y", 0.0)))
+	var face: Vector2 = Vector2(float((pl.get("face", {"x": 1.0}) as Dictionary).get("x", 1.0)), float((pl.get("face", {"y": 0.0}) as Dictionary).get("y", 0.0)))
 	if face.length() > 0.01:
 		face = face.normalized()
 		var nose: Vector2 = pp + face * (pr + 9.0)
@@ -884,13 +854,13 @@ func _draw() -> void:
 			draw_line(Vector2(rx, ry), Vector2(rx - 4.0, ry + 14.0), Color(0.8, 0.9, 1.0, 0.5), 1.5)
 	var badge_y: float = 30.0
 	var badge_x: float = VIEW_W - PANEL_W - PANEL_MARGIN - 240.0
-	if bool(KarmaState.player(state).get("hidden", false)):
+	if bool(pl.get("hidden", false)):
 		draw_string(font, Vector2(badge_x, badge_y), "🙈 OCULTO", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#80deea"))
 		badge_y += 18.0
-	if bool(KarmaState.player(state).get("grounded", false)):
+	if bool(pl.get("grounded", false)):
 		draw_string(font, Vector2(badge_x, badge_y), "🛬 EN TIERRA", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#ffe0b2"))
 		badge_y += 18.0
-	if bool(KarmaState.player(state).get("bristled", false)):
+	if bool(pl.get("bristled", false)):
 		draw_string(font, Vector2(badge_x, badge_y), "🦔 ERIZADO", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#ef5350"))
 	# Vignette edges.
 	draw_rect(Rect2(0, 0, VIEW_W, 18), Color(0, 0, 0, 0.18))
