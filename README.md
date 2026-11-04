@@ -256,6 +256,12 @@ ripple outward.
 
 ---
 
+## Prerequisites
+
+- **Godot 4.7** (GL Compatibility). See [`setup/godot.md`](setup/godot.md) for install
+  steps on Windows / Linux / macOS.
+- *(Optional)* An NVIDIA GPU + CUDA for the NanoJev sidecar (see the setup below).
+
 ## Running it
 
 1. **(Optional, for NanoJev brains)** Start the NanoJev sidecar and note its URL —
@@ -343,7 +349,7 @@ scripts/
   main.gd            — Main node: input, tick, render, HUD, JEV HTTP client + log flush
 scenes/main.tscn
 tests/               — gdUnit4 suite (incl. test_karma_jev*.gd)
-setup/nanojev/       — NanoJev sidecar install/run + Windows port-expose scripts
+setup/               — Godot install notes (`godot.md`) + NanoJev sidecar scripts (`nanojev/`)
 openspec/            — behavior specs + change archive (start at `ai-jev-zorro`)
 ```
 
