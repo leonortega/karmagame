@@ -29,10 +29,11 @@ const LAYER_CAM_REDRAW := 150.0
 const LAYER_EDGE_MARGIN := 210.0
 # Drawn rain streaks (replaces the old CPUParticles2D emitter: 160 engine
 # particles dragged even a cached-world frame under ~10 fps on this GPU).
-# RAIN_STREAKS is the count at 1280 px width; narrower windows scale down
-# but never below RAIN_STREAKS_FLOOR so the storm always covers the stage.
-const RAIN_STREAKS := 160
-const RAIN_STREAKS_FLOOR := 64
+# RAIN_STREAKS is the count at the full 1280x800 viewport; windows scale by
+# area (not just width) so tall/narrow viewports keep the same streak density
+# and the storm always covers the whole viewport, never below RAIN_STREAKS_FLOOR.
+const RAIN_STREAKS := 2000
+const RAIN_STREAKS_FLOOR := 800
 
 var state: Dictionary = {}
 var rng: RandomNumberGenerator = RandomNumberGenerator.new()
@@ -67,6 +68,7 @@ var _last_modal: String = ""
 # Decor textures built once (radial meadow, vignette).
 var _bg_tex: Texture2D = null
 var _vignette_tex: Texture2D = null
+var _rain_rect: ColorRect = null
 var _motes: CPUParticles2D = null
 # Cached static furniture layer (see _build_static_layer).
 var _world_layer: SubViewport = null
@@ -102,6 +104,7 @@ func _ready() -> void:
 	_build_modal()
 	_build_motes()
 	_build_static_layer()
+	_build_rain_overlay()
 	var vp := get_viewport()
 	if vp != null:
 		vp.size_changed.connect(_on_view_resized)
@@ -434,6 +437,18 @@ func _build_decor_textures() -> void:
 	vg_tex.width = 256
 	vg_tex.height = 256
 	_vignette_tex = vg_tex
+
+
+func _build_rain_overlay() -> void:
+	var rect := ColorRect.new()
+	rect.name = "RainOverlay"
+	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/rain.gdshader")
+	rect.material = mat
+	rect.visible = false
+	add_child(rect)
+	_rain_rect = rect
 
 
 func _panel_style(accent: Color) -> StyleBoxFlat:
@@ -1108,6 +1123,10 @@ func _draw() -> void:
 	else:
 		draw_rect(Rect2(Vector2.ZERO, vp), KarmaDraw.MEADOW_B)
 	var raining: bool = bool((state.get("weather", {}) as Dictionary).get("raining", false))
+	if _rain_rect != null:
+		_rain_rect.position = Vector2.ZERO
+		_rain_rect.size = vp
+		_rain_rect.visible = raining
 	for w: Dictionary in state.get("waters", []):
 		var wpos: Vector2 = Vector2(float(w["x"]), float(w["y"])) - cam
 		if not view.has_point(wpos):
@@ -1247,9 +1266,9 @@ func _draw() -> void:
 	draw_arc(pp, pr + 3.0, 0, TAU, 16, Color("#1565c0"), 2.0)
 	_pill(pp + Vector2(0, pr + 18.0), "TU %s" % str(psp["name"]), font, 12)
 	_hp_bar(pp + Vector2(0, pr + 38.0), pr * 2.0 + 12.0, KarmaHud.hp_frac(state))
-	if raining:
-		# Streaks come from the Rain CPUParticles2D; here just the wash.
-		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.25, 0.45, 0.7, 0.10))
+	if raining and _rain_rect == null:
+		# Wash over the whole viewport so the storm reads as a rainy day.
+		draw_rect(Rect2(Vector2.ZERO, vp), Color(0.25, 0.45, 0.7, 0.14))
 	var badge_y: float = 30.0
 	var badge_x: float = vp.x - PANEL_W - PANEL_MARGIN - 240.0
 	if bool(pl.get("hidden", false)):
@@ -1262,7 +1281,7 @@ func _draw() -> void:
 		draw_string(font, Vector2(badge_x, badge_y), "🦔 ERIZADO", HORIZONTAL_ALIGNMENT_RIGHT, 240, 13, Color("#ef5350"))
 	# Vignette (radial gradient texture).
 	draw_texture_rect(_vignette_tex, Rect2(Vector2.ZERO, vp), false)
-	if raining:
+	if raining and _rain_rect == null:
 		# Deterministic drawn rain: one draw_multiline_colors call (one color
 		# per streak pair), streak speed/length/drift hashed per index.
 		var pts: PackedVector2Array = PackedVector2Array()
@@ -1270,24 +1289,43 @@ func _draw() -> void:
 		for i in _rain_streak_count(vp):
 			var h: float = fposmod(sin(float(i) * 91.17) * 87791.5453, 1.0)
 			var h2: float = fposmod(sin(h * 999.13) * 31221.7, 1.0)
-			var speed: float = vp.y + 60.0 + 80.0 * h
+			var speed: float = vp.y + 40.0 + 60.0 * h
 			var phase: float = fposmod(t * speed / (vp.y + 40.0) + h2, 1.0)
-			var x: float = fposmod(h * (vp.x + 24.0) + t * (-52.0 - 30.0 * h), vp.x + 24.0)
+			var x: float = fposmod(h * (vp.x + 24.0) + t * (-46.0 - 20.0 * h), vp.x + 24.0)
 			var y: float = phase * (vp.y + 40.0) - 40.0
-			var ln: float = 22.0 + 22.0 * (1.0 - h)
-			var c := Color(0.78, 0.87, 1.0, 0.55 * sin(PI * phase))
+			var ln: float = 14.0 + 18.0 * (1.0 - h)
+			var a: float = 0.30 + 0.40 * sin(PI * phase)
+			var c := Color(0.82, 0.90, 1.0, a)
 			pts.append(Vector2(x, y))
-			pts.append(Vector2(x - 0.08 * ln, y + ln))
+			pts.append(Vector2(x - 0.12 * ln, y + ln))
 			cols.append(c)
-		draw_multiline_colors(pts, cols, 2.0)
+		draw_multiline_colors(pts, cols, 1.6)
+		# Foreground layer: fewer, longer, thicker drops for depth.
+		var pts2: PackedVector2Array = PackedVector2Array()
+		var cols2: PackedColorArray = PackedColorArray()
+		for j in maxi(8, _rain_streak_count(vp) / 4):
+			var i: int = j + _rain_streak_count(vp)
+			var h: float = fposmod(sin(float(i) * 91.17) * 87791.5453, 1.0)
+			var h2: float = fposmod(sin(h * 999.13) * 31221.7, 1.0)
+			var speed: float = vp.y + 40.0 + 60.0 * h
+			var phase: float = fposmod(t * speed / (vp.y + 40.0) + h2, 1.0)
+			var x: float = fposmod(h * (vp.x + 24.0) + t * (-70.0 - 40.0 * h), vp.x + 24.0)
+			var y: float = phase * (vp.y + 40.0) - 40.0
+			var ln: float = 28.0 + 24.0 * (1.0 - h)
+			var a: float = 0.35 + 0.45 * sin(PI * phase)
+			var c := Color(0.90, 0.96, 1.0, a)
+			pts2.append(Vector2(x, y))
+			pts2.append(Vector2(x - 0.12 * ln, y + ln))
+			cols2.append(c)
+		draw_multiline_colors(pts2, cols2, 2.4)
 	if _bench_on:
 		_bench_note("draw", Time.get_ticks_usec() - b_d)
 
 
-# One streak per 8 viewport px (at 1280: RAIN_STREAKS), floored so narrow
-# windows still get a full-stage storm.
+# Streak density stays constant per unit of viewport area: scale by both
+# width and height so the storm covers the whole viewport at any size.
 func _rain_streak_count(vp: Vector2) -> int:
-	return maxi(RAIN_STREAKS_FLOOR, int(float(RAIN_STREAKS) * vp.x / 1280.0))
+	return maxi(RAIN_STREAKS_FLOOR, int(float(RAIN_STREAKS) * vp.x * vp.y / (1280.0 * 800.0)))
 
 
 # Cached static furniture, baked once into a SubViewport texture:
