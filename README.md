@@ -318,6 +318,22 @@ The endpoint has **no authentication** — only use it on a network you trust.
 
 ---
 
+## Recent updates (status)
+
+- **Matchup-scaled predation.** Predator kill verbs now deal `PRED[attacker].damage × (attacker_size / victim_size)`,
+  age-scaled; a kill resolves only when scaled damage meets the victim's vida, otherwise the prey
+  survives wounded and may flee or hide. AI predators use the same matchup values as the player.
+- **One-bite fruit consumption.** Eating consumes a single fruit per verb; predator damage retuned.
+- **Wander travel is water-gated.** Sated animals skip water detours in the wander tail (cover/company/jitter instead);
+  thirsty animals still head for the nearest water.
+- **Diet hints in the HUD** and per-species eating guidance.
+- **Draw performance.** Static world furniture is baked once into a SubViewport texture; rain is a single
+  full-viewport shader overlay; label widths are cached. Fixes the previous ~5 fps collapse on dense scenes.
+- **Body-field migration complete** and JEV bridge plumbing consolidated (single in-flight record).
+- **Rain cycle & finite water.** Charcos/lagos deplete per sip, dry basins block movement, weather clock
+  refills by rate × duration with an insect burst.
+- **Yearly ecosystem census** rolls carnivore communities; flora renewal is kind-paced with seed headroom.
+
 ## Tests
 
 gdUnit4 suite in `tests/`, including the JEV bridge suites (`test_karma_jev*.gd` —
