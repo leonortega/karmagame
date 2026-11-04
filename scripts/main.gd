@@ -1467,6 +1467,10 @@ class _StaticLayer extends SubViewport:
 	var _pending_origin: Vector2 = Vector2.ZERO
 	var _pending_area: Vector2 = Vector2.ZERO
 	var _pending: bool = false
+	# Frames to wait before committing a pending bake rect, so the SubViewport
+	# texture has actually rasterized before we pair the new rect with it.
+	var _pending_frames: int = 0
+	var _just_committed: bool = false
 	var _has_bake: bool = false
 	var _last_sig: int = -2147483648
 
@@ -1476,43 +1480,31 @@ class _StaticLayer extends SubViewport:
 	func _process(_delta: float) -> void:
 		if main == null or (main.state as Dictionary).is_empty() or painter == null:
 			return
-		if _pending:
-			blit_origin = _pending_origin
-			blit_area = _pending_area
-			_pending = false
-		var pl: Variant = KarmaState.player(main.state as Dictionary)
-		if pl == null:
-			return
-		var cam_dict: Dictionary = pl.get("cam", {})
-		var cam: Vector2 = Vector2(float(cam_dict.get("x", 0.0)), float(cam_dict.get("y", 0.0)))
-		var vp: Vector2 = main._vp_size()
-		var area: Vector2 = vp + Vector2(edge_margin * 2.0, edge_margin * 2.0)
+		var world_w: float = float(KarmaData.WORLD["w"])
+		var world_h: float = float(KarmaData.WORLD["h"])
+		var area: Vector2 = Vector2(world_w, world_h)
 		var area_i: Vector2i = Vector2i(area)
-		if size != area_i:
-			size = area_i
-			_has_bake = false
-		var center: Vector2 = cam + vp * 0.5
-		# Rebake triggers: first frame, resize, or the camera drifting too close
-		# to the bake edge — with edge_margin on each side the newly walked area
-		# is always already painted, so edges never show gray.
-		if not _has_bake or (center - (painter.origin as Vector2 + area * 0.5)).length() > edge_margin * 0.5:
-			var new_origin: Vector2 = center - area * 0.5
-			(painter as Variant).origin = new_origin
+		if not _has_bake:
+			# Bake the whole world once: a single full-world texture avoids any
+			# camera-drift rebake, so the drawn rect never jumps while walking.
+			if size != area_i:
+				size = area_i
+			(painter as Variant).origin = Vector2.ZERO
 			(painter as Variant).area = area
 			painter.queue_redraw()
 			render_target_update_mode = SubViewport.UPDATE_ONCE
+			blit_origin = Vector2.ZERO
+			blit_area = area
 			_has_bake = true
-			if blit_area == Vector2.ZERO:
-				# First bake ever: nothing valid to stage, blit directly.
-				blit_origin = new_origin
-				blit_area = area
-			else:
-				_pending_origin = new_origin
-				_pending_area = area
-				_pending = true
+			_last_sig = int((painter as Variant).call("_content_sig"))
 			return
+		# Re-bake only when world content changes.
 		var sig: int = int((painter as Variant).call("_content_sig"))
 		if sig != _last_sig:
 			_last_sig = sig
+			if size != area_i:
+				size = area_i
+			(painter as Variant).origin = Vector2.ZERO
+			(painter as Variant).area = area
 			painter.queue_redraw()
 			render_target_update_mode = SubViewport.UPDATE_ONCE
