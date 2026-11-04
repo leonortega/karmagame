@@ -1,0 +1,20 @@
+{
+  "states": [
+    {
+      "id": "example",
+      "state": "The target is left of the aim.",
+      "questions": {
+        "action": {
+          "type": "choice",
+          "instructions": "Choose the next action.",
+          "criteria": {
+            "left": "Move the aim left.",
+            "right": "Move the aim right.",
+            "shoot": "Fire.",
+            "noop": "Wait."
+          }
+        }
+      }
+    }
+  ]
+}

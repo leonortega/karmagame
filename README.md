@@ -267,6 +267,35 @@ ripple outward.
 Without the sidecar the game still plays: every species falls back to its deterministic
 mocked brain and keeps steering, hunting, and eating.
 
+### NanoJev sidecar setup (optional)
+
+The scripts live in `setup/nanojev/`. They install the NanoJev model (GPU/CUDA), run a
+sample request, or start an HTTP server (`--serve`) that the game talks to.
+
+- **WSL2 / Linux (server machine):**
+  ```bash
+  cd setup/nanojev
+  chmod +x run_nanojev.sh
+  ./run_nanojev.sh                 # one-shot sample request
+  ./run_nanojev.sh request.json    # your own request file
+  ./run_nanojev.sh --serve         # HTTP endpoint on port 8765 (POST /api/evaluate)
+  ```
+  Env overrides: `NANOJEV_HOME`, `NANOJEV_DEVICE`, `NANOJEV_PORT`, `NANOJEV_EXTERNAL_PORT`.
+
+- **Expose to other PCs on the Wi-Fi (Windows host, WSL2):** from an elevated PowerShell:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\setup\nanojev\expose_nanojev_windows.ps1
+  # or: ... -Port 8765 -ExternalPort 8766 -MakePrivate
+  ```
+  This creates a port proxy `<LAN IP>:8766 -> 127.0.0.1:8765` and a Private-profile
+  firewall rule. Other PCs then call `http://<windows-lan-ip>:8766/api/evaluate`.
+  Re-run if the PC's IP changes; use `-Remove` to undo.
+
+- **Game machine (different PC):** set `JEV_URL` in `scripts/karma_jev.gd` to the
+  exposed endpoint (e.g. `http://192.168.x.x:8766/api/evaluate`).
+
+The endpoint has **no authentication** — only use it on a network you trust.
+
 ### Controls
 
 | Key | Action |
@@ -314,6 +343,7 @@ scripts/
   main.gd            — Main node: input, tick, render, HUD, JEV HTTP client + log flush
 scenes/main.tscn
 tests/               — gdUnit4 suite (incl. test_karma_jev*.gd)
+setup/nanojev/       — NanoJev sidecar install/run + Windows port-expose scripts
 openspec/            — behavior specs + change archive (start at `ai-jev-zorro`)
 ```
 
