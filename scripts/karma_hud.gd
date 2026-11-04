@@ -6,18 +6,11 @@ extends RefCounted
 const STAGE_LABEL := {"prime": "joven", "worn": "maduro", "frail": "frágil"}
 
 
-static func other_panel_lines(state: Dictionary) -> Array:
-	var lines: Array = []
-	for a in (state.get("agents", []) as Array).slice(0, 8):
-		var sp: Variant = KarmaData.SPECIES.get(str(a.get("speciesKey", "")), null)
-		if sp == null:
-			lines.append("")
-			continue
-		var last: String = str((a.get("lifeLog", []) as Array).slice(-1)[0]) if not (a.get("lifeLog", []) as Array).is_empty() else ""
-		lines.append("%s %s k:%d hp:%d%s" % [KarmaDraw.species_icon(str(a.get("speciesKey", ""))), str((sp as Dictionary)["name"]),
-			int(round(float(a.get("karma", 0.0)))), int(ceil(float(a.get("hp", 0.0)))),
-			(" · " + last) if not last.is_empty() else ""])
-	return lines
+# Left-panel log: the rolling record of the CPU animals' actions. One log,
+# no per-animal snapshot: every entry is an action somebody actually took.
+static func other_feed_lines(state: Dictionary) -> Array:
+	var o: Array = state.get("otherFeed", []) as Array
+	return o.slice(maxi(0, o.size() - int(KarmaData.TUNING["otherFeedLines"])))
 
 
 static func control_rows(state: Dictionary) -> Array:

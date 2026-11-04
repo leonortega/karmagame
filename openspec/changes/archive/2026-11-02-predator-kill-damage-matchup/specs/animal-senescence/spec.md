@@ -1,0 +1,23 @@
+## MODIFIED Requirements
+
+### Requirement: Two-sided force damage
+The system SHALL resolve every damaging kill path (predator contact bites, zorro pounce, halcon dive, lobo cull, defensive strikes) as `damage = base × attacker_force(age stage, species) × victim_frailty(age stage, species)`. For kill paths (pounce, dive, cull, and AI hunting) the base SHALL be `PRED[attacker].damage × (attacker_size / victim_size)`, so lethality depends on the size/strength matchup; predator contact bites keep the absolute `PRED[attacker].damage` base. Attacker force SHALL fall with age; victim frailty SHALL rise with age. Curl halving, bristle reflection, and invulnerability windows SHALL apply to the scaled result, not the base.
+
+#### Scenario: Old zorro fails on prime raton
+- **WHEN** a frail zorro pounces a prime raton at full vida
+- **THEN** the scaled damage is below the raton's current vida and no kill resolves
+
+#### Scenario: Prime hunter punishes old prey
+- **WHEN** a prime zorro bites a frail raton with the same base damage
+- **THEN** the dealt damage exceeds the same bite against a prime raton
+
+### Requirement: Failed kills wound and open an escape window
+The system SHALL treat `damage >= victim current vida` as the only instakill: the victim dies, a fresh carrion spawns, and wasteful-kill karma applies as today. When `damage < victim vida`, the victim SHALL take the partial damage, the attacker SHALL burn its cooldown, and the victim SHALL get a decision-gated escape chance: player victims decide freely, AI victims flee or hide only if their decision layer selects it. Failed kills SHALL NOT grant feast heals or sated state.
+
+#### Scenario: Failed pounce wounds and chases
+- **WHEN** a frail zorro pounces a prime raton and damage falls short of its vida
+- **THEN** the raton loses exactly the scaled damage, the zorro enters pounce cooldown with no heal, and the raton may flee or hide on its next decision
+
+#### Scenario: Lethal damage still kills outright
+- **WHEN** scaled damage meets or exceeds victim vida
+- **THEN** the victim dies, carrion spawns, and killer gains follow the existing needed-vs-wasteful rule

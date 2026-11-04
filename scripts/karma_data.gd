@@ -79,7 +79,8 @@ static func _build_tuning() -> Dictionary:
 		"campTime": 3.0, "hideRange": 40.0,
 		"carrionFreshHp": 20.0, "carrionStaleHp": 8.0, "carrionRottenHp": -25.0,
 		"carrionFreshT": 30.0, "carrionRottenT": 60.0, "carrionCap": 5, "carrionFreshPa": 5.0,
-		"aiBuyEvery": 10.0, "jevReaskBackoff": 0.5, "aiKarmaGood": 30.0, "aiKarmaBad": -30.0, "aiPredPerceptMod": 0.2, "aiShoutLureTime": 5.0,
+		"aiBuyEvery": 10.0, "aiActLogCd": 4.0, "logCapFeed": 64, "logCapLife": 10,
+		"otherFeedLines": 14, "jevReaskBackoff": 0.5, "aiKarmaGood": 30.0, "aiKarmaBad": -30.0, "aiPredPerceptMod": 0.2, "aiShoutLureTime": 5.0,
 		"mimicHp": -20.0, "satedTime": 25.0,
 		"wastefulHpFrac": 0.8, "wastefulKarma": -10.0, "strikeCd": 4.0,
 		"mateRespawn": 45.0, "mateMax": 4,
@@ -350,3 +351,16 @@ static func scaled_damage(base: float, attacker: Dictionary, victim: Dictionary)
 	var atk_force: float = force_mult_for(str(attacker.get("speciesKey", "raton")), float(attacker.get("edad", 0.0)))
 	var vic_frailty: float = frailty_mult_for(str(victim.get("speciesKey", "raton")), float(victim.get("edad", 0.0)))
 	return base * atk_force * vic_frailty
+
+
+static func kill_damage_base(attacker: Dictionary, victim: Dictionary) -> float:
+	# Matchup-derived kill-verb base: species strength scaled by the size advantage of
+	# the attacker over the victim. Reuses PRED.damage and SPECIES.size (no new tuning).
+	var atk_key: String = str(attacker.get("speciesKey", "raton"))
+	var vic_key: String = str(victim.get("speciesKey", "raton"))
+	var atk_pred: Dictionary = PRED.get(atk_key, PRED_FALLBACK) as Dictionary
+	var atk_size: float = float((SPECIES.get(atk_key, SPECIES.get("raton", {})) as Dictionary).get("size", 3.0))
+	var vic_size: float = float((SPECIES.get(vic_key, SPECIES.get("raton", {})) as Dictionary).get("size", 2.0))
+	if vic_size <= 0.0:
+		vic_size = 1.0
+	return float(atk_pred.get("damage", 20.0)) * (atk_size / vic_size) * 0.5

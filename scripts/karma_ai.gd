@@ -57,7 +57,7 @@ static func ai_hunt_eat(state: Dictionary, a: Dictionary, prey: Dictionary, dt: 
 		if str(a.get("speciesKey", "")) == "halcon":
 			a["x"] = float(prey["x"])
 			a["y"] = float(prey["y"])
-		var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaState.eff_max_hp_for(prey))
+		var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaData.kill_damage_base(a, prey))
 		if lethal and str(a.get("speciesKey", "")) == "zorro":
 			a["satedT"] = float(KarmaData.TUNING["satedTime"])
 		if lethal:
@@ -396,6 +396,7 @@ static func ai_try_hide(state: Dictionary, a: Dictionary) -> bool:
 			a["hidden"] = true
 			a["hideRef"] = r
 			a["hideT"] = float(KarmaData.TUNING["aiHideMax"])
+			KarmaState.record_activity(state, a, "Se esconde")
 			return true
 	return false
 

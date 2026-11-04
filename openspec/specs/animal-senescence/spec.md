@@ -29,7 +29,7 @@ The system SHALL scale effective movement velocity, vida-regen rate, and verb/ac
 - **THEN** the frail topo's cooldown or channel is longer by the documented age factor
 
 ### Requirement: Two-sided force damage
-The system SHALL resolve every damaging kill path (predator contact bites, zorro pounce, halcon dive, lobo cull, defensive strikes) as `damage = base x attacker_force(age stage, species) x victim_frailty(age stage, species)`. Attacker force SHALL fall with age; victim frailty SHALL rise with age. Curl halving, bristle reflection, and invulnerability windows SHALL apply to the scaled result, not the base.
+The system SHALL resolve every damaging kill path (predator contact bites, zorro pounce, halcon dive, lobo cull, defensive strikes) as `damage = base × attacker_force(age stage, species) × victim_frailty(age stage, species)`. For kill paths (pounce, dive, cull, and AI hunting) the base SHALL be `PRED[attacker].damage × (attacker_size / victim_size)`, so lethality depends on the size/strength matchup; predator contact bites keep the absolute `PRED[attacker].damage` base. Attacker force SHALL fall with age; victim frailty SHALL rise with age. Curl halving, bristle reflection, and invulnerability windows SHALL apply to the scaled result, not the base.
 
 #### Scenario: Old zorro fails on prime raton
 - **WHEN** a frail zorro pounces a prime raton at full vida

@@ -671,7 +671,7 @@ static func _verb_pounce(state: Dictionary, a: Variant) -> bool:
 	if prey == null:
 		return KarmaEat.eat_carrion(state, KarmaUtils.nearest_from(float((a as Dictionary)["x"]),
 			float((a as Dictionary)["y"]), state.get("carrions", []), float(KarmaData.TUNING["eatRange"])), a)
-	var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaState.eff_max_hp_for(prey))
+	var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaData.kill_damage_base(a, prey))
 	(a as Dictionary)["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
 	if lethal:
 		KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
@@ -684,7 +684,7 @@ static func _verb_dive(state: Dictionary, a: Variant) -> bool:
 		return false
 	(a as Dictionary)["x"] = float((prey as Dictionary)["x"])
 	(a as Dictionary)["y"] = float((prey as Dictionary)["y"])
-	var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaState.eff_max_hp_for(prey))
+	var lethal: bool = KarmaEat.resolve_strike(state, a, prey, KarmaData.kill_damage_base(a, prey))
 	if lethal:
 		KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
 	return true
@@ -941,7 +941,7 @@ static func _verb_cull(state: Dictionary, a: Variant) -> bool:
 		if not KarmaEat.pounce_kill(state, sick, null):
 			return false
 	else:
-		lethal = KarmaEat.resolve_strike(state, a, sick, KarmaState.eff_max_hp_for(sick))
+		lethal = KarmaEat.resolve_strike(state, a, sick, KarmaData.kill_damage_base(a, sick))
 		if lethal:
 			KarmaEat.heal_eater(state, a, float(KarmaData.TUNING["pounceHp"]))
 	if weak and lethal:

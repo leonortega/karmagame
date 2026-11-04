@@ -98,15 +98,15 @@ The `updateAgents(dt)` function SHALL call a per-species AI function for every a
 - **THEN** it moves toward the nearest water at any distance instead of wandering without drink
 
 ### Requirement: AI predators use full kill verbs
-Predator agents (zorro, lobo, halcon) use their full kill verbs against AI and player agents: pounce (zorro), dive (halcon), strike (halcon vs predator), and cede (zorro). All kill verbs follow the same values as the player.
+Predator agents (zorro, lobo, halcon) use their full kill verbs against AI and player agents: pounce (zorro), dive (halcon), strike (halcon vs predator), and cede (zorro). All kill verbs follow the same matchup-derived values as the player: base = `PRED[attacker].damage × (attacker_size / victim_size)`, scaled by age, so a kill resolves only when scaled damage meets or exceeds the victim's vida.
 
 #### Scenario: AI Zorro pounces on AI Ratón
 - **WHEN** an AI Zorro agent is adjacent to an AI Ratón agent and `pounceCd` is 0
-- **THEN** the Ratón dies, a carrion spawns, and the Zorro gains HP per `pounceHp`
+- **THEN** the Ratón takes matchup-scaled damage; if lethal it dies, a carrion spawns, and the Zorro gains HP per `pounceHp`, otherwise it survives wounded and may flee or hide
 
 #### Scenario: AI Halcon dive-kills AI mate
 - **WHEN** an AI Halcon agent dives on an adjacent AI company agent
-- **THEN** the mate dies, a carrion spawns at the kill position
+- **THEN** the mate takes matchup-scaled damage; if lethal a carrion spawns at the kill position
 
 ### Requirement: AI grazers eat species-appropriate food
 Every AI grazer agent eats only its `DIET` entries using the same `eatPatch`, `eatInsect`, `eatCarrion` functions as the player. AI grazers lose HP from hunger and die at 0 HP leaving carrion.
@@ -142,18 +142,23 @@ Every AI agent loses HP at `TUNING.hungerPerSec * dt` per tick. AI agents eat on
 - **THEN** it pursues and strikes on contact, killing the victim and spawning carrion
 
 ### Requirement: Wander travel is purposeful
-Whenever an agent (AI fauna, company mate, or hunter acting without a hunt target) has no other intent, deed, or reflex to execute, it SHALL steer toward the nearest point of interest instead of random-walking: nearest edible food first, else nearest water, else nearest fitting cover, else nearest company, else a short random step only when nothing qualifies. This changes movement targets only: no karma, cost, cooldown, or gait changes. The possessed (player-controlled) agent is exempt and keeps free control. Oruga and sapo are exempt at the terminal wander tail: their stillness-gated defenses (curl, camouflage per `ai-species-behavior`) require motionlessness, so they keep accumulating stillness instead of traveling — the defense counts as the deed.
+
+Whenever an agent (AI fauna, company mate, or hunter acting without a hunt target) has no other intent, deed, or reflex to execute, it SHALL steer toward the nearest point of interest instead of random-walking: nearest edible food first, else — while the agent is thirsty by its own water gate (`sed` below `30 + 70 × caution_water` and more thirsty than hungry, `ai-survival`) — the nearest water, else nearest fitting cover, else nearest company, else a short random step only when nothing qualifies. A sated wanderer SHALL skip the water arm entirely and fall through to cover, company, or jitter, resolving `ai-survival`'s "Sated animals SHALL NOT detour to water" for the wander tail. This changes movement targets only: no karma, cost, cooldown, or gait changes. The possessed (player-controlled) agent is exempt and keeps free control. Oruga and sapo are exempt at the terminal wander tail: their stillness-gated defenses (curl, camouflage per `ai-species-behavior`) require motionlessness, so they keep accumulating stillness instead of traveling — the defense counts as the deed.
 
 #### Scenario: Idle grazer heads for food
 - **WHEN** a raton with wander intent has no contact food but an edible patch lies within the TUNING wander-seek range
 - **THEN** it moves toward that patch each tick instead of drifting randomly
 
 #### Scenario: Thirsty wanderer heads for water
-- **WHEN** a wandering agent has no edible food in range but water is the nearest point of interest
+- **WHEN** a wandering agent below its own water threshold has no edible food in range and water is the nearest point of interest
 - **THEN** it moves toward that water each tick
 
+#### Scenario: Sated wanderer skips the pond
+- **WHEN** a wandering agent whose `sed` sits at or above its own water threshold has no edible food in range but water lies within the wander-seek range
+- **THEN** it never targets the water from the wander tail: it steers toward fitting cover, then company, else jitters — no travel to water while sated
+
 #### Scenario: Nothing nearby, small step
-- **WHEN** a wandering agent has no food, water, cover, or company anywhere in range
+- **WHEN** a wandering agent has no food, water (while thirsty), cover, or company anywhere in range
 - **THEN** it takes a short random step (bounded jitter, same as today) rather than freezing
 
 #### Scenario: Player control untouched

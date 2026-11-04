@@ -480,7 +480,7 @@ func test_step_ladder_hunts_prey_on_contact() -> void:
 	var a := _ai_lobo(s, 500.0, 500.0)
 	_only(s, a)
 	_sated(a)
-	var prey := KarmaState.mk_agent({"role": "company", "speciesKey": "zorro", "hp": 100.0, "x": 515.0, "y": 500.0})
+	var prey := KarmaState.mk_agent({"role": "company", "speciesKey": "zorro", "hp": 20.0, "x": 515.0, "y": 500.0})
 	(s["agents"] as Array).append(prey)
 	var carrion0 := (s["carrions"] as Array).size()
 	KarmaAILobo.step_ladder(s, a, 0.1)
@@ -552,7 +552,7 @@ func test_steer_hunt_kills_on_contact() -> void:
 	var a := _ai_lobo(s, 500.0, 500.0)
 	_only(s, a)
 	_sated(a)
-	var prey := KarmaState.mk_agent({"role": "company", "speciesKey": "zorro", "hp": 100.0, "x": 510.0, "y": 500.0})
+	var prey := KarmaState.mk_agent({"role": "company", "speciesKey": "zorro", "hp": 20.0, "x": 510.0, "y": 500.0})
 	(s["agents"] as Array).append(prey)
 	a["jev_intent"] = {"kind": "hunt", "x": 510.0, "y": 500.0, "ttl": 5.0, "target": prey}
 	var carrion0 := (s["carrions"] as Array).size()

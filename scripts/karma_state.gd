@@ -405,12 +405,33 @@ static func eff_size(state: Dictionary) -> int:
 	return int(state["sp"]["size"])
 
 
-static func diet_hint(state: Dictionary) -> void:
+static func diet_list_for(species_key: String) -> String:
+	# Carnivores: list carrion + every species they can hunt (mates included).
+	if KarmaData.PRED.has(species_key):
+		var items: Array = []
+		var diet: Array = KarmaData.DIET.get(species_key, [])
+		if diet.has("carrion"):
+			items.append("carroña")
+		for key in KarmaData.SPECIES.keys():
+			if KarmaPredators.can_eat_species(species_key, str(key)):
+				items.append(str((KarmaData.SPECIES[str(key)] as Dictionary)["name"]).to_lower())
+		if items.is_empty():
+			return str(KarmaData.DIET_HINT.get(species_key, ""))
+		if items.size() == 1:
+			return str(items[0])
+		var head: Array = items.slice(0, items.size() - 1)
+		return ", ".join(head) + " o " + str(items[items.size() - 1])
+	return str(KarmaData.DIET_HINT.get(species_key, ""))
+
+
+static func diet_hint(state: Dictionary, attempted: String = "") -> void:
 	var pl: Variant = KarmaState.player(state)
 	if float(pl.get("dietHintT", 0.0)) > 0.0:
 		return
 	pl["dietHintT"] = float(KarmaData.TUNING["dietHintCd"])
-	add_log(state, null, "Los %ss comen %s" % [str(state["sp"]["name"]).to_lower(), str(KarmaData.DIET_HINT[state["speciesKey"]])])
+	var attempted_name: String = str(KarmaDraw.FOOD_LABEL.get(attempted, attempted)) if attempted != "" else ""
+	if attempted_name != "":
+		add_log(state, null, "No puedes comer %s" % attempted_name)
 
 
 static func tracked_carrion(state: Dictionary) -> Variant:
@@ -541,11 +562,12 @@ static func add_karma(state: Dictionary, agent: Variant, n: float, msg: String =
 	t["karma"] = clampf(float(t.get("karma", 0.0)) + n, -100.0, 100.0)
 	if msg.is_empty():
 		return
-	(t.get("lifeLog", []) as Array).append(msg)
 	if agent != null:
-		(state.get("otherFeed", []) as Array).append(msg)
+		_push_log((agent as Dictionary)["lifeLog"] as Array, msg, int(KarmaData.TUNING["logCapLife"]))
+		_push_log(state["otherFeed"] as Array, _feed_line(agent as Dictionary, msg), int(KarmaData.TUNING["logCapFeed"]))
 	else:
-		(state.get("feed", []) as Array).append(msg)
+		_push_log(state["lifeLog"] as Array, msg, int(KarmaData.TUNING["logCapFeed"]))
+		_push_log(state["feed"] as Array, msg, int(KarmaData.TUNING["logCapFeed"]))
 
 
 static func add_pa(state: Dictionary, agent: Variant, n: float) -> void:
@@ -553,13 +575,40 @@ static func add_pa(state: Dictionary, agent: Variant, n: float) -> void:
 	t["pa"] = float(t.get("pa", 0.0)) + n
 
 
+static func _push_log(arr: Array, msg: String, cap: int) -> void:
+	arr.append(msg)
+	if arr.size() > cap:
+		arr.pop_front()
+
+
+# Other-animals feed entries are prefixed with the actor's species emoji so
+# an unattributed line still names its body at a glance.
+static func _feed_line(agent: Dictionary, msg: String) -> String:
+	if agent.has("speciesKey"):
+		return KarmaDraw.species_icon(str(agent["speciesKey"])) + " " + msg
+	return msg
+
+
 static func add_log(state: Dictionary, agent: Variant, msg: String) -> void:
 	if agent != null:
-		((agent as Dictionary).get("lifeLog", []) as Array).append(msg)
-		(state.get("otherFeed", []) as Array).append(msg)
+		_push_log((agent as Dictionary)["lifeLog"] as Array, msg, int(KarmaData.TUNING["logCapLife"]))
+		_push_log(state["otherFeed"] as Array, _feed_line(agent as Dictionary, msg), int(KarmaData.TUNING["logCapFeed"]))
 	else:
-		(state.get("lifeLog", []) as Array).append(msg)
-		(state.get("feed", []) as Array).append(msg)
+		_push_log(state["lifeLog"] as Array, msg, int(KarmaData.TUNING["logCapFeed"]))
+		_push_log(state["feed"] as Array, msg, int(KarmaData.TUNING["logCapFeed"]))
+
+
+# Everyday CPU activity (eat/drink/hide): throttled per animal so a grazing
+# AI filling one bite per frame cannot flood the feed; karma entries bypass
+# this on purpose because they are already paced by their cooldowns.
+static func record_activity(state: Dictionary, agent: Variant, msg: String) -> void:
+	if agent == null or msg.is_empty() or str(agent.get("brain", "")) == "PLAYER":
+		return
+	var now: float = float(state.get("time", 0.0))
+	if float(agent.get("actLogAt", -1e9)) > now - float(KarmaData.TUNING["aiActLogCd"]):
+		return
+	agent["actLogAt"] = now
+	add_log(state, agent, msg)
 
 
 static func ai_try_shout(state: Dictionary, agent: Dictionary) -> bool:

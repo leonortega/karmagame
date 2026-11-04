@@ -137,7 +137,7 @@ The system SHALL provide the Halcón as the fastest form with the largest vision
 - **THEN** no Karma/PA is granted and an informational message is shown
 
 ### Requirement: Zorro form (Tier 2)
-The system SHALL provide the Zorro as a fast hunter, size 3, whose Pounce deals documented base damage scaled by attacker force and victim frailty with 6s cooldown (kill plus carrion only when damage meets or exceeds victim vida, otherwise partial damage plus a decision-gated escape window) and that cannot shout.
+The system SHALL provide the Zorro as a fast hunter, size 3, whose Pounce deals matchup-derived base damage — `PRED[Zorro].damage × (attacker_size / victim_size)` (28 × attacker/victim size ratio) — scaled by attacker force and victim frailty, with 6s cooldown (kill plus carrion only when damage meets or exceeds victim vida, otherwise partial damage plus a decision-gated escape window) and that cannot shout. A real size/strength advantage can make the first hit lethal; comparable or larger victims usually survive it.
 
 #### Scenario: Zorro pounce kills prey
 - **WHEN** a prime Zorro uses the eat action adjacent to a congener with Pounce ready and scaled damage meets or exceeds its vida
@@ -237,7 +237,7 @@ The system SHALL grant karma for one characteristic virtue per form: Oruga prude
 - **THEN** Karma rises by 20
 
 ### Requirement: New verbs
-The system SHALL provide: Ratón Squeeze (counts as size 1 for refuge fit, passive), Ardilla Carry (C near a nut picks it up, C again drops; only one carried; E while carrying still eats only non-nut food), species-sense on V (Topo Tremor: 3s reveal of food and predators, 25s cooldown; Zorro Track: outline to nearest carrion for 5s, 30s cooldown), Sapo Camouflage (motionless 2s outside refuges drops Zorro pursuit only, breaks on move), Oruga Curl (motionless takes half of the age-scaled damage, 20s cooldown), Halcón Dive (E on a mate within 60px deals documented base damage scaled by age; kill plus carrion only when damage meets or exceeds victim vida, wasteful rule applies).
+The system SHALL provide: Ratón Squeeze (counts as size 1 for refuge fit, passive), Ardilla Carry (C near a nut picks it up, C again drops; only one carried; E while carrying still eats only non-nut food), species-sense on V (Topo Tremor: 3s reveal of food and predators, 25s cooldown; Zorro Track: outline to nearest carrion for 5s, 30s cooldown), Sapo Camouflage (motionless 2s outside refuges drops Zorro pursuit only, breaks on move), Oruga Curl (motionless takes half of the age-scaled damage, 20s cooldown), Halcón Dive (E on a mate within 60px deals matchup-derived base damage `PRED[Halcón].damage × (attacker_size / victim_size)` scaled by age; kill plus carrion only when damage meets or exceeds victim vida, wasteful rule applies).
 
 #### Scenario: Squeeze fits anywhere small
 - **WHEN** a Ratón presses H near a burrow-S
@@ -252,7 +252,7 @@ The system SHALL provide: Ratón Squeeze (counts as size 1 for refuge fit, passi
 - **THEN** the age-scaled damage is halved and the 20s cooldown starts
 
 ### Requirement: Lobo form (Tier 2 apex)
-The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the Halcón but tougher, whose diet is carrion and mates, that cannot shout, hunts tier 2 agents and zorro agents with age-scaled damage (kill plus carrion only when damage meets or exceeds victim vida), and fears nothing.
+The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the Halcón but tougher, whose diet is carrion and mates, that cannot shout, hunts tier 2 agents and zorro agents with matchup-derived base damage `PRED[Lobo].damage × (attacker_size / victim_size)` scaled by age (kill plus carrion only when damage meets or exceeds victim vida), and fears nothing.
 
 #### Scenario: Lobo hunts the big
 - **WHEN** a player-controlled prime Lobo uses the eat action adjacent to a tier 2 agent or zorro agent with its kill verb ready and scaled damage is lethal
@@ -263,7 +263,7 @@ The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the
 - **THEN** the victim survives wounded and may escape per its decision layer
 
 #### Scenario: Lobo cannot shout
-- **WHEN** the player is a Lobo and attempts the altruistic shout
+- **WHEN** the player is a Lobo and attempts to shout
 - **THEN** no Karma/PA is granted and an informational message is shown
 
 #### Scenario: Nothing hunts the Lobo
@@ -271,7 +271,7 @@ The system SHALL provide the Lobo as a Tier 2 apex form, size 4, slower than the
 - **THEN** no AI agent targets the Lobo as prey; zorro agents flee from it
 
 ### Requirement: NPC agents share the hunger-eat-die loop
-The system SHALL run hunger drain, diet-gated eating with identical payoffs, age-scaled speed/regen/damage/frailty, and death for AI agents: every agent loses Vida continuously at its own species-paced drain rate (same multiplier as the player of that species), eats only its DIET table entries with the same Vida gains, and dies at 0 Vida or at lifespan leaving a fresh carrion for carnivore diets. AI kills obey the same age-scaled contact and kill verbs (pounce/dive/strike values) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts — AI karma is discarded on death (no reincarnation for AI).
+The system SHALL run hunger drain, diet-gated eating with identical payoffs, age-scaled speed/regen/damage/frailty, and death for AI agents: every agent loses Vida continuously at its own species-paced drain rate (same multiplier as the player of that species), eats only its DIET table entries with the same Vida gains, and dies at 0 Vida or at lifespan leaving a fresh carrion for carnivore diets. AI kills obey the same contact bites and the same matchup-derived kill verbs (pounce/dive/cull base = `PRED[attacker].damage × (attacker_size / victim_size)`, scaled by age) as player kills. NPC agents now also earn karma for species-specific good deeds, spend PA on adaptations, and trigger shouts - AI karma is discarded on death (no reincarnation for AI).
 
 #### Scenario: NPC grazer eats and survives
 - **WHEN** an AI raton reaches a berry patch with fruit remaining
@@ -299,7 +299,7 @@ The system SHALL run hunger drain, diet-gated eating with identical payoffs, age
 
 #### Scenario: NPC agent dies leaving carrion
 - **WHEN** an AI agent finds no food for an extended time
-- **THEN** its HP drains at its species rate, it dies at 0, and a fresh carrion spawns — **the agent's karma/PA are lost** (no reincarnation for AI)
+- **THEN** its HP drains at its species rate, it dies at 0, and a fresh carrion spawns - **the agent's karma/PA are lost** (no reincarnation for AI)
 
 #### Scenario: NPC short-lived drains faster
 - **WHEN** an AI Oruga and an AI Lobo both go unfed for the same duration

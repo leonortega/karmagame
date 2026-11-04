@@ -255,7 +255,7 @@ func test_failed_pounce_wounds_prime_prey_alive() -> void:
 	var carrion_n := (s["carrions"] as Array).size()
 	KarmaGame._verb_pounce(s, z)
 	assert_bool((s["agents"] as Array).has(prey)).is_true()
-	assert_bool(abs(float(prey["hp"]) - 40.0) < 0.01).is_true()
+	assert_bool(abs(float(prey["hp"]) - 93.0) < 0.01).is_true()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n)
 
 
@@ -290,7 +290,7 @@ func test_failed_pounce_victim_survives_to_decide() -> void:
 
 
 func test_lethal_pounce_still_kills_and_heals() -> void:
-	var t := _predator_prey_setup("zorro", 0.0, 100.0)
+	var t := _predator_prey_setup("zorro", 0.0, 10.0)
 	var s: Dictionary = t[0]
 	var z: Dictionary = t[1]
 	var prey: Dictionary = t[2]
@@ -309,7 +309,7 @@ func test_failed_dive_wounds_prime_prey_alive() -> void:
 	var carrion_n := (s["carrions"] as Array).size()
 	KarmaGame._verb_dive(s, z)
 	assert_bool((s["agents"] as Array).has(prey)).is_true()
-	var expected := 100.0 - KarmaData.scaled_damage(KarmaState.eff_max_hp_for(prey), z, prey)
+	var expected := 100.0 - KarmaData.scaled_damage(KarmaData.kill_damage_base(z, prey), z, prey)
 	assert_bool(abs(float(prey["hp"]) - expected) < 0.01).is_true()
 	assert_int((s["carrions"] as Array).size()).is_equal(carrion_n)
 

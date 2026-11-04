@@ -295,7 +295,8 @@ func test_hunt_intent_kills_on_contact() -> void:
 	var s := _fresh_zorro_state()
 	var a := _ai_zorro(s, 500.0, 500.0)
 	s["agents"] = (s["agents"] as Array).filter(func(o): return o == a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
+	prey["hp"] = 10.0
 	var carrion_n := (s["carrions"] as Array).size()
 	a["jev_intent"] = {"kind": "hunt", "x": 510.0, "y": 500.0, "ttl": 5.0, "target": prey}
 	KarmaAIZorro.step(s, a, 0.1)
@@ -320,7 +321,8 @@ func test_apply_hunt_intent_kills_prey_on_contact() -> void:
 	var s := _fresh_zorro_state()
 	var a := _ai_zorro(s, 500.0, 500.0)
 	_strip_to(s, a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
+	prey["hp"] = 10.0
 	var carrion_n := (s["carrions"] as Array).size()
 	var menu: Array = KarmaJev.build_menu(s, a)
 	var idx := _menu_kind_index(menu, "hunt")
@@ -625,7 +627,8 @@ func test_jev_halcon_dive_intent_kills_and_grounds_on_contact() -> void:
 	var s := _fresh_halcon_state()
 	var a := _ai_halcon(s, 500.0, 500.0)
 	s["agents"] = (s["agents"] as Array).filter(func(o): return o == a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
+	prey["hp"] = 10.0
 	var carrion_n := (s["carrions"] as Array).size()
 	a["jev_intent"] = {"kind": "dive", "x": 510.0, "y": 500.0, "ttl": 5.0, "target": prey}
 	KarmaAIHalcon.step(s, a, 0.1)
@@ -638,7 +641,7 @@ func test_apply_dive_intent_retains_prey_target() -> void:
 	var s := _fresh_halcon_state()
 	var a := _ai_halcon(s, 500.0, 500.0)
 	_strip_to(s, a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
 	var menu: Array = KarmaJev.build_halcon_menu(s, a)
 	var idx := _halcon_kind_index(menu, "dive")
 	assert_int(idx).is_not_equal(-1)
@@ -651,7 +654,8 @@ func test_apply_dive_intent_kills_prey_on_contact() -> void:
 	var s := _fresh_halcon_state()
 	var a := _ai_halcon(s, 500.0, 500.0)
 	_strip_to(s, a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
+	prey["hp"] = 10.0
 	var carrion_n := (s["carrions"] as Array).size()
 	var menu: Array = KarmaJev.build_halcon_menu(s, a)
 	var idx := _halcon_kind_index(menu, "dive")
@@ -747,7 +751,8 @@ func test_zorro_wander_fallthrough_hunts_opportunistically() -> void:
 	var s := _fresh_zorro_state()
 	var a := _ai_zorro(s, 500.0, 500.0)
 	_strip_to(s, a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
+	prey["hp"] = 10.0
 	a["hambre"] = 50.0
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	var carrion_n := (s["carrions"] as Array).size()
@@ -775,7 +780,8 @@ func test_halcon_wander_fallthrough_hunts_opportunistically() -> void:
 	var s := _fresh_halcon_state()
 	var a := _ai_halcon(s, 500.0, 500.0)
 	_strip_to(s, a)
-	var prey := KarmaState.spawn_fauna(s, "raton", 510.0, 500.0)
+	var prey := KarmaState.spawn_fauna(s, "oruga", 510.0, 500.0)
+	prey["hp"] = 10.0
 	var carrion_n := (s["carrions"] as Array).size()
 	a["jev_intent"] = {"kind": "wander", "x": 500.0, "y": 500.0, "ttl": 5.0}
 	KarmaAIHalcon.step(s, a, 0.1)

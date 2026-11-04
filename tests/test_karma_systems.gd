@@ -14,7 +14,7 @@ func _fresh(species := "raton") -> Dictionary:
 	return KarmaState.new_run(species, 0.0, 0.0, 0, _rng)
 
 
-func test_one_bite_consumes_whole_patch() -> void:
+func test_one_bite_consumes_one_fruit() -> void:
 	var s := _fresh("raton")
 	var bush: Dictionary = (s["bushes"] as Array)[0]
 	bush["amount"] = 3
@@ -23,11 +23,11 @@ func test_one_bite_consumes_whole_patch() -> void:
 	bush["mimicEaten"] = true
 	KarmaState.player(s)["hp"] = 10.0
 	assert_bool(KarmaEat.eat_patch(s, bush, null)).is_true()
-	assert_float(KarmaState.player(s)["hp"]).is_equal(60.0) # 2*15 + 20
-	assert_float(s["pa"]).is_equal(10.0) # 2*5
-	assert_float(s["karma"]).is_equal(-15.0)
-	assert_bool(bush["alive"]).is_false()
-	assert_int(bush["amount"]).is_equal(0)
+	assert_float(KarmaState.player(s)["hp"]).is_equal(25.0) # 15
+	assert_float(s["pa"]).is_equal(5.0) # 5
+	assert_float(s["karma"]).is_equal(0.0)
+	assert_bool(bush["alive"]).is_true()
+	assert_int(bush["amount"]).is_equal(2)
 
 
 func test_last_fruit_selfish() -> void:
@@ -54,6 +54,7 @@ func test_off_diet_refused() -> void:
 func test_lethal_strike_on_player_never_despawns_body() -> void:
 	var s := _fresh("raton")
 	var pl: Dictionary = KarmaState.player(s)
+	pl["hp"] = 10.0
 	var zorro: Dictionary = KarmaState.spawn_fauna(s, "zorro", float(pl["x"]), float(pl["y"]))
 	KarmaAI.ai_hunt_eat(s, zorro, pl, 1.0 / 60.0)
 	assert_object(KarmaState.player(s)).is_not_null()

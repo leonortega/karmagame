@@ -29,7 +29,9 @@ func _hunter(s: Dictionary, species: String, x: float, y: float) -> Dictionary:
 
 
 func _victim(s: Dictionary, x: float, y: float) -> Dictionary:
-	return KarmaState.spawn_fauna(s, "raton", x, y)
+	var v := KarmaState.spawn_fauna(s, "raton", x, y)
+	v["hp"] = 1.0
+	return v
 
 
 # 1.1 is_hunted outcomes.

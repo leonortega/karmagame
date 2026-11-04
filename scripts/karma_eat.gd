@@ -56,6 +56,7 @@ static func drink_water(state: Dictionary, w: Variant, for_agent: Variant) -> bo
 		a["sed"] = minf(100.0, float(a.get("sed", 100.0)) + float(KarmaData.TUNING["sipSed"]))
 		heal_eater(state, a, float(KarmaData.TUNING["sipHp"]))
 		body["level"] = maxf(0.0, float(body.get("level", 1.0)) - cost)
+		KarmaState.record_activity(state, a, "Bebe agua")
 		return true
 	pl["sed"] = minf(100.0, float(pl["sed"]) + float(KarmaData.TUNING["sipSed"]))
 	pl["hp"] = minf(KarmaState.eff_max_hp_for(state), float(pl["hp"]) + float(KarmaData.TUNING["sipHp"]))
@@ -215,7 +216,8 @@ static func diet_hint_if_near(state: Dictionary) -> bool:
 	if any_food == null:
 		any_food = KarmaUtils.nearest_from(px, py, state.get("carrions", []), 60.0)
 	if any_food != null:
-		KarmaState.diet_hint(state)
+		var attempted_kind: String = str((any_food as Dictionary).get("kind", ""))
+		KarmaState.diet_hint(state, attempted_kind)
 	return false
 
 
@@ -285,7 +287,7 @@ static func nearest_spare_flora_for(state: Dictionary, a: Dictionary, max_d: flo
 static func pounce_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> bool:
 	var pl: Variant = KarmaState.player(state)
 	var attacker: Dictionary = KarmaState.body_actor(state, for_agent) as Dictionary
-	var base: float = KarmaState.eff_max_hp_for(m)
+	var base: float = KarmaData.kill_damage_base(attacker, m)
 	var lethal: bool = resolve_strike(state, attacker, m, base)
 	if for_agent != null:
 		(for_agent as Dictionary)["pounceCd"] = float(KarmaData.TUNING["pounceCd"])
@@ -314,7 +316,7 @@ static func dive_kill(state: Dictionary, m: Dictionary, for_agent: Variant) -> b
 		pl["x"] = float(m["x"])
 		pl["y"] = float(m["y"])
 		pl["grounded"] = true
-	var base: float = KarmaState.eff_max_hp_for(m)
+	var base: float = KarmaData.kill_damage_base(attacker, m)
 	var lethal: bool = resolve_strike(state, attacker, m, base)
 	if for_agent != null:
 		if lethal:
@@ -342,6 +344,7 @@ static func resolve_strike(state: Dictionary, attacker: Dictionary, victim: Dict
 			return true
 		KarmaState.remove_agent(state, victim)
 		add_carrion(state, float(victim["x"]), float(victim["y"]))
+		KarmaState.add_log(state, attacker, "Caza a un %s" % str(KarmaData.SPECIES[str(victim["speciesKey"])]["name"]))
 		return true
 	victim["hp"] = float(victim.get("hp", 0.0)) - dmg
 	return false
@@ -379,26 +382,16 @@ static func eat_patch(state: Dictionary, p: Variant, for_agent: Variant) -> bool
 		return eat_mimic(state, patch, for_agent)
 	if str(patch["kind"]) == "mushrooms" and int(patch.get("toxicLeft", 0)) > 0:
 		return eat_toxic_shroom(state, patch, for_agent)
-	# Leaves keep the historic multi-bite sustainable path (exempt from
-	# last-fruit karma); mimic/toxic shrooms handled above.
-	if str(patch["kind"]) == "leaves":
-		patch["amount"] = int(patch["amount"]) - 1
-		return eat_sustainable(state, patch, KarmaData.FOODDEF[str(patch["kind"])], for_agent)
-	# Non-leaf fruit: one bite consumes the entire remaining patch.
-	var total: int = int(patch["amount"])
-	patch["amount"] = 0
-	patch["alive"] = false
-	for _i in range(total):
+	KarmaState.record_activity(state, for_agent, "Come %s" % str(KarmaDraw.FOOD_LABEL.get(str(patch["kind"]), str(patch["kind"]))))
+	# Every fruit kind (leaves included) uses the historic multi-bite path:
+	# one bite consumes one fruit; the plant dies and pays last-fruit karma only
+	# when the last fruit is taken.
+	patch["amount"] = int(patch["amount"]) - 1
+	if str(patch["kind"]) != "leaves":
 		KarmaGame.drop_seed(state, str(patch["kind"]), float(patch["x"]), float(patch["y"]))
-	var pay: Dictionary = KarmaData.FOODDEF.get(str(patch["kind"]), {"hp": 0.0, "pa": 0.0})
-	var thp: float = float(pay["hp"]) * float(max(0, total - 1)) + float(KarmaData.TUNING["lastFruitHp"])
-	var tpa: float = float(pay["pa"]) * float(max(0, total - 1))
-	heal_eater(state, for_agent, thp)
-	refill_hambre(state, for_agent, thp)
-	if for_agent == null:
-		KarmaState.add_pa(state, null, tpa)
-		KarmaState.add_karma(state, null, float(KarmaData.TUNING["lastFruitKarma"]), "Último %s: volverá a dar fruto (%d karma)" % [str(patch["kind"]), int(KarmaData.TUNING["lastFruitKarma"])])
-	return true
+	if int(patch["amount"]) <= 0 and str(patch["kind"]) != "leaves":
+		return eat_last_fruit(state, patch, for_agent)
+	return eat_sustainable(state, patch, KarmaData.FOODDEF[str(patch["kind"])], for_agent)
 
 
 static func eat_mimic(state: Dictionary, p: Dictionary, for_agent: Variant) -> bool:
@@ -407,6 +400,7 @@ static func eat_mimic(state: Dictionary, p: Dictionary, for_agent: Variant) -> b
 	if int(p["amount"]) <= 0:
 		p["alive"] = false
 	hurt_eater(state, for_agent, float(KarmaData.TUNING["mimicHp"]))
+	KarmaState.record_activity(state, for_agent, "Muerde un mímico ponzoñoso")
 	if for_agent == null:
 		KarmaState.add_log(state, null, "¡Era un mímico! Fruto ponzoñoso (−20 vida)")
 	return true
@@ -418,6 +412,7 @@ static func eat_toxic_shroom(state: Dictionary, p: Dictionary, for_agent: Varian
 	if int(p["amount"]) <= 0:
 		p["alive"] = false
 	hurt_eater(state, for_agent, float(KarmaData.TUNING["mimicHp"]))
+	KarmaState.record_activity(state, for_agent, "Come una seta tóxica")
 	if for_agent == null:
 		KarmaState.add_log(state, null, "¡Seta tóxica! (−20 vida)")
 	return true
@@ -459,6 +454,7 @@ static func eat_insect(state: Dictionary, i: Variant, for_agent: Variant) -> boo
 	var bonus: float = 8.0 if bool((i as Dictionary).get("fat", false)) else 0.0
 	heal_eater(state, for_agent, float(pay["hp"]) + bonus)
 	refill_hambre(state, for_agent, float(pay["hp"]) + bonus)
+	KarmaState.record_activity(state, for_agent, "Atrapa un insecto")
 	if for_agent != null:
 		if str((for_agent as Dictionary).get("speciesKey", "")) == "sapo":
 			KarmaState.add_karma(state, for_agent, float(KarmaData.TUNING["pestKarma"]), "Control de plagas (+karma)")
@@ -504,6 +500,8 @@ static func eat_carrion(state: Dictionary, c: Variant, for_agent: Variant) -> bo
 	var stage: String = carrion_stage(car)
 	(state["carrions"] as Array).erase(car)
 	if stage == "fresh":
+		KarmaState.record_activity(state, for_agent, "Come carroña fresca")
+	if stage == "fresh":
 		heal_eater(state, for_agent, float(KarmaData.TUNING["carrionFreshHp"]))
 		refill_hambre(state, for_agent, float(KarmaData.TUNING["carrionFreshHp"]))
 		if for_agent != null and int((for_agent as Dictionary).get("stash", 0)) > 0:
@@ -518,6 +516,7 @@ static func eat_carrion(state: Dictionary, c: Variant, for_agent: Variant) -> bo
 	elif stage == "stale":
 		heal_eater(state, for_agent, float(KarmaData.TUNING["carrionStaleHp"]))
 		refill_hambre(state, for_agent, float(KarmaData.TUNING["carrionStaleHp"]))
+		KarmaState.record_activity(state, for_agent, "Come carroña pasada")
 		if for_agent == null:
 			if int(pl.get("stash", 0)) > 0:
 				pl["stash"] = int(pl["stash"]) - 1
@@ -525,6 +524,7 @@ static func eat_carrion(state: Dictionary, c: Variant, for_agent: Variant) -> bo
 			KarmaState.add_log(state, null, "Carroña pasada (+poca vida)")
 	else:
 		hurt_eater(state, for_agent, float(KarmaData.TUNING["carrionRottenHp"]))
+		KarmaState.record_activity(state, for_agent, "Come carroña podrida")
 		if for_agent == null:
 			KarmaState.add_log(state, null, "¡Podrida! Carroña en mal estado (−25 vida)")
 	return true
